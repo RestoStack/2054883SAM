@@ -1,25 +1,48 @@
-# RestoStack — showcase prototype
+# RestoStack
 
-Interactive demo of a multi-location restaurant management SaaS (Dashboard, Bookings, Customers, Marketing).
+Multi-tenant restaurant SaaS: self-serve signup, restaurant setup, public booking pages, and an ops admin backend.
 
-## How to open the demo
+This repository is the **owned source of truth**. You can run and deploy it without Lovable.
 
-1. Install dependencies: `npm install`
-2. Start the app: `npm run dev`
-3. Open the URL shown in the terminal (usually http://localhost:5173)
+## Stack
 
-No login needed. The app loads with realistic demo data for **Italian Bistro · Downtown, New York**.
+- TanStack Start / Router + React 19 + Vite
+- Tailwind CSS + shadcn/ui
+- Supabase (Auth, Postgres, Storage, RLS)
+- Optional Cloudflare deploy via Wrangler (`wrangler.jsonc`)
 
-## What you can click through
+## Quick start
 
-- **Dashboard** — KPIs, revenue chart, staff working, labour %, top items, auto insights (all calculated from demo data)
-- **Bookings** — filter tabs, row click opens detail panel, floor-plan table assignment, status changes, New Booking
-- **Customers** — guest list → **Emma Johnson** (and others) full CRM profile with tags, favourites, visit chart
-- **Marketing** — campaign overview and action cards
-- **Location switcher** (bottom-left) — switch between Downtown and Brooklyn
+1. Create a [Supabase](https://supabase.com) project (your account).
+2. Copy env files:
 
-## Notes for stakeholders
+```bash
+cp .env.example .env
+```
 
-- Numbers are **computed live** from seeded bookings, orders, staff shifts, etc. (not hardcoded on the screen).
-- A production Supabase schema (tables + RLS) lives in `supabase/schema.sql` for when you connect a real backend.
-- Other sidebar links are stubbed so the navigation matches the full product vision.
+3. Fill in your Supabase URL and anon/publishable key in `.env`.
+4. Apply SQL migrations from `supabase/migrations/` in order (Supabase SQL editor or CLI).
+5. Install and run:
+
+```bash
+npm install
+npm run dev
+```
+
+## Independence from Lovable
+
+| Piece | Where it lives now |
+|-------|--------------------|
+| Code | This GitHub repo |
+| Database / Auth / Storage | Your Supabase project (migrate off Lovable Cloud) |
+| Hosting | Your choice (Cloudflare, Vercel, Netlify, etc.) |
+
+See **[INDEPENDENCE.md](./INDEPENDENCE.md)** for the cutover checklist (GitHub sync, Supabase export, hosting).
+
+## Product map
+
+See **[PRODUCT.md](./PRODUCT.md)** for routes, roles, and the `v2_*` data model.
+
+## Demo notes
+
+If you still point `.env` at an existing shared Supabase project, demo logins and seeded restaurants may work. For production, use **your own** Supabase project and never commit `.env`.
