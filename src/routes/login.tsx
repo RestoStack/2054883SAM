@@ -22,7 +22,7 @@ interface Tile {
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { session, staff, loading } = useAuth();
+  const { session, staff, platformAdmin, loading } = useAuth();
   const [tab, setTab] = useState<"admin" | "staff">("admin");
   const [tiles, setTiles] = useState<Tile[]>([]);
   const [selectedTile, setSelectedTile] = useState<Tile | null>(null);
@@ -35,13 +35,18 @@ function LoginPage() {
   const bootstrap = useServerFn(bootstrapStaffAuth);
 
   useEffect(() => {
-    if (!loading && session && staff) {
+    if (loading) return;
+    if (session && staff) {
       const home =
         staff.role === "admin" ? "/dashboard" :
         staff.role === "hostess" ? "/host-stand" : "/server-app";
       navigate({ to: home, replace: true });
+      return;
     }
-  }, [loading, session, staff, navigate]);
+    if (session && platformAdmin) {
+      navigate({ to: "/platform/restaurants", replace: true });
+    }
+  }, [loading, session, staff, platformAdmin, navigate]);
 
   // Auto-run bootstrap on first mount (idempotent — creates auth users for unlinked staff).
   useEffect(() => {

@@ -28,7 +28,7 @@ function isPublicPath(pathname: string) {
 }
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { loading, session, staff } = useAuth();
+  const { loading, session, staff, platformAdmin } = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
@@ -42,10 +42,20 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     }
     // Server pad uses its own PIN session, not Supabase staff auth.
     if (pathname === "/server-login" || pathname === "/server-app") return;
+    // Platform super-admin console (all restaurants).
+    if (pathname.startsWith("/platform")) {
+      if (!session || !platformAdmin) navigate({ to: "/login", replace: true });
+      return;
+    }
     if (!session || !staff) {
+      // Platform-only accounts land on the restaurant directory.
+      if (session && platformAdmin) {
+        navigate({ to: "/platform/restaurants", replace: true });
+        return;
+      }
       navigate({ to: "/login", replace: true });
     }
-  }, [loading, session, staff, pathname, navigate]);
+  }, [loading, session, staff, platformAdmin, pathname, navigate]);
 
   return <>{children}</>;
 }

@@ -1020,6 +1020,28 @@ export type Database = {
           out_slug: string
         }[]
       }
+      v2_is_platform_admin: {
+        Args: never
+        Returns: boolean
+      }
+      v2_claim_platform_admin: {
+        Args: never
+        Returns: boolean
+      }
+      v2_platform_list_restaurants: {
+        Args: never
+        Returns: {
+          id: string
+          name: string
+          slug: string
+          city: string | null
+          created_at: string
+          owner_email: string | null
+          owner_name: string | null
+          staff_count: number
+          booking_count: number
+        }[]
+      }
     }
     Enums: {
       server_role: "server" | "admin"
