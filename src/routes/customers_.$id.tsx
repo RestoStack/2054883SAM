@@ -1,10 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { AppShell } from "@/components/layout/Sidebar";
-import { ArrowLeft, Pencil, ChevronDown, Mail, Phone, Calendar, MapPin, User, Plus, Utensils, Receipt, Armchair, Compass, Clock, Leaf, Sparkles, Download, Gift, Bell, MessageSquare, Smartphone, FileText } from "lucide-react";
+import {
+  ArrowLeft, Pencil, ChevronDown, Mail, Phone, Calendar, MapPin, User, Users, Plus, Utensils,
+  Armchair, Compass, Clock, Leaf, Sparkles, Download, Gift, Bell, MessageSquare, Smartphone, FileText, Loader2,
+} from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer } from "recharts";
-import { findCustomer, orderHistory, bookings, slugify } from "@/lib/mock-data";
-import emmaPhoto from "@/assets/customer-emma.jpg";
+import { orderHistory } from "@/lib/mock-data";
+import { useCustomer, useCustomerBookings, type BookingRow, type CustomerRow } from "@/lib/v2-data";
 import dishTruffle from "@/assets/dish-truffle-pasta.jpg";
 import dishAlfredo from "@/assets/dish-chicken-alfredo.jpg";
 import dishPizza from "@/assets/dish-margherita.jpg";
@@ -13,7 +16,7 @@ import dishSalmon from "@/assets/dish-salmon.jpg";
 
 export const Route = createFileRoute("/customers_/$id")({
   validateSearch: (s: Record<string, unknown>) => ({ tab: (s.tab as string) || "overview" }),
-  head: ({ params }) => ({ meta: [{ title: `${findCustomer(params.id).name} — Customers` }] }),
+  head: () => ({ meta: [{ title: "Customer — RestoStack" }] }),
   component: CustomerDetail,
 });
 
@@ -27,19 +30,56 @@ const dishes = [
 ];
 const tagStyles: Record<string, string> = {
   VIP: "bg-success/15 text-success",
+  Frequent: "bg-info/15 text-info",
+  New: "bg-accent text-accent-foreground",
   "Birthday This Month": "bg-success/15 text-success",
   "High Spender": "bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300",
   Instagram: "bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300",
 };
 
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("") || "?";
+}
+
 function CustomerDetail() {
   const { tab: urlTab } = Route.useSearch();
   const { id } = Route.useParams();
   const navigate = useNavigate();
-  const c = findCustomer(id);
-  const customerBookings = bookings.filter((b) => slugify(b.name) === c.slug);
+  const { data: c, isLoading } = useCustomer(id);
+  const { data: customerBookings = [] } = useCustomerBookings(c?.id);
   const [tab, setTab] = useState(urlTab);
   useEffect(() => { setTab(urlTab); }, [urlTab]);
+
+  if (isLoading) {
+    return (
+      <AppShell>
+        <div className="flex items-center justify-center py-24 text-muted-foreground">
+          <Loader2 className="size-5 animate-spin mr-2" /> Loading customer…
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!c) {
+    return (
+      <AppShell>
+        <div className="px-8 py-16 text-center">
+          <h1 className="text-xl font-bold">Customer not found</h1>
+          <p className="text-sm text-muted-foreground mt-2">This guest profile is missing or was linked incorrectly.</p>
+          <Link to="/customers" className="inline-flex mt-6 rounded-lg bg-success text-success-foreground px-4 py-2 text-sm font-semibold">
+            Back to Customers
+          </Link>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const routeId = c.id;
 
   return (
     <AppShell>
@@ -60,21 +100,27 @@ function CustomerDetail() {
 
       <div className="px-8 pt-6 flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-5">
-          <img src={emmaPhoto} alt={c.name} width={80} height={80} className="size-20 rounded-full object-cover" />
+          <div className="size-20 rounded-full bg-gradient-to-br from-accent to-primary/40 flex items-center justify-center text-xl font-bold text-primary">
+            {initials(c.name)}
+          </div>
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold tracking-tight">{c.name}</h1>
-              <span className="rounded-full bg-success/15 text-success text-xs font-semibold px-3 py-1">{c.tag}</span>
+              <span className={`rounded-full text-xs font-semibold px-3 py-1 ${tagStyles[c.tag] ?? "bg-accent text-accent-foreground"}`}>{c.tag}</span>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-5 text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5"><Mail className="size-4" /> {c.email}</span>
-              <span className="inline-flex items-center gap-1.5"><Phone className="size-4" /> {c.phone}</span>
+              {c.email && <span className="inline-flex items-center gap-1.5"><Mail className="size-4" /> {c.email}</span>}
+              {c.phone && <span className="inline-flex items-center gap-1.5"><Phone className="size-4" /> {c.phone}</span>}
             </div>
-            <div className="mt-1 text-xs text-muted-foreground">Member since {c.joined}</div>
           </div>
         </div>
         <div className="flex gap-4 rounded-xl border border-border bg-card px-2">
-          {[[String(c.visits), "Total Visits"], [c.spent, "Total Spent"], ["$107.21", "Average Spend"], ["250", "Page Visits"], [String(c.points), "Points Earned"]].map(([v, l]) => (
+          {[
+            [String(c.visits), "Total Visits"],
+            [c.spent, "Total Spent"],
+            [String(customerBookings.length), "Bookings"],
+            [String(c.points), "Points Earned"],
+          ].map(([v, l]) => (
             <div key={l} className="px-4 py-4 text-center border-r border-border last:border-0">
               <div className="text-xl font-bold">{v}</div>
               <div className="text-xs text-muted-foreground mt-0.5">{l}</div>
@@ -86,10 +132,18 @@ function CustomerDetail() {
       <div className="flex gap-5 px-5 mt-5">
         <aside className="w-56 shrink-0">
           <nav className="flex flex-col gap-1 sticky top-4">
-            {[["overview", "Overview"], ["orders", "Order History"], ["bookings", `Bookings${customerBookings.length ? ` (${customerBookings.length})` : ""}`], ["loyalty", "Loyalty & Rewards"], ["comms", "Communications"], ["notes", "Notes"], ["prefs", "Preferences"]].map(([k, l]) => (
+            {[
+              ["overview", "Overview"],
+              ["orders", "Order History"],
+              ["bookings", `Bookings${customerBookings.length ? ` (${customerBookings.length})` : ""}`],
+              ["loyalty", "Loyalty & Rewards"],
+              ["comms", "Communications"],
+              ["notes", "Notes"],
+              ["prefs", "Preferences"],
+            ].map(([k, l]) => (
               <button
                 key={k}
-                onClick={() => { setTab(k); navigate({ to: "/customers/$id", params: { id: c.slug }, search: { tab: k }, replace: true }); }}
+                onClick={() => { setTab(k); navigate({ to: "/customers/$id", params: { id: routeId }, search: { tab: k }, replace: true }); }}
                 className={`text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors border-l-2 ${tab === k ? "border-success bg-success/10 text-success" : "border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`}
               >
                 {l}
@@ -98,30 +152,40 @@ function CustomerDetail() {
           </nav>
         </aside>
         <div className="flex-1 min-w-0 pb-5">
-          {tab === "orders" ? <OrderHistory /> : tab === "bookings" ? <CustomerBookings list={customerBookings} /> : tab === "loyalty" ? <LoyaltyTab /> : tab === "comms" ? <CommsTab c={c} /> : tab === "notes" ? <NotesTab /> : tab === "prefs" ? <PrefsTab /> : <Overview c={c} />}
+          {tab === "orders" ? <OrderHistory />
+            : tab === "bookings" ? <CustomerBookings list={customerBookings} />
+            : tab === "loyalty" ? <LoyaltyTab points={c.points} />
+            : tab === "comms" ? <CommsTab c={c} />
+            : tab === "notes" ? <NotesTab notes={c.notes} />
+            : tab === "prefs" ? <PrefsTab />
+            : <Overview c={c} bookings={customerBookings} />}
         </div>
       </div>
     </AppShell>
   );
 }
 
-function CustomerBookings({ list }: { list: typeof bookings }) {
+function statusLabel(status: BookingRow["status"]) {
+  return status.replace("_", " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+function CustomerBookings({ list }: { list: BookingRow[] }) {
   if (list.length === 0) return <div className="text-sm text-muted-foreground">No bookings on record for this customer.</div>;
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <table className="w-full text-sm">
         <thead><tr className="text-xs text-muted-foreground border-b border-border bg-muted/30">
-          {["Booking", "Date", "Time", "People", "Table", "Status"].map((h) => <th key={h} className="text-left font-medium px-5 py-3">{h}</th>)}
+          {["Guest", "Date", "Time", "People", "Table", "Status"].map((h) => <th key={h} className="text-left font-medium px-5 py-3">{h}</th>)}
         </tr></thead>
         <tbody>
           {list.map((b) => (
             <tr key={b.id} className="border-b border-border last:border-0 hover:bg-muted/40">
-              <td className="px-5 py-4 font-medium"><Link to="/bookings" className="hover:underline">{b.id}</Link></td>
+              <td className="px-5 py-4 font-medium"><Link to="/bookings" className="hover:underline">{b.name}</Link></td>
               <td className="px-5 py-4 text-muted-foreground">{b.date}</td>
               <td className="px-5 py-4">{b.time}</td>
               <td className="px-5 py-4">{b.people}</td>
               <td className="px-5 py-4"><div className="font-medium">{b.table}</div><div className="text-xs text-muted-foreground">{b.area}</div></td>
-              <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${b.status === "Seated" ? "bg-success/15 text-success" : "bg-info/15 text-info"}`}>{b.status}</span></td>
+              <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${b.status === "seated" ? "bg-success/15 text-success" : "bg-info/15 text-info"}`}>{statusLabel(b.status)}</span></td>
             </tr>
           ))}
         </tbody>
@@ -130,23 +194,31 @@ function CustomerBookings({ list }: { list: typeof bookings }) {
   );
 }
 
-function Overview({ c }: { c: ReturnType<typeof findCustomer> }) {
+function Overview({ c, bookings }: { c: CustomerRow; bookings: BookingRow[] }) {
+  const last = bookings[0];
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div className="space-y-4">
         <Panel title="Customer Details" action={<button className="text-xs font-semibold border border-border rounded-md px-3 py-1 inline-flex items-center gap-1"><Pencil className="size-3" /> Edit</button>}>
           <dl className="space-y-3 text-sm">
-            {[["Full Name", c.name], ["Email", c.email], ["Phone", c.phone], ["Birthday", <span className="text-success font-medium">{c.birthday}</span>], ["Source", c.source], ["Customer Type", c.tag], ["Accepts Uber Orders", <span className="text-success font-medium">Yes</span>], ["Marketing Consent", <span className="text-success font-medium">Yes</span>]].map(([k, v], i) => (
+            {[
+              ["Full Name", c.name],
+              ["Email", c.email || "—"],
+              ["Phone", c.phone || "—"],
+              ["Customer Type", c.tag],
+              ["Visits", String(c.visits)],
+              ["Total Spent", c.spent],
+            ].map(([k, v], i) => (
               <div key={i} className="flex justify-between"><dt className="text-muted-foreground">{k}</dt><dd className="font-medium">{v}</dd></div>
             ))}
-            <div className="pt-2"><dt className="text-muted-foreground mb-1">Notes</dt><dd className="text-sm">Prefers window seats. Allergic to nuts.</dd></div>
+            {c.notes && (
+              <div className="pt-2"><dt className="text-muted-foreground mb-1">Notes</dt><dd className="text-sm">{c.notes}</dd></div>
+            )}
           </dl>
         </Panel>
         <Panel title="Tags" action={<button className="text-xs font-semibold border border-border rounded-md px-3 py-1"><Pencil className="size-3 inline" /> Edit</button>}>
           <div className="flex flex-wrap gap-2">
-            {["VIP", "Birthday This Month", "High Spender", "Instagram"].map((t) => (
-              <span key={t} className={`rounded-full text-xs font-semibold px-3 py-1.5 ${tagStyles[t] ?? "bg-accent text-accent-foreground"}`}>{t}</span>
-            ))}
+            <span className={`rounded-full text-xs font-semibold px-3 py-1.5 ${tagStyles[c.tag] ?? "bg-accent text-accent-foreground"}`}>{c.tag}</span>
             <button className="rounded-full border border-dashed border-border text-xs font-medium px-3 py-1.5 inline-flex items-center gap-1"><Plus className="size-3" /> Add Tag</button>
           </div>
         </Panel>
@@ -161,17 +233,20 @@ function Overview({ c }: { c: ReturnType<typeof findCustomer> }) {
           </div>
         </Panel>
         <Panel title="Last Visit Summary">
-          <ul className="space-y-3 text-sm">
-            {([
-              { I: Calendar, t: "May 18, 2024 – 7:30 PM" },
-              { I: User, t: "Michael Brown" },
-              { I: MapPin, t: "Table 12 (Indoor)" },
-              { I: Utensils, t: "Truffle Pasta, Caesar Salad, Lemonade" },
-              { I: Receipt, t: "$118.50" },
-            ]).map(({ I, t }, i) => (
-              <li key={i} className="flex items-center gap-3"><I className="size-4 text-muted-foreground" /> {t}</li>
-            ))}
-          </ul>
+          {last ? (
+            <ul className="space-y-3 text-sm">
+              {[
+                { I: Calendar, t: `${last.date} – ${last.time}` },
+                { I: User, t: last.name },
+                { I: MapPin, t: `${last.table} (${last.area})` },
+                { I: Users, t: `${last.people} guests` },
+              ].map(({ I, t }, i) => (
+                <li key={i} className="flex items-center gap-3"><I className="size-4 text-muted-foreground" /> {t}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">No bookings yet.</p>
+          )}
         </Panel>
         <Panel title="Visit Frequency">
           <div className="h-44">
@@ -188,7 +263,12 @@ function Overview({ c }: { c: ReturnType<typeof findCustomer> }) {
       <div className="space-y-4">
         <Panel title="Visit & Engagement">
           <dl className="space-y-3 text-sm">
-            {[["Total Visits", "12 times"], ["First Visit", "Jan 20, 2024"], ["Last Visit", "May 18, 2024"], ["Page Visits", "250 times"], ["Avg. Time on Page", "02:45 mins"]].map(([k, v]) => (
+            {[
+              ["Total Visits", `${c.visits} times`],
+              ["Bookings", String(bookings.length)],
+              ["Loyalty Points", String(c.points)],
+              ["Total Spent", c.spent],
+            ].map(([k, v]) => (
               <div key={k} className="flex justify-between"><dt className="text-muted-foreground">{k}</dt><dd className="font-medium">{v}</dd></div>
             ))}
           </dl>
@@ -196,11 +276,11 @@ function Overview({ c }: { c: ReturnType<typeof findCustomer> }) {
         <Panel title="Preferences">
           <ul className="space-y-3 text-sm">
             {([
-              { I: Armchair, k: "Preferred Seating", v: "Window Seat" },
-              { I: Compass, k: "Preferred Area", v: "Indoor" },
-              { I: Clock, k: "Time Preference", v: "Evening" },
-              { I: Leaf, k: "Dietary Restrictions", v: "Allergic to nuts" },
-              { I: Sparkles, k: "Other Preferences", v: "Prefers quiet atmosphere" },
+              { I: Armchair, k: "Preferred Seating", v: "—" },
+              { I: Compass, k: "Preferred Area", v: "—" },
+              { I: Clock, k: "Time Preference", v: "—" },
+              { I: Leaf, k: "Dietary Restrictions", v: "—" },
+              { I: Sparkles, k: "Other Preferences", v: "—" },
             ]).map(({ I, k, v }) => (
               <li key={k} className="flex items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-2 text-muted-foreground"><I className="size-4" /> {k}</span>
@@ -208,13 +288,6 @@ function Overview({ c }: { c: ReturnType<typeof findCustomer> }) {
               </li>
             ))}
           </ul>
-        </Panel>
-        <Panel title="Other Information">
-          <dl className="space-y-3 text-sm">
-            {[["Source", "Instagram"], ["Accepts Uber Orders", <span className="text-success font-medium">Yes</span>], ["Marketing Consent", <span className="text-success font-medium">Yes</span>], ["Member Since", "Jan 15, 2024"]].map(([k, v], i) => (
-              <div key={i} className="flex justify-between"><dt className="text-muted-foreground">{k}</dt><dd className="font-medium">{v}</dd></div>
-            ))}
-          </dl>
         </Panel>
       </div>
     </div>
@@ -227,13 +300,6 @@ function OrderHistory() {
     <div>
       <h2 className="text-xl font-bold">Order History</h2>
       <p className="text-sm text-muted-foreground mt-1 mb-5">View all past orders placed by this customer. Click any row for full details.</p>
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        {["All Orders", "All Locations", "All Order Types"].map((f) => (
-          <button key={f} className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">{f} <ChevronDown className="size-4" /></button>
-        ))}
-        <button className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm"><Calendar className="size-4" /> Jan 1, 2024 – May 20, 2024 <ChevronDown className="size-4" /></button>
-        <button className="ml-auto inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">⬇ Export</button>
-      </div>
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <table className="w-full text-sm">
           <thead><tr className="text-xs text-muted-foreground border-b border-border bg-muted/30">
@@ -241,7 +307,9 @@ function OrderHistory() {
             <th />
           </tr></thead>
           <tbody>
-            {orderHistory.map((o) => (
+            {orderHistory.length === 0 ? (
+              <tr><td colSpan={10} className="px-4 py-10 text-center text-muted-foreground">No orders yet.</td></tr>
+            ) : orderHistory.slice(0, 5).map((o) => (
               <tr key={o.id} onClick={() => setSelected(o)} className="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer">
                 <td className="px-4 py-4 font-medium text-success">{o.id}</td>
                 <td className="px-4 py-4"><div>{o.date}</div><div className="text-xs text-muted-foreground">{o.time}</div></td>
@@ -257,16 +325,6 @@ function OrderHistory() {
             ))}
           </tbody>
         </table>
-        <div className="flex items-center justify-between px-4 py-3 text-sm border-t border-border">
-          <span className="text-muted-foreground">Showing 1 to 8 of 24 orders</span>
-          <div className="flex items-center gap-1">
-            <button className="size-8 rounded-md border border-border">‹</button>
-            <button className="size-8 rounded-md bg-success text-success-foreground font-semibold">1</button>
-            <button className="size-8 rounded-md border border-border">2</button>
-            <button className="size-8 rounded-md border border-border">3</button>
-            <button className="size-8 rounded-md border border-border">›</button>
-          </div>
-        </div>
       </div>
       <OrderDetailDialog order={selected} onClose={() => setSelected(null)} />
     </div>
@@ -344,33 +402,20 @@ function Panel({ title, children, action }: { title: string; children: React.Rea
   );
 }
 
-function LoyaltyTab() {
+function LoyaltyTab({ points }: { points: number }) {
   const history = [
     { d: "May 18, 2024", desc: "Order #ORD-1245", pts: "+118" },
     { d: "May 10, 2024", desc: "Order #ORD-1198", pts: "+72" },
     { d: "Apr 28, 2024", desc: "Order #ORD-1156", pts: "+95" },
-    { d: "Apr 20, 2024", desc: "Review Bonus", pts: "+25" },
-    { d: "Apr 12, 2024", desc: "Order #ORD-1044", pts: "+18" },
   ];
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <Panel title="Loyalty Overview">
         <div className="text-center py-4">
           <Gift className="size-8 text-success mx-auto" />
-          <div className="text-4xl font-bold mt-2">480</div>
+          <div className="text-4xl font-bold mt-2">{points}</div>
           <div className="text-xs text-muted-foreground">Total Points Earned</div>
         </div>
-        <div className="mt-4 rounded-lg bg-muted/30 p-4">
-          <div className="text-sm font-semibold text-success">Gold Tier</div>
-          <div className="text-xs text-muted-foreground mt-1">You're 120 points away from Platinum</div>
-          <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden"><div className="h-full bg-success" style={{ width: "80%" }} /></div>
-          <div className="mt-1 text-xs text-muted-foreground text-right">480 / 600</div>
-        </div>
-        <dl className="mt-4 space-y-2 text-sm">
-          {[["Member Since", "Jan 15, 2024"], ["Current Tier", "Gold"], ["Points Expiry", "Dec 31, 2024"]].map(([k, v]) => (
-            <div key={k} className="flex justify-between"><dt className="text-muted-foreground">{k}</dt><dd className="font-medium">{v}</dd></div>
-          ))}
-        </dl>
       </Panel>
       <Panel title="Points History" action={<button className="text-xs text-success font-semibold">View All History</button>}>
         <table className="w-full text-sm">
@@ -386,22 +431,15 @@ function LoyaltyTab() {
   );
 }
 
-function CommsTab({ c }: { c: ReturnType<typeof findCustomer> }) {
-  const history = [
-    { type: "SMS", subject: "Special Weekend Offer Just for You!", channel: "Email", date: "May 15, 2024", status: "Opened" },
-    { type: "SMS", subject: "Your Reservation Reminder", channel: "SMS", date: "May 18, 2024", status: "Delivered" },
-    { type: "Email", subject: "New Menu Items to Try", channel: "Email", date: "May 1, 2024", status: "Opened" },
-    { type: "Email", subject: "Thank You for Dining With Us!", channel: "Email", date: "Apr 20, 2024", status: "Opened" },
-    { type: "SMS", subject: "We Miss You! Here's 10% Off", channel: "Email", date: "Apr 5, 2024", status: "Delivered" },
-  ];
+function CommsTab({ c }: { c: CustomerRow }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div className="space-y-4">
         {[
-          { I: Mail, label: "Email", v: c.email, badge: "Subscribed" },
-          { I: MessageSquare, label: "SMS", v: c.phone, badge: "Subscribed" },
-          { I: Bell, label: "Push Notifications", v: "", badge: "Subscribed" },
-          { I: Smartphone, label: "Marketing Consent", v: "", badge: "Yes" },
+          { I: Mail, label: "Email", v: c.email || "—", badge: c.email ? "On file" : "Missing" },
+          { I: MessageSquare, label: "SMS", v: c.phone || "—", badge: c.phone ? "On file" : "Missing" },
+          { I: Bell, label: "Push Notifications", v: "", badge: "—" },
+          { I: Smartphone, label: "Marketing Consent", v: "", badge: "—" },
         ].map(({ I, label, v, badge }) => (
           <div key={label} className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-center gap-3"><I className="size-4 text-muted-foreground" /><div className="font-medium text-sm">{label}</div></div>
@@ -411,56 +449,34 @@ function CommsTab({ c }: { c: ReturnType<typeof findCustomer> }) {
         ))}
       </div>
       <div className="lg:col-span-2">
-        <Panel title="Communication History" action={<button className="text-xs text-success font-semibold">View All Communications</button>}>
-          <table className="w-full text-sm">
-            <thead><tr className="text-xs text-muted-foreground border-b border-border">{["Type", "Subject", "Channel", "Date", "Status"].map((h) => <th key={h} className="text-left font-medium py-2">{h}</th>)}</tr></thead>
-            <tbody>
-              {history.map((h, i) => (
-                <tr key={i} className="border-b border-border last:border-0">
-                  <td className="py-3">{h.type}</td>
-                  <td className="py-3">{h.subject}</td>
-                  <td className="py-3">{h.channel}</td>
-                  <td className="py-3 text-muted-foreground">{h.date}</td>
-                  <td className="py-3"><span className={`rounded-full text-xs font-semibold px-2.5 py-1 ${h.status === "Opened" ? "bg-success/15 text-success" : "bg-info/15 text-info"}`}>{h.status}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <Panel title="Communication History">
+          <p className="text-sm text-muted-foreground">No communications recorded yet.</p>
         </Panel>
       </div>
     </div>
   );
 }
 
-function NotesTab() {
-  const notes = [
-    { d: "May 18, 2024", author: "Admin", text: "Prefers window seats. Allergic to nuts." },
-    { d: "Apr 20, 2024", author: "Sarah Thompson", text: "Celebrated birthday with friends. Loved our Tiramisu!" },
-    { d: "Mar 10, 2024", author: "Michael Brown", text: "Mentioned upcoming anniversary in April." },
-  ];
+function NotesTab({ notes }: { notes: string }) {
   return (
     <div className="max-w-3xl space-y-4">
       <Panel title="Add Note">
         <textarea placeholder="Write a note about this customer..." className="w-full rounded-lg border border-border bg-background p-3 text-sm min-h-24" />
         <div className="flex justify-end mt-2"><button className="inline-flex items-center gap-2 rounded-lg bg-success text-success-foreground px-4 py-2 text-sm font-semibold"><FileText className="size-4" /> Add Note</button></div>
       </Panel>
-      <Panel title="Notes History" action={<button className="text-xs text-success font-semibold">View All Notes</button>}>
-        <ul className="divide-y divide-border">
-          {notes.map((n, i) => (
-            <li key={i} className="py-3">
-              <div className="flex items-center justify-between text-xs text-muted-foreground"><span>{n.d}</span><span>{n.author}</span></div>
-              <div className="text-sm mt-1">{n.text}</div>
-            </li>
-          ))}
-        </ul>
+      <Panel title="Notes History">
+        {notes ? (
+          <div className="text-sm py-2">{notes}</div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No notes yet.</p>
+        )}
       </Panel>
     </div>
   );
 }
 
 function PrefsTab() {
-  const dining = [["Seating Preference", "Window Seat"], ["Dining Area", "Indoor"], ["Time Preference", "Evening"], ["Dietary Restrictions", "Allergic to nuts"], ["Other Preferences", "Prefers quiet atmosphere"]];
-  const order = [["Favorite Cuisine", "Italian, Seafood"], ["Spice Level", "Mild"], ["Drink Preference", "No Preference"]];
+  const dining = [["Seating Preference", "—"], ["Dining Area", "—"], ["Time Preference", "—"], ["Dietary Restrictions", "—"], ["Other Preferences", "—"]];
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <Panel title="Dining Preferences">
@@ -469,15 +485,7 @@ function PrefsTab() {
         ))}</dl>
       </Panel>
       <Panel title="Order Preferences">
-        <dl className="space-y-3 text-sm">
-          {order.map(([k, v]) => (
-            <div key={k} className="flex justify-between gap-3"><dt className="text-muted-foreground">{k}</dt><dd className="font-medium text-right">{v}</dd></div>
-          ))}
-          <div className="pt-3 border-t border-border">
-            <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">Uber Orders</div>
-            <div className="flex justify-between"><dt className="text-muted-foreground">Accepts Uber Orders</dt><dd className="text-success font-medium">Yes</dd></div>
-          </div>
-        </dl>
+        <p className="text-sm text-muted-foreground">No order preferences saved yet.</p>
       </Panel>
     </div>
   );

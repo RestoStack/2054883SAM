@@ -74,7 +74,7 @@ function CustomersList() {
                     <td className="px-5 py-4">
                       <Link
                         to="/customers/$id"
-                        params={{ id: c.slug }}
+                        params={{ id: c.id }}
                         className="flex items-center gap-3 font-medium hover:underline"
                       >
                         <div className="size-9 rounded-full bg-gradient-to-br from-accent to-primary/30" />

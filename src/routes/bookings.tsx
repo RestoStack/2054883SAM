@@ -258,10 +258,17 @@ function BookingsPage() {
                     <tr key={b.id} onClick={() => setSelectedId(b.id)} className={`border-b border-border last:border-0 cursor-pointer hover:bg-muted/40 ${sel?.id === b.id ? "bg-success/5 border-l-2 border-l-success" : ""}`}>
                       <td className="px-5 py-4 whitespace-nowrap"><div className="text-xs text-muted-foreground">{b.date}</div><div className="font-medium">{b.time}</div></td>
                       <td className="px-2 py-4">
-                        <Link to="/customers/$id" params={{ id: b.slug }} className="flex items-center gap-2.5 hover:underline">
-                          <div className="size-9 rounded-full bg-muted shrink-0" />
-                          <div><div className="font-medium">{b.name}</div><div className="text-xs text-muted-foreground">{b.phone}</div></div>
-                        </Link>
+                        {b.customerId ? (
+                          <Link to="/customers/$id" params={{ id: b.customerId }} className="flex items-center gap-2.5 hover:underline">
+                            <div className="size-9 rounded-full bg-muted shrink-0" />
+                            <div><div className="font-medium">{b.name}</div><div className="text-xs text-muted-foreground">{b.phone}</div></div>
+                          </Link>
+                        ) : (
+                          <div className="flex items-center gap-2.5">
+                            <div className="size-9 rounded-full bg-muted shrink-0" />
+                            <div><div className="font-medium">{b.name}</div><div className="text-xs text-muted-foreground">{b.phone}</div></div>
+                          </div>
+                        )}
                       </td>
                       <td className="px-2 py-4">{b.source === "online" ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-success/15 text-success px-2 py-0.5 text-xs font-semibold">
@@ -301,7 +308,9 @@ function BookingsPage() {
                     <div className="font-semibold">{sel.name}</div>
                     <div className="text-xs text-muted-foreground">{sel.phone}</div>
                   </div>
-                  <Link to="/customers/$id" params={{ id: sel.slug }} className="text-xs font-semibold text-success border border-success/30 rounded-md px-3 py-1.5 hover:bg-success/10">View Customer</Link>
+                  {sel.customerId ? (
+                    <Link to="/customers/$id" params={{ id: sel.customerId }} className="text-xs font-semibold text-success border border-success/30 rounded-md px-3 py-1.5 hover:bg-success/10">View Customer</Link>
+                  ) : null}
                 </div>
                 <div className="space-y-3 text-sm">
                   <div className="flex items-start gap-2.5"><Clock className="size-4 text-muted-foreground mt-0.5" /><div className="flex-1"><div>{sel.date}</div><div className="text-xs text-muted-foreground">{sel.time}</div></div><div className="text-xs inline-flex items-center gap-1"><Users className="size-3.5" /> {sel.people} People</div></div>

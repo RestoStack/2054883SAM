@@ -7,7 +7,8 @@ import {
   LayoutDashboard, CalendarDays, ShoppingBag, Users, UtensilsCrossed, Megaphone, Award,
   BarChart3, UserCog, Settings, Calendar, Mail, MessageSquare, Tag, Search,
 } from "lucide-react";
-import { customers, bookings, orderHistory, emailCampaigns, promotions, slugify } from "@/lib/mock-data";
+import { orderHistory, emailCampaigns, promotions } from "@/lib/mock-data";
+import { useBookings, useCustomers } from "@/lib/v2-data";
 
 const pages = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -29,6 +30,8 @@ const pages = [
 export function CommandPalette() {
   const [open, setOpen] = React.useState(false);
   const navigate = useNavigate();
+  const { data: customers = [] } = useCustomers();
+  const { data: bookings = [] } = useBookings();
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -65,8 +68,8 @@ export function CommandPalette() {
             ))}
           </CommandGroup>
           <CommandGroup heading="Customers">
-            {customers.map((c) => (
-              <CommandItem key={c.slug} value={`customer ${c.name} ${c.email}`} onSelect={() => go(() => navigate({ to: "/customers/$id", params: { id: c.slug } }))}>
+            {customers.slice(0, 12).map((c) => (
+              <CommandItem key={c.id} value={`customer ${c.name} ${c.email}`} onSelect={() => go(() => navigate({ to: "/customers/$id", params: { id: c.id } }))}>
                 <Users className="mr-2 size-4" />
                 <span className="flex-1">{c.name}</span>
                 <span className="text-xs text-muted-foreground">{c.tag}</span>
@@ -74,8 +77,15 @@ export function CommandPalette() {
             ))}
           </CommandGroup>
           <CommandGroup heading="Bookings">
-            {bookings.map((b) => (
-              <CommandItem key={b.id} value={`booking ${b.id} ${b.name} ${b.table}`} onSelect={() => go(() => navigate({ to: "/customers/$id", params: { id: slugify(b.name) } }))}>
+            {bookings.slice(0, 12).map((b) => (
+              <CommandItem
+                key={b.id}
+                value={`booking ${b.id} ${b.name} ${b.table}`}
+                onSelect={() => go(() => {
+                  if (b.customerId) navigate({ to: "/customers/$id", params: { id: b.customerId } });
+                  else navigate({ to: "/bookings" });
+                })}
+              >
                 <CalendarDays className="mr-2 size-4" />
                 <span className="flex-1">{b.name} — {b.time}</span>
                 <span className="text-xs text-muted-foreground">{b.table}</span>

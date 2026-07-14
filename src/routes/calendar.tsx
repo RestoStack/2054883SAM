@@ -15,9 +15,6 @@ export const Route = createFileRoute("/calendar")({
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const slugify = (s: string) =>
-  (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
 function CalendarPage() {
   const now = new Date();
   const [cursor, setCursor] = useState(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -85,15 +82,25 @@ function CalendarPage() {
                       </div>
                       <div className="space-y-1">
                         {dayBookings.slice(0, 3).map((b) => (
-                          <Link
-                            key={b.id}
-                            to="/customers/$id"
-                            params={{ id: slugify(b.name) }}
-                            className="block truncate rounded-sm bg-info/15 text-info text-[11px] font-medium px-1.5 py-0.5 hover:bg-info/25"
-                            title={`${b.time} — ${b.name} (${b.table})`}
-                          >
-                            {b.time.replace(" PM", "p").replace(" AM", "a")} {b.name.split(" ")[0]}
-                          </Link>
+                          b.customerId ? (
+                            <Link
+                              key={b.id}
+                              to="/customers/$id"
+                              params={{ id: b.customerId }}
+                              className="block truncate rounded-sm bg-info/15 text-info text-[11px] font-medium px-1.5 py-0.5 hover:bg-info/25"
+                              title={`${b.time} — ${b.name} (${b.table})`}
+                            >
+                              {b.time.replace(" PM", "p").replace(" AM", "a")} {b.name.split(" ")[0]}
+                            </Link>
+                          ) : (
+                            <div
+                              key={b.id}
+                              className="block truncate rounded-sm bg-info/15 text-info text-[11px] font-medium px-1.5 py-0.5"
+                              title={`${b.time} — ${b.name} (${b.table})`}
+                            >
+                              {b.time.replace(" PM", "p").replace(" AM", "a")} {b.name.split(" ")[0]}
+                            </div>
+                          )
                         ))}
                         {dayBookings.length > 3 && (
                           <div className="text-[10px] text-muted-foreground px-1.5">+{dayBookings.length - 3} more</div>

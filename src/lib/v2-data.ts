@@ -23,6 +23,7 @@ export type BookingStatus = "pending" | "confirmed" | "seated" | "completed" | "
 
 export type BookingRow = {
   id: string;
+  customerId: string | null;
   date: string;
   time: string;
   rawTime: string;
@@ -55,6 +56,7 @@ export function useBookings(dateFilter?: string) {
       if (error) throw error;
       return (data ?? []).map((b: any) => ({
         id: b.id,
+        customerId: b.customer_id ?? null,
         date: b.date,
         rawTime: b.time,
         time: fmtTime12(b.time),
@@ -117,7 +119,19 @@ export function useCreateBooking() {
               .join(","),
           )
           .maybeSingle();
-        if (existing?.id) customer_id = existing.id;
+        if (existing?.id) {
+          customer_id = existing.id;
+          // Keep the stored profile name in sync with the latest booking name.
+          const { error: uerr } = await supabase
+            .from("v2_customers")
+            .update({
+              full_name: input.guest_name,
+              ...(input.guest_email ? { email: input.guest_email } : {}),
+              ...(input.guest_phone ? { phone: input.guest_phone } : {}),
+            })
+            .eq("id", existing.id);
+          if (uerr) throw uerr;
+        }
       }
       if (!customer_id) {
         const { data: created, error: cerr } = await supabase
@@ -200,6 +214,26 @@ export type CustomerRow = {
   notes: string;
 };
 
+function mapCustomer(c: any): CustomerRow {
+  const visits = c.visit_count ?? 0;
+  const spent = Number(c.total_spent ?? 0);
+  const tag: CustomerRow["tag"] =
+    spent >= 1000 || visits >= 10 ? "VIP" : visits >= 3 ? "Frequent" : "New";
+  return {
+    id: c.id,
+    slug: slugify(c.full_name ?? c.id),
+    name: c.full_name ?? "Guest",
+    email: c.email ?? "",
+    phone: c.phone ?? "",
+    visits,
+    spent: fmtMoney(spent),
+    spentRaw: spent,
+    points: c.loyalty_points ?? 0,
+    tag,
+    notes: c.notes ?? "",
+  };
+}
+
 export function useCustomers() {
   return useQuery({
     queryKey: ["v2_customers"],
@@ -209,25 +243,70 @@ export function useCustomers() {
         .select("*")
         .order("total_spent", { ascending: false });
       if (error) throw error;
-      return (data ?? []).map((c: any) => {
-        const visits = c.visit_count ?? 0;
-        const spent = Number(c.total_spent ?? 0);
-        const tag: CustomerRow["tag"] =
-          spent >= 1000 || visits >= 10 ? "VIP" : visits >= 3 ? "Frequent" : "New";
-        return {
-          id: c.id,
-          slug: slugify(c.full_name ?? c.id),
-          name: c.full_name ?? "Guest",
-          email: c.email ?? "",
-          phone: c.phone ?? "",
-          visits,
-          spent: fmtMoney(spent),
-          spentRaw: spent,
-          points: c.loyalty_points ?? 0,
-          tag,
-          notes: c.notes ?? "",
-        };
-      });
+      return (data ?? []).map(mapCustomer);
+    },
+  });
+}
+
+/** Resolve a customer by UUID or name slug. */
+export function useCustomer(idOrSlug: string) {
+  return useQuery({
+    queryKey: ["v2_customer", idOrSlug],
+    enabled: !!idOrSlug,
+    queryFn: async (): Promise<CustomerRow | null> => {
+      const looksLikeUuid =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
+
+      if (looksLikeUuid) {
+        const { data, error } = await supabase
+          .from("v2_customers")
+          .select("*")
+          .eq("id", idOrSlug)
+          .maybeSingle();
+        if (error) throw error;
+        return data ? mapCustomer(data) : null;
+      }
+
+      const { data, error } = await supabase.from("v2_customers").select("*");
+      if (error) throw error;
+      const match = (data ?? []).find((c: any) => slugify(c.full_name ?? "") === idOrSlug);
+      return match ? mapCustomer(match) : null;
+    },
+  });
+}
+
+export function useCustomerBookings(customerId: string | undefined) {
+  return useQuery({
+    queryKey: ["v2_bookings", "customer", customerId ?? "none"],
+    enabled: !!customerId,
+    queryFn: async (): Promise<BookingRow[]> => {
+      const { data, error } = await supabase
+        .from("v2_bookings")
+        .select("*")
+        .eq("customer_id", customerId!)
+        .order("date", { ascending: false })
+        .order("time", { ascending: false });
+      if (error) throw error;
+      return (data ?? []).map((b: any) => ({
+        id: b.id,
+        customerId: b.customer_id ?? null,
+        date: b.date,
+        rawTime: b.time,
+        time: fmtTime12(b.time),
+        name: b.guest_name ?? "Guest",
+        phone: b.guest_phone ?? "",
+        email: b.guest_email ?? "",
+        source: b.source ?? "walk_in",
+        people: b.party_size ?? 2,
+        table: b.table_number ? `Table ${b.table_number}` : "—",
+        tableNumber: b.table_number ?? null,
+        area: b.section ?? "—",
+        status: (b.status ?? "pending") as BookingStatus,
+        visits: "—",
+        last: "",
+        notes: b.notes ?? "",
+        slug: slugify(b.guest_name ?? ""),
+      }));
     },
   });
 }
