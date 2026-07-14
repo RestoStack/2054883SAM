@@ -755,9 +755,14 @@ export type Database = {
           id?: string
           logo_url?: string | null
           name?: string
+          custom_domain?: string | null
+          google_business_url?: string | null
+          integrations?: Json
+          menu_source_url?: string | null
           onboarding_completed_at?: string | null
           phone?: string | null
           plan?: string
+          seating_plan_url?: string | null
           slug?: string
           timezone?: string | null
           trial_started_at?: string | null
