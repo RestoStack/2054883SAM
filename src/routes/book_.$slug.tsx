@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays, Users, Clock, MapPin, Phone, ChevronLeft, ChevronRight,
   Check, Star, Sparkles, ShieldCheck, Gift, Cake, Heart, Briefcase,
-  PartyPopper, Wine, BookOpen, Sun, Moon, Play, Quote, Loader2, Utensils,
+  PartyPopper, Wine, BookOpen, Sun, Moon, Loader2, Utensils,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { slotsForDay, fmtSlot12, dayKeyFromDate, DAYS, type WeekHours } from "@/components/onboarding/HoursEditor";
