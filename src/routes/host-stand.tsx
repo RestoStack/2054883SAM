@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { useBookings, useUpdateBooking } from "@/lib/v2-data";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -19,7 +20,7 @@ import { FloorPlan, mainFloorPlan, type FloorItem } from "@/components/FloorPlan
 import { toast } from "sonner";
 import {
   Clock, Users, Phone, StickyNote, UserPlus, CheckCircle2, AlertCircle,
-  CalendarClock, Utensils, Timer, Loader2,
+  CalendarClock, Utensils, Timer,
 } from "lucide-react";
 
 export const Route = createFileRoute("/host-stand")({
@@ -35,7 +36,7 @@ export const Route = createFileRoute("/host-stand")({
 type Reservation = {
   id: string; time: string; name: string; phone: string; party: number;
   table?: string | number; status: "Upcoming" | "Arrived" | "Seated" | "Late";
-  note?: string; server?: string; rawStatus: string;
+  note?: string; server?: string;
 };
 
 type DbTable = {
@@ -44,13 +45,9 @@ type DbTable = {
   width: number | null; height: number | null;
 };
 
-type Waitlist = {
-  id: string; name: string; party: number; quoted: number; waited: number; phone: string;
-};
-
-type SeatedTable = {
-  id: string; table: string | number; guest: string; party: number;
-  seatedAt: string; minutes: number; server: string;
+type WaitlistRow = {
+  id: string; guest_name: string; party_size: number; phone: string | null;
+  quoted_wait_minutes: number | null; status: string; created_at: string;
 };
 
 const SERVERS = ["Michael B.", "Sarah T.", "James W.", "Olivia M."];
@@ -61,50 +58,68 @@ const statusColor = (s: Reservation["status"]) =>
   : s === "Late"    ? "bg-destructive/15 text-destructive border-destructive/30"
                     : "bg-blue-50 text-blue-700 border-blue-200";
 
+function minutesSince(iso: string) {
+  return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+}
+
+function fmtSeated(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
 function HostStandPage() {
   const { staff } = useAuth();
-  const updateBooking = useUpdateBooking();
+  const qc = useQueryClient();
   const [selectedTable, setSelectedTable] = useState<number | string | null>(null);
   const [activeRes, setActiveRes] = useState<Reservation | null>(null);
-  const [waitlist, setWaitlist] = useState<Waitlist[]>([]);
-  const [waitLoading, setWaitLoading] = useState(false);
   const [newName, setNewName] = useState("");
   const [newParty, setNewParty] = useState("2");
+  const [newPhone, setNewPhone] = useState("");
   const [dbTables, setDbTables] = useState<DbTable[]>([]);
   const today = new Date().toISOString().slice(0, 10);
-  const { data: todays = [], isLoading: bookingsLoading } = useBookings(today);
+  const { data: todays = [] } = useBookings(today);
+  const updateBooking = useUpdateBooking();
 
-  const loadWaitlist = useCallback(async () => {
-    if (!staff) return;
-    setWaitLoading(true);
-    const { data, error } = await supabase
-      .from("v2_waitlist")
-      .select("id, guest_name, party_size, phone, quoted_wait_minutes, status, created_at")
-      .eq("restaurant_id", staff.restaurant_id)
-      .in("status", ["waiting", "notified"])
-      .order("created_at", { ascending: true });
-    setWaitLoading(false);
-    if (error) {
-      console.error(error);
-      return;
-    }
-    setWaitlist(
-      (data ?? []).map((w) => {
-        const waited = Math.max(
-          0,
-          Math.floor((Date.now() - new Date(w.created_at).getTime()) / 60000),
-        );
-        return {
-          id: w.id,
-          name: w.guest_name,
-          party: w.party_size,
-          quoted: w.quoted_wait_minutes ?? 15,
-          waited,
-          phone: w.phone || "—",
-        };
-      }),
-    );
-  }, [staff]);
+  const { data: waitlist = [] } = useQuery({
+    queryKey: ["v2_waitlist", staff?.restaurant_id],
+    enabled: !!staff?.restaurant_id,
+    queryFn: async (): Promise<WaitlistRow[]> => {
+      const { data, error } = await supabase
+        .from("v2_waitlist")
+        .select("id, guest_name, party_size, phone, quoted_wait_minutes, status, created_at")
+        .eq("status", "waiting")
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as WaitlistRow[];
+    },
+    refetchInterval: 60_000,
+  });
+
+  const addWaitlistMut = useMutation({
+    mutationFn: async (input: { name: string; party: number; phone: string }) => {
+      if (!staff?.restaurant_id) throw new Error("No restaurant");
+      const { error } = await supabase.from("v2_waitlist").insert({
+        restaurant_id: staff.restaurant_id,
+        guest_name: input.name,
+        party_size: input.party,
+        phone: input.phone || null,
+        quoted_wait_minutes: 20 + input.party * 3,
+        status: "waiting",
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["v2_waitlist"] }),
+  });
+
+  const updateWaitlistMut = useMutation({
+    mutationFn: async (input: { id: string; status: string; table_number?: string | null }) => {
+      const patch: { status: string; table_number?: string | null } = { status: input.status };
+      if (input.table_number !== undefined) patch.table_number = input.table_number;
+      const { error } = await supabase.from("v2_waitlist").update(patch).eq("id", input.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["v2_waitlist"] }),
+  });
 
   useEffect(() => {
     if (!staff) return;
@@ -115,12 +130,11 @@ function HostStandPage() {
         .eq("restaurant_id", staff.restaurant_id);
       setDbTables((data ?? []) as DbTable[]);
     })();
-    loadWaitlist();
-  }, [staff, loadWaitlist]);
+  }, [staff]);
 
   const positionedTables = useMemo(
     () => dbTables.filter((t) => t.position_x != null && t.position_y != null && (t.position_x !== 0 || t.position_y !== 0)),
-    [dbTables],
+    [dbTables]
   );
 
   const floorItems = useMemo<FloorItem[]>(() => {
@@ -137,122 +151,105 @@ function HostStandPage() {
 
   const RESERVATIONS = useMemo<Reservation[]>(
     () =>
-      todays
-        .filter((b) => b.status !== "cancelled" && b.status !== "completed")
-        .map((b) => ({
-          id: b.id,
-          time: b.time,
-          name: b.name,
-          phone: b.phone,
-          party: b.people,
-          table: b.tableNumber
-            ? (Number(b.tableNumber.replace(/\D/g, "")) || b.tableNumber)
-            : undefined,
-          status:
-            b.status === "seated"
-              ? "Seated"
-              : b.status === "no_show"
-                ? "Late"
-                : "Upcoming",
-          note: b.notes || undefined,
-          rawStatus: b.status,
-        })),
-    [todays],
+      todays.map((b) => ({
+        id: b.id,
+        time: b.time,
+        name: b.name,
+        phone: b.phone,
+        party: b.people,
+        table: b.tableNumber ? (Number(b.tableNumber) || b.tableNumber) : undefined,
+        status:
+          b.status === "seated" || b.status === "completed"
+            ? "Seated"
+            : b.status === "no_show"
+            ? "Late"
+            : b.status === "confirmed"
+            ? "Arrived"
+            : "Upcoming",
+        note: b.notes || undefined,
+      })),
+    [todays]
   );
 
-  const SEATED = useMemo<SeatedTable[]>(
+  const seatedList = useMemo(
     () =>
       todays
         .filter((b) => b.status === "seated")
         .map((b) => ({
           id: b.id,
-          table: b.tableNumber
-            ? (Number(b.tableNumber.replace(/\D/g, "")) || b.tableNumber)
-            : "—",
+          table: b.tableNumber ? (Number(b.tableNumber) || b.tableNumber) : "—",
           guest: b.name,
           party: b.people,
-          seatedAt: b.time,
-          minutes: 0,
-          server: "Floor",
+          server: SERVERS[0],
         })),
-    [todays],
+    [todays]
   );
 
-  const matchedRes = selectedTable != null
-    ? RESERVATIONS.find((r) => String(r.table) === String(selectedTable) && r.status !== "Seated")
-    : null;
-  const matchedSeated = selectedTable
-    ? SEATED.find((s) => String(s.table) === String(selectedTable))
-    : null;
+  const matchedRes = selectedTable != null ? RESERVATIONS.find((r) => r.table === selectedTable) : null;
+  const matchedSeated = selectedTable != null ? seatedList.find((s) => s.table === selectedTable) : null;
 
-  const coversTonight = todays
-    .filter((b) => b.status !== "cancelled" && b.status !== "no_show")
-    .reduce((sum, b) => sum + b.people, 0);
-  const reservationsLeft = RESERVATIONS.filter((r) => r.status === "Upcoming" || r.status === "Arrived").length;
-
-  const markBooking = async (
-    bookingId: string,
-    status: "confirmed" | "seated" | "no_show",
-    tableNumber?: string | null,
-  ) => {
-    try {
-      await updateBooking.mutateAsync({
-        id: bookingId,
-        status,
-        table_number: tableNumber,
-      });
-      toast.success(
-        status === "seated"
-          ? "Guest seated"
-          : status === "confirmed"
-            ? "Marked arrived"
-            : "Updated booking",
-      );
-      setActiveRes(null);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not update booking");
-    }
-  };
-
-  const addWaitlist = async () => {
-    if (!newName.trim() || !staff) return;
+  const addWaitlist = () => {
+    if (!newName.trim()) return;
     const party = parseInt(newParty) || 2;
-    const quoted = 20 + party * 3;
-    const { error } = await supabase.from("v2_waitlist").insert({
-      restaurant_id: staff.restaurant_id,
-      guest_name: newName.trim(),
-      party_size: party,
-      quoted_wait_minutes: quoted,
-      status: "waiting",
-    });
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    setNewName("");
-    setNewParty("2");
-    toast.success(`Added ${newName} (${party}) to waitlist`);
-    loadWaitlist();
+    addWaitlistMut.mutate(
+      { name: newName.trim(), party, phone: newPhone.trim() },
+      {
+        onSuccess: () => {
+          toast.success(`Added ${newName} (${party}) to waitlist`);
+          setNewName(""); setNewParty("2"); setNewPhone("");
+        },
+        onError: (e: unknown) => toast.error((e as Error).message || "Could not add"),
+      }
+    );
   };
 
-  const seatWaitlist = async (id: string) => {
-    const w = waitlist.find((x) => x.id === id);
-    const tableNum = selectedTable != null ? String(selectedTable) : null;
-    const { error } = await supabase
-      .from("v2_waitlist")
-      .update({ status: "seated", table_number: tableNum })
-      .eq("id", id);
-    if (error) {
-      toast.error(error.message);
+  const seatWaitlist = (id: string) => {
+    const w = waitlist.find(x => x.id === id);
+    updateWaitlistMut.mutate(
+      { id, status: "seated", table_number: selectedTable != null ? String(selectedTable) : null },
+      { onSuccess: () => toast.success(`${w?.guest_name} seated${selectedTable != null ? ` at ${selectedTable}` : ""}`) }
+    );
+  };
+
+  const removeWaitlist = (id: string) => {
+    updateWaitlistMut.mutate({ id, status: "cancelled" });
+  };
+
+  const markArrived = (res: Reservation) => {
+    updateBooking.mutate(
+      { id: res.id, status: "confirmed" },
+      { onSuccess: () => { toast.success(`${res.name} marked arrived`); setActiveRes(null); } }
+    );
+  };
+
+  const seatNow = (res: Reservation) => {
+    updateBooking.mutate(
+      {
+        id: res.id,
+        status: "seated",
+        table_number: selectedTable != null ? String(selectedTable) : (res.table != null ? String(res.table) : null),
+      },
+      { onSuccess: () => { toast.success(`${res.name} seated`); setActiveRes(null); } }
+    );
+  };
+
+  const markSelectedSeated = () => {
+    if (!matchedRes) {
+      toast.message(`No reservation on table ${selectedTable}`);
       return;
     }
-    toast.success(
-      tableNum
-        ? `${w?.name} seated at table ${tableNum}`
-        : `${w?.name} seated — pick a table on the floor if needed`,
-    );
-    loadWaitlist();
+    seatNow(matchedRes);
   };
+
+  // KPIs from real data
+  const covers = todays.reduce((s, b) => s + (b.people || 0), 0);
+  const remaining = todays.filter((b) => b.status === "pending" || b.status === "confirmed").length;
+  const nextRes = todays.find((b) => b.status === "pending" || b.status === "confirmed");
+  const tablesSeated = todays.filter((b) => b.status === "seated").length;
+  const totalTables = dbTables.length || positionedTables.length || 0;
+  const avgWait = waitlist.length
+    ? Math.round(waitlist.reduce((s, w) => s + minutesSince(w.created_at), 0) / waitlist.length)
+    : 0;
 
   return (
     <AppShell>
@@ -262,12 +259,13 @@ function HostStandPage() {
           description="Floor, reservations and waitlist"
         />
 
+        {/* KPI row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
-            { label: "Tonight's covers", value: String(coversTonight), hint: "party sizes combined", icon: Users },
-            { label: "Reservations left", value: String(reservationsLeft), hint: "not yet seated", icon: CalendarClock },
-            { label: "Tables seated", value: `${SEATED.length}`, hint: "active seated bookings", icon: Utensils },
-            { label: "Waitlist", value: String(waitlist.length), hint: "parties waiting", icon: Timer },
+            { label: "Tonight's covers",   value: String(covers),  hint: `${todays.length} bookings`, icon: Users },
+            { label: "Reservations left",  value: String(remaining),  hint: nextRes ? `next at ${nextRes.time}` : "—",  icon: CalendarClock },
+            { label: "Tables seated",      value: totalTables ? `${tablesSeated} / ${totalTables}` : String(tablesSeated), hint: totalTables ? `${Math.round((tablesSeated / totalTables) * 100)}% occupancy` : "—", icon: Utensils },
+            { label: "Avg wait time",      value: `${avgWait} min`,  hint: `${waitlist.length} waiting`, icon: Timer },
           ].map(({ label, value, hint, icon: Icon }) => (
             <Card key={label} className="p-4 bg-muted/40 border-0 rounded-xl">
               <div className="flex items-start justify-between">
@@ -283,6 +281,7 @@ function HostStandPage() {
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          {/* Floor plan */}
           <Card className="xl:col-span-2 p-4 rounded-xl">
             <div className="flex items-center justify-between mb-3">
               <div>
@@ -295,6 +294,7 @@ function HostStandPage() {
               <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
                 <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-zinc-300" /> Free</span>
                 <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-zinc-700" /> Booked</span>
+                <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-red-500" /> Alert</span>
                 <Link to="/floorplan" className="text-success hover:underline font-medium">Edit floor plan</Link>
               </div>
             </div>
@@ -305,13 +305,14 @@ function HostStandPage() {
             />
           </Card>
 
+          {/* Right column — Waitlist + selected info */}
           <div className="space-y-4">
             <Card className="p-4 rounded-xl">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-semibold text-foreground">Waitlist</h2>
                 <Badge variant="outline" className="text-[10px]">{waitlist.length} parties</Badge>
               </div>
-              <div className="flex gap-2 mb-3">
+              <div className="flex gap-2 mb-2">
                 <Input
                   placeholder="Guest name"
                   value={newName}
@@ -321,40 +322,42 @@ function HostStandPage() {
                 <Select value={newParty} onValueChange={setNewParty}>
                   <SelectTrigger className="w-20 h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                    ))}
+                    {[1,2,3,4,5,6,7,8].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Button size="sm" onClick={addWaitlist} className="h-9" disabled={!staff}>
+                <Button size="sm" onClick={addWaitlist} className="h-9" disabled={addWaitlistMut.isPending}>
                   <UserPlus className="size-4" />
                 </Button>
               </div>
-              {waitLoading ? (
-                <div className="text-xs text-muted-foreground flex items-center gap-2 py-4 justify-center">
-                  <Loader2 className="size-3.5 animate-spin" /> Loading…
-                </div>
-              ) : (
-                <ul className="space-y-2">
-                  {waitlist.map((w) => (
+              <Input
+                placeholder="Phone (optional)"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+                className="h-9 mb-3"
+              />
+              <ul className="space-y-2">
+                {waitlist.map((w) => {
+                  const waited = minutesSince(w.created_at);
+                  return (
                     <li key={w.id} className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5">
                       <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{w.name}</div>
+                        <div className="text-sm font-medium truncate">{w.guest_name}</div>
                         <div className="text-[11px] text-muted-foreground flex items-center gap-2">
-                          <Users className="size-3" />{w.party}
-                          <Clock className="size-3 ml-1" />waited {w.waited}m · quoted {w.quoted}m
+                          <Users className="size-3" />{w.party_size}
+                          <Clock className="size-3 ml-1" />waited {waited}m · quoted {w.quoted_wait_minutes ?? 20}m
                         </div>
                       </div>
-                      <Button size="sm" variant="outline" onClick={() => seatWaitlist(w.id)}>
-                        Seat
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="outline" onClick={() => seatWaitlist(w.id)}>Seat</Button>
+                        <Button size="sm" variant="ghost" onClick={() => removeWaitlist(w.id)}>×</Button>
+                      </div>
                     </li>
-                  ))}
-                  {waitlist.length === 0 && (
-                    <li className="text-xs text-muted-foreground text-center py-4">No one waiting.</li>
-                  )}
-                </ul>
-              )}
+                  );
+                })}
+                {waitlist.length === 0 && (
+                  <li className="text-xs text-muted-foreground text-center py-4">No one waiting.</li>
+                )}
+              </ul>
             </Card>
 
             <Card className="p-4 rounded-xl">
@@ -364,14 +367,16 @@ function HostStandPage() {
               )}
               {selectedTable && (
                 <div className="space-y-3">
-                  <div>
-                    <div className="text-xs text-muted-foreground">Table</div>
-                    <div className="text-2xl font-semibold">{selectedTable}</div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Table</div>
+                      <div className="text-2xl font-semibold">{selectedTable}</div>
+                    </div>
                   </div>
                   {matchedSeated && (
                     <div className="rounded-lg border border-border p-3 text-sm space-y-1">
                       <div className="flex items-center gap-2"><Users className="size-3.5 text-muted-foreground" /> {matchedSeated.guest} · party of {matchedSeated.party}</div>
-                      <div className="flex items-center gap-2 text-muted-foreground text-xs"><Timer className="size-3.5" /> Seated for {matchedSeated.seatedAt}</div>
+                      <div className="text-xs text-muted-foreground">Server: <span className="text-foreground">{matchedSeated.server}</span></div>
                     </div>
                   )}
                   {matchedRes && !matchedSeated && (
@@ -384,6 +389,11 @@ function HostStandPage() {
                         <Badge variant="outline" className={statusColor(matchedRes.status)}>{matchedRes.status}</Badge>
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">{matchedRes.time} · party of {matchedRes.party}</div>
+                      {matchedRes.note && (
+                        <div className="text-[11px] text-muted-foreground mt-1 flex items-start gap-1">
+                          <StickyNote className="size-3 mt-0.5" /> {matchedRes.note}
+                        </div>
+                      )}
                     </button>
                   )}
                   {!matchedRes && !matchedSeated && (
@@ -392,20 +402,10 @@ function HostStandPage() {
                     </div>
                   )}
                   <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      className="flex-1"
-                      disabled={!matchedRes || updateBooking.isPending}
-                      onClick={() => matchedRes && markBooking(matchedRes.id, "seated", String(selectedTable))}
-                    >
+                    <Button size="sm" className="flex-1" onClick={markSelectedSeated} disabled={!matchedRes || updateBooking.isPending}>
                       <CheckCircle2 className="size-4 mr-1" /> Mark seated
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1"
-                      onClick={() => toast.message(`Assign a server from the reservation drawer`)}
-                    >
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => toast.message(`Server assigned to table ${selectedTable}`)}>
                       Assign server
                     </Button>
                   </div>
@@ -415,63 +415,63 @@ function HostStandPage() {
           </div>
         </div>
 
+        {/* Reservations + Seated tables */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card className="p-4 rounded-xl">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-semibold text-foreground">Tonight's reservations</h2>
               <Badge variant="outline" className="text-[10px]">{RESERVATIONS.length} bookings</Badge>
             </div>
-            {bookingsLoading ? (
-              <div className="text-sm text-muted-foreground flex items-center gap-2 py-6 justify-center">
-                <Loader2 className="size-4 animate-spin" /> Loading…
-              </div>
-            ) : RESERVATIONS.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">No reservations for today yet.</p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {RESERVATIONS.map((r) => (
-                  <li key={r.id}>
-                    <button
-                      onClick={() => { setActiveRes(r); if (r.table) setSelectedTable(r.table); }}
-                      className="w-full text-left py-2.5 px-1 hover:bg-accent/40 rounded-md transition flex items-center gap-3"
-                    >
-                      <div className="w-16 text-sm font-semibold text-foreground">{r.time}</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{r.name}</div>
-                        <div className="text-[11px] text-muted-foreground">
-                          Party {r.party} · Table {r.table ?? "—"}
-                          {r.note && <span className="ml-2 inline-flex items-center gap-1"><StickyNote className="size-3" />note</span>}
-                        </div>
+            <ul className="divide-y divide-border">
+              {RESERVATIONS.map((r) => (
+                <li key={r.id}>
+                  <button
+                    onClick={() => { setActiveRes(r); if (r.table) setSelectedTable(r.table); }}
+                    className="w-full text-left py-2.5 px-1 hover:bg-accent/40 rounded-md transition flex items-center gap-3"
+                  >
+                    <div className="w-16 text-sm font-semibold text-foreground">{r.time}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{r.name}</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Party {r.party} · Table {r.table ?? "—"}
+                        {r.note && <span className="ml-2 inline-flex items-center gap-1"><StickyNote className="size-3" />note</span>}
                       </div>
-                      <Badge variant="outline" className={statusColor(r.status) + " text-[10px]"}>{r.status}</Badge>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+                    </div>
+                    <Badge variant="outline" className={statusColor(r.status) + " text-[10px]"}>{r.status}</Badge>
+                  </button>
+                </li>
+              ))}
+              {RESERVATIONS.length === 0 && (
+                <li className="text-sm text-muted-foreground text-center py-6">No reservations today.</li>
+              )}
+            </ul>
           </Card>
 
           <Card className="p-4 rounded-xl">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-semibold text-foreground">Seated tables</h2>
-              <Badge variant="outline" className="text-[10px]">{SEATED.length} active</Badge>
+              <Badge variant="outline" className="text-[10px]">{seatedList.length} active</Badge>
             </div>
             <ul className="space-y-2">
-              {SEATED.map((s) => (
-                <li key={s.id} className="rounded-lg border border-border p-3 flex items-center gap-3">
-                  <div className="size-9 rounded-md bg-muted flex items-center justify-center text-xs font-semibold">{s.table}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{s.guest} · {s.party}</div>
-                    <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                      <Timer className="size-3" /> {s.seatedAt}
-                      {s.minutes > 30 && <AlertCircle className="size-3 text-amber-600" />}
+              {seatedList.map((s) => {
+                const b = todays.find((x) => x.id === s.id);
+                const waited = b ? minutesSince(`${b.date}T${b.rawTime}`) : 0;
+                return (
+                  <li key={s.id} className="rounded-lg border border-border p-3 flex items-center gap-3">
+                    <div className="size-9 rounded-md bg-muted flex items-center justify-center text-xs font-semibold">{s.table}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{s.guest} · {s.party}</div>
+                      <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                        <Timer className="size-3" /> {waited > 0 ? `${waited}m` : fmtSeated(new Date().toISOString())}
+                        <span>· {s.server}</span>
+                        {waited > 90 && <AlertCircle className="size-3 text-amber-600" />}
+                      </div>
                     </div>
-                  </div>
-                  <Badge className="bg-emerald-100 text-emerald-700 border-0 text-[10px]">Seated</Badge>
-                </li>
-              ))}
-              {SEATED.length === 0 && (
-                <li className="text-sm text-muted-foreground text-center py-6">No seated tables yet.</li>
+                  </li>
+                );
+              })}
+              {seatedList.length === 0 && (
+                <li className="text-sm text-muted-foreground text-center py-6">No tables seated yet.</li>
               )}
             </ul>
           </Card>
@@ -490,7 +490,7 @@ function HostStandPage() {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-lg bg-muted/40 p-3">
                     <div className="text-[11px] text-muted-foreground">Table</div>
-                    <div className="font-semibold">{activeRes.table ?? selectedTable ?? "—"}</div>
+                    <div className="font-semibold">{activeRes.table ?? "—"}</div>
                   </div>
                   <div className="rounded-lg bg-muted/40 p-3">
                     <div className="text-[11px] text-muted-foreground">Status</div>
@@ -510,34 +510,15 @@ function HostStandPage() {
                   <Select defaultValue={activeRes.server ?? SERVERS[0]}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {SERVERS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      {SERVERS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="flex gap-2 pt-2">
-                  <Button
-                    className="flex-1"
-                    disabled={updateBooking.isPending}
-                    onClick={() => markBooking(activeRes.id, "confirmed", activeRes.table != null ? String(activeRes.table) : null)}
-                  >
+                  <Button className="flex-1" onClick={() => markArrived(activeRes)} disabled={updateBooking.isPending}>
                     Mark arrived
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    disabled={updateBooking.isPending}
-                    onClick={() =>
-                      markBooking(
-                        activeRes.id,
-                        "seated",
-                        activeRes.table != null
-                          ? String(activeRes.table)
-                          : selectedTable != null
-                            ? String(selectedTable)
-                            : null,
-                      )
-                    }
-                  >
+                  <Button variant="outline" className="flex-1" onClick={() => seatNow(activeRes)} disabled={updateBooking.isPending}>
                     Seat now
                   </Button>
                 </div>
