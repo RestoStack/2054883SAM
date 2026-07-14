@@ -36,6 +36,7 @@ import { Route as BookingsRouteImport } from './routes/bookings'
 import { Route as BookRouteImport } from './routes/book'
 import { Route as AdminLoginRouteImport } from './routes/admin-login'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PlatformIndexRouteImport } from './routes/platform.index'
 import { Route as PlatformRestaurantsRouteImport } from './routes/platform.restaurants'
 import { Route as MarketingSmsRouteImport } from './routes/marketing.sms'
 import { Route as MarketingReviewsRouteImport } from './routes/marketing.reviews'
@@ -183,6 +184,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PlatformIndexRoute = PlatformIndexRouteImport.update({
+  id: '/platform/',
+  path: '/platform/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PlatformRestaurantsRoute = PlatformRestaurantsRouteImport.update({
   id: '/platform/restaurants',
   path: '/platform/restaurants',
@@ -278,6 +284,7 @@ export interface FileRoutesByFullPath {
   '/marketing/reviews': typeof MarketingReviewsRoute
   '/marketing/sms': typeof MarketingSmsRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
+  '/platform/': typeof PlatformIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -318,6 +325,7 @@ export interface FileRoutesByTo {
   '/marketing/reviews': typeof MarketingReviewsRoute
   '/marketing/sms': typeof MarketingSmsRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
+  '/platform': typeof PlatformIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -359,6 +367,7 @@ export interface FileRoutesById {
   '/marketing/reviews': typeof MarketingReviewsRoute
   '/marketing/sms': typeof MarketingSmsRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
+  '/platform/': typeof PlatformIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -401,6 +410,7 @@ export interface FileRouteTypes {
     | '/marketing/reviews'
     | '/marketing/sms'
     | '/platform/restaurants'
+    | '/platform/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -441,6 +451,7 @@ export interface FileRouteTypes {
     | '/marketing/reviews'
     | '/marketing/sms'
     | '/platform/restaurants'
+    | '/platform'
   id:
     | '__root__'
     | '/'
@@ -481,6 +492,7 @@ export interface FileRouteTypes {
     | '/marketing/reviews'
     | '/marketing/sms'
     | '/platform/restaurants'
+    | '/platform/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -514,6 +526,7 @@ export interface RootRouteChildren {
   BookSlugRoute: typeof BookSlugRoute
   CustomersIdRoute: typeof CustomersIdRoute
   PlatformRestaurantsRoute: typeof PlatformRestaurantsRoute
+  PlatformIndexRoute: typeof PlatformIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -707,6 +720,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/platform/': {
+      id: '/platform/'
+      path: '/platform'
+      fullPath: '/platform/'
+      preLoaderRoute: typeof PlatformIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/platform/restaurants': {
       id: '/platform/restaurants'
       path: '/platform/restaurants'
@@ -844,6 +864,7 @@ const rootRouteChildren: RootRouteChildren = {
   BookSlugRoute: BookSlugRoute,
   CustomersIdRoute: CustomersIdRoute,
   PlatformRestaurantsRoute: PlatformRestaurantsRoute,
+  PlatformIndexRoute: PlatformIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

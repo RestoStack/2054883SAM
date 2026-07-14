@@ -1039,8 +1039,18 @@ export type Database = {
           owner_email: string | null
           owner_name: string | null
           staff_count: number
+          guest_count: number
           booking_count: number
+          waitlist_count: number
+          order_count: number
+          covers_booked: number
+          revenue: number
+          last_booking_at: string | null
         }[]
+      }
+      v2_platform_overview: {
+        Args: never
+        Returns: Json
       }
     }
     Enums: {

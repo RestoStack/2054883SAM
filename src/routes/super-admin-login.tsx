@@ -25,7 +25,7 @@ function SuperAdminLoginPage() {
       } catch {
         /* ignore */
       }
-      navigate({ to: "/platform/restaurants", replace: true });
+      navigate({ to: "/platform", replace: true });
     }
   }, [loading, session, platformAdmin, navigate]);
 
@@ -65,7 +65,7 @@ function SuperAdminLoginPage() {
     }
     await refreshStaff();
     setBusy(false);
-    navigate({ to: "/platform/restaurants", replace: true });
+    navigate({ to: "/platform", replace: true });
   };
 
   if (loading) {

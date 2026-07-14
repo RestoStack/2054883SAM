@@ -60,7 +60,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (!session || !staff) {
       // Platform-only accounts (no restaurant staff row) use the Super Admin portal.
       if (session && platformAdmin) {
-        navigate({ to: "/platform/restaurants", replace: true });
+        navigate({ to: "/platform", replace: true });
         return;
       }
       navigate({ to: "/login", replace: true });

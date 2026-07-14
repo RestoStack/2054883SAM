@@ -20,8 +20,17 @@ type RestaurantRow = {
   owner_email: string | null;
   owner_name: string | null;
   staff_count: number;
+  guest_count: number;
   booking_count: number;
+  waitlist_count: number;
+  order_count: number;
+  covers_booked: number;
+  revenue: number;
+  last_booking_at: string | null;
 };
+
+const fmtMoney = (v: number) =>
+  v >= 1000 ? `$${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : `$${Math.round(v || 0)}`;
 
 function PlatformRestaurantsPage() {
   const { platformAdmin } = useAuth();
@@ -47,6 +56,14 @@ function PlatformRestaurantsPage() {
     );
   }, [data, q]);
 
+  const totals = useMemo(() => {
+    return {
+      guests: data.reduce((a, r) => a + Number(r.guest_count || 0), 0),
+      bookings: data.reduce((a, r) => a + Number(r.booking_count || 0), 0),
+      revenue: data.reduce((a, r) => a + Number(r.revenue || 0), 0),
+    };
+  }, [data]);
+
   if (!platformAdmin) {
     return (
       <PlatformShell>
@@ -71,7 +88,7 @@ function PlatformRestaurantsPage() {
             </div>
             <h1 className="text-2xl font-bold tracking-tight text-white">All Restaurants</h1>
             <p className="text-sm text-slate-400 mt-1">
-              Every restaurant that signed up on RestoStack.
+              Every restaurant signed up for RestoStack — with guests, bookings, and revenue.
             </p>
           </div>
           <button
@@ -82,10 +99,22 @@ function PlatformRestaurantsPage() {
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="text-sm text-slate-400">
-            {data.length} restaurant{data.length === 1 ? "" : "s"}
-          </div>
+        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400">
+          <span>
+            <span className="text-white font-semibold">{data.length}</span> restaurants
+          </span>
+          <span className="text-slate-700">·</span>
+          <span>
+            <span className="text-white font-semibold">{totals.guests}</span> guests
+          </span>
+          <span className="text-slate-700">·</span>
+          <span>
+            <span className="text-white font-semibold">{totals.bookings}</span> bookings
+          </span>
+          <span className="text-slate-700">·</span>
+          <span>
+            <span className="text-white font-semibold">{fmtMoney(totals.revenue)}</span> order revenue
+          </span>
           <div className="relative ml-auto">
             <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
@@ -97,12 +126,23 @@ function PlatformRestaurantsPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-x-auto">
+          <table className="w-full text-sm min-w-[980px]">
             <thead>
               <tr className="text-xs text-slate-500 border-b border-slate-800 bg-slate-950/60">
-                {["Restaurant", "Slug", "City", "Owner", "Staff", "Bookings", "Signed up", ""].map((h) => (
-                  <th key={h || "actions"} className="text-left font-medium px-5 py-3">
+                {[
+                  "Restaurant",
+                  "Owner",
+                  "Guests",
+                  "Bookings",
+                  "Covers",
+                  "Orders",
+                  "Revenue",
+                  "Staff",
+                  "Signed up",
+                  "",
+                ].map((h) => (
+                  <th key={h || "actions"} className="text-left font-medium px-4 py-3">
                     {h}
                   </th>
                 ))}
@@ -111,14 +151,14 @@ function PlatformRestaurantsPage() {
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center text-slate-400">
+                  <td colSpan={10} className="px-5 py-12 text-center text-slate-400">
                     <Loader2 className="size-4 animate-spin inline mr-2" /> Loading restaurants…
                   </td>
                 </tr>
               )}
               {!isLoading && error && (
                 <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center text-red-300 text-sm">
+                  <td colSpan={10} className="px-5 py-12 text-center text-red-300 text-sm">
                     {(error as Error).message || "Failed to load restaurants."}
                   </td>
                 </tr>
@@ -127,19 +167,31 @@ function PlatformRestaurantsPage() {
                 !error &&
                 filtered.map((r) => (
                   <tr key={r.id} className="border-b border-slate-800 last:border-0 hover:bg-slate-800/40">
-                    <td className="px-5 py-4 font-semibold text-white">{r.name}</td>
-                    <td className="px-5 py-4 font-mono text-xs text-slate-400">{r.slug}</td>
-                    <td className="px-5 py-4 text-slate-400">{r.city || "—"}</td>
-                    <td className="px-5 py-4">
+                    <td className="px-4 py-4">
+                      <div className="font-semibold text-white">{r.name}</div>
+                      <div className="text-xs text-slate-500">
+                        <span className="font-mono">{r.slug}</span>
+                        {r.city ? ` · ${r.city}` : ""}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
                       <div className="font-medium text-slate-100">{r.owner_name || "—"}</div>
                       <div className="text-xs text-slate-500">{r.owner_email || "—"}</div>
                     </td>
-                    <td className="px-5 py-4 text-slate-300">{r.staff_count}</td>
-                    <td className="px-5 py-4 text-slate-300">{r.booking_count}</td>
-                    <td className="px-5 py-4 text-slate-500 whitespace-nowrap">
-                      {r.created_at ? new Date(r.created_at).toLocaleString() : "—"}
+                    <td className="px-4 py-4 font-semibold text-emerald-300">{r.guest_count}</td>
+                    <td className="px-4 py-4 text-slate-300">{r.booking_count}</td>
+                    <td className="px-4 py-4 text-slate-300">{r.covers_booked}</td>
+                    <td className="px-4 py-4 text-slate-300">{r.order_count}</td>
+                    <td className="px-4 py-4 text-slate-300">{fmtMoney(Number(r.revenue || 0))}</td>
+                    <td className="px-4 py-4 text-slate-300">{r.staff_count}</td>
+                    <td className="px-4 py-4 text-slate-500 whitespace-nowrap text-xs">
+                      <div>{r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"}</div>
+                      <div className="text-slate-600">
+                        Last booking:{" "}
+                        {r.last_booking_at ? new Date(r.last_booking_at).toLocaleDateString() : "never"}
+                      </div>
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-4 py-4">
                       <Link
                         to="/book/$slug"
                         params={{ slug: r.slug }}
@@ -152,7 +204,7 @@ function PlatformRestaurantsPage() {
                 ))}
               {!isLoading && !error && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center text-slate-400">
+                  <td colSpan={10} className="px-5 py-12 text-center text-slate-400">
                     {data.length === 0 ? "No restaurants have signed up yet." : `No matches for “${q}”.`}
                   </td>
                 </tr>
