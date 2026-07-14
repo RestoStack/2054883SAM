@@ -1,534 +1,544 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AppLayout } from "@/components/AppLayout";
-import { PageHeader } from "@/components/PageHeader";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { useMemo, useState } from "react";
+import { AppShell } from "@/components/layout/Sidebar";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  DollarSign, Package, Star, AlertTriangle, TrendingUp, TrendingDown,
-  ArrowUpRight, ArrowDownRight, Download, Filter,
-} from "lucide-react";
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
+} from "@/components/ui/sheet";
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-} from "recharts";
-import { useState } from "react";
+  BarChart3, TrendingUp, TrendingDown, Minus, Flame, ArrowUpRight,
+  Trophy, Medal, Award, Copy, Printer, Search, Sparkles,
+} from "lucide-react";
+import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 export const Route = createFileRoute("/product-analytics")({
   head: () => ({
     meta: [
-      { title: "Product Analytics — Restostacks" },
-      { name: "description", content: "Dish and product performance analytics" },
+      { title: "Product Analytics — RestoStack" },
+      { name: "description", content: "Combo intelligence, upsell engine, and item performance" },
     ],
   }),
   component: ProductAnalyticsPage,
 });
 
-/* ─── Mock Data ─── */
-const revenueTrend = [
-  { month: "Jan", revenue: 42000, cost: 16800, profit: 25200 },
-  { month: "Feb", revenue: 45500, cost: 18200, profit: 27300 },
-  { month: "Mar", revenue: 48000, cost: 19200, profit: 28800 },
-  { month: "Apr", revenue: 51000, cost: 20400, profit: 30600 },
-  { month: "May", revenue: 53500, cost: 21400, profit: 32100 },
-  { month: "Jun", revenue: 56200, cost: 22480, profit: 33720 },
+// ---------- Mock data ----------
+type Combo = {
+  id: string;
+  a: string; b: string;
+  rate: number; lift: number;
+  badge: "Hot" | "Rising" | "Classic";
+  stage: "Starter → Main" | "Main → Drink" | "Main → Dessert";
+};
+
+const COMBOS: Combo[] = [
+  { id: "c1", a: "Smash Double", b: "Truffle Fries", rate: 67, lift: 18, badge: "Hot", stage: "Starter → Main" },
+  { id: "c2", a: "Margherita Pizza", b: "House Red", rate: 54, lift: 22, badge: "Classic", stage: "Main → Drink" },
+  { id: "c3", a: "Ribeye 12oz", b: "Crème Brûlée", rate: 41, lift: 26, badge: "Rising", stage: "Main → Dessert" },
+  { id: "c4", a: "Caesar Salad", b: "Grilled Salmon", rate: 38, lift: 14, badge: "Classic", stage: "Starter → Main" },
+  { id: "c5", a: "Wings 10pc", b: "Local IPA", rate: 62, lift: 12, badge: "Hot", stage: "Main → Drink" },
+  { id: "c6", a: "Carbonara", b: "Tiramisu", rate: 33, lift: 16, badge: "Rising", stage: "Main → Dessert" },
 ];
 
-const categoryMix = [
-  { name: "Mains", value: 42, color: "hsl(var(--chart-1))" },
-  { name: "Appetizers", value: 18, color: "hsl(var(--chart-2))" },
-  { name: "Desserts", value: 12, color: "hsl(var(--chart-3))" },
-  { name: "Beverages", value: 15, color: "hsl(var(--chart-4))" },
-  { name: "Sides", value: 8, color: "hsl(var(--chart-5))" },
-  { name: "Specials", value: 5, color: "hsl(var(--muted-foreground))" },
+type Upsell = {
+  rank: number; name: string; reason: string; price: number; margin: number;
+};
+
+const UPSELLS: Upsell[] = [
+  { rank: 1, name: "Truffle Fries", reason: "81% take rate with the Smash Double", price: 9, margin: 78 },
+  { rank: 2, name: "House Red (glass)", reason: "Pairs with 54% of pizza orders", price: 12, margin: 72 },
+  { rank: 3, name: "Crème Brûlée", reason: "Lifts ribeye check by $26 on avg.", price: 11, margin: 68 },
+  { rank: 4, name: "Local IPA", reason: "62% co-order rate with wings", price: 8, margin: 64 },
+  { rank: 5, name: "Tiramisu", reason: "Rising +12% week over week", price: 10, margin: 70 },
 ];
 
-const topDishes = [
-  { rank: 1, name: "Wagyu Burger", category: "Mains", orders: 342, revenue: 7524, cost: 2736, margin: 63.6, trend: 12.4, rating: 4.8 },
-  { rank: 2, name: "Truffle Pasta", category: "Mains", orders: 298, revenue: 7152, cost: 2386, margin: 66.6, trend: 8.1, rating: 4.9 },
-  { rank: 3, name: "Seafood Platter", category: "Mains", orders: 187, revenue: 8415, cost: 3740, margin: 55.6, trend: -2.3, rating: 4.7 },
-  { rank: 4, name: "Caesar Salad", category: "Appetizers", orders: 276, revenue: 3864, cost: 1104, margin: 71.4, trend: 5.6, rating: 4.5 },
-  { rank: 5, name: "Chocolate Lava Cake", category: "Desserts", orders: 245, revenue: 3185, cost: 980, margin: 69.2, trend: 15.2, rating: 4.9 },
-  { rank: 6, name: "Craft IPA", category: "Beverages", orders: 410, revenue: 3280, cost: 820, margin: 75.0, trend: 3.8, rating: 4.6 },
-  { rank: 7, name: "Lamb Chops", category: "Mains", orders: 156, revenue: 5460, cost: 2496, margin: 54.3, trend: -5.1, rating: 4.4 },
-  { rank: 8, name: "Bruschetta", category: "Appetizers", orders: 198, revenue: 2376, cost: 594, margin: 75.0, trend: 1.2, rating: 4.3 },
-  { rank: 9, name: "Tiramisu", category: "Desserts", orders: 167, revenue: 2004, cost: 668, margin: 66.7, trend: 7.4, rating: 4.7 },
-  { rank: 10, name: "House Red Wine", category: "Beverages", orders: 223, revenue: 3345, cost: 892, margin: 73.3, trend: 9.8, rating: 4.5 },
+type Item = {
+  id: string; name: string; category: string;
+  share: number; margin: number; orders: number; trend: "up" | "down" | "flat";
+  price: number; foodCost: number;
+};
+
+const ITEMS: Item[] = [
+  { id: "i1", name: "Smash Double", category: "Burger", share: 18, margin: 62, orders: 412, trend: "up", price: 19, foodCost: 7.2 },
+  { id: "i2", name: "Margherita Pizza", category: "Pizza", share: 14, margin: 70, orders: 388, trend: "up", price: 17, foodCost: 5.1 },
+  { id: "i3", name: "Ribeye 12oz", category: "Steak", share: 12, margin: 48, orders: 142, trend: "flat", price: 42, foodCost: 21.8 },
+  { id: "i4", name: "Carbonara", category: "Pasta", share: 9, margin: 66, orders: 254, trend: "down", price: 21, foodCost: 7.1 },
+  { id: "i5", name: "Caesar Salad", category: "Starter", share: 7, margin: 74, orders: 301, trend: "up", price: 14, foodCost: 3.6 },
+  { id: "i6", name: "Grilled Salmon", category: "Mains", share: 8, margin: 55, orders: 187, trend: "flat", price: 28, foodCost: 12.6 },
+  { id: "i7", name: "Wings 10pc", category: "Starter", share: 6, margin: 68, orders: 276, trend: "up", price: 16, foodCost: 5.1 },
+  { id: "i8", name: "Tiramisu", category: "Dessert", share: 4, margin: 76, orders: 198, trend: "up", price: 10, foodCost: 2.4 },
 ];
 
-const underperformers = [
-  { name: "Quinoa Bowl", category: "Mains", orders: 23, revenue: 391, margin: 48.2, trend: -18.4, reason: "Low order volume" },
-  { name: "Vegan Cheesecake", category: "Desserts", orders: 18, revenue: 234, margin: 52.1, reason: "Declining trend", trend: -22.1 },
-  { name: "Bone Broth Soup", category: "Appetizers", orders: 31, revenue: 403, margin: 41.5, trend: -8.7, reason: "Low margin" },
-  { name: "Sparkling Water", category: "Beverages", orders: 45, revenue: 225, margin: 80.0, trend: -12.3, reason: "Declining trend" },
-];
+const sparkData = (seed: number) =>
+  Array.from({ length: 28 }, (_, i) => ({
+    d: i,
+    v: Math.round(40 + Math.sin(i / 3 + seed) * 14 + (i * (seed % 3 + 1)) / 4 + (seed % 5) * 3),
+  }));
 
-const wasteData = [
-  { item: "Avocado", wasted: 4.2, unit: "kg", cost: 42.00, reason: "Over-prep" },
-  { item: "Fresh Salmon", wasted: 2.8, unit: "kg", cost: 84.00, reason: "Expiry" },
-  { item: "Sourdough Bread", wasted: 6.5, unit: "loaves", cost: 32.50, reason: "Over-bake" },
-  { item: "Herb Butter", wasted: 1.2, unit: "kg", cost: 18.00, reason: "Over-prep" },
-  { item: "Microgreens", wasted: 0.8, unit: "kg", cost: 24.00, reason: "Expiry" },
-];
-
-const contributionData = [
-  { name: "Wagyu Burger", contribution: 13.4 },
-  { name: "Seafood Platter", contribution: 15.0 },
-  { name: "Truffle Pasta", contribution: 12.7 },
-  { name: "Lamb Chops", contribution: 9.7 },
-  { name: "Craft IPA", contribution: 5.8 },
-  { name: "Caesar Salad", contribution: 6.9 },
-  { name: "House Red Wine", contribution: 6.0 },
-  { name: "Chocolate Lava", contribution: 5.7 },
-  { name: "Others", contribution: 24.8 },
-];
-
+// ---------- Page ----------
 function ProductAnalyticsPage() {
-  const [period, setPeriod] = useState("30d");
+  const [range, setRange] = useState("week");
+  const [stage, setStage] = useState("all");
+  const [comboSort, setComboSort] = useState("rate");
+  const [itemSort, setItemSort] = useState("share");
   const [category, setCategory] = useState("all");
+  const [query, setQuery] = useState("");
+  const [briefOpen, setBriefOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
-  const totalRevenue = topDishes.reduce((s, d) => s + d.revenue, 0);
-  const totalOrders = topDishes.reduce((s, d) => s + d.orders, 0);
-  const avgMargin = (topDishes.reduce((s, d) => s + d.margin, 0) / topDishes.length).toFixed(1);
-  const totalWaste = wasteData.reduce((s, w) => s + w.cost, 0);
+  const filteredCombos = useMemo(() => {
+    const list = COMBOS.filter((c) => stage === "all" || c.stage === stage);
+    return [...list].sort((a, b) =>
+      comboSort === "rate" ? b.rate - a.rate : b.lift - a.lift
+    );
+  }, [stage, comboSort]);
 
-  const filtered = category === "all"
-    ? topDishes
-    : topDishes.filter((d) => d.category.toLowerCase() === category);
+  const categories = useMemo(
+    () => ["all", ...Array.from(new Set(ITEMS.map((i) => i.category)))],
+    []
+  );
+
+  const filteredItems = useMemo(() => {
+    let list = ITEMS.filter((i) => category === "all" || i.category === category);
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      list = list.filter((i) => i.name.toLowerCase().includes(q));
+    }
+    return [...list].sort((a, b) => {
+      if (itemSort === "share") return b.share - a.share;
+      if (itemSort === "margin") return b.margin - a.margin;
+      return b.orders - a.orders;
+    });
+  }, [category, query, itemSort]);
+
+  const shift = new Date().getHours() < 16 ? "Lunch" : "Dinner";
+  const today = new Date().toLocaleDateString("en-CA", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric",
+  });
+
+  const briefingText = useMemo(() => {
+    const lines = [
+      `Server Briefing — ${today} (${shift})`,
+      "",
+      ...UPSELLS.map(
+        (u) =>
+          `#${u.rank} ${u.name} — $${u.price} (${u.margin}% margin)\n  • ${u.reason}\n  • Suggest after the guest orders their main; mention as a chef's pick.`
+      ),
+    ];
+    return lines.join("\n\n");
+  }, [today, shift]);
 
   return (
-    <AppLayout>
+    <AppShell>
       <PageHeader
         title="Product Analytics"
-        description="Dish performance, margins, waste tracking, and menu optimization insights"
-      >
-        <div className="flex items-center gap-2">
-          <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[140px]">
+        description="Combo intelligence, upsell engine, and item performance"
+        icon={BarChart3}
+        actions={
+          <Select value={range} onValueChange={setRange}>
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="7d">Last 7 days</SelectItem>
-              <SelectItem value="30d">Last 30 days</SelectItem>
-              <SelectItem value="90d">Last 90 days</SelectItem>
-              <SelectItem value="12m">Last 12 months</SelectItem>
+              <SelectItem value="week">This week</SelectItem>
+              <SelectItem value="month">This month</SelectItem>
+              <SelectItem value="custom">Custom…</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm">
-            <Download className="mr-1.5 h-3.5 w-3.5" /> Export
-          </Button>
+
+        }
+      />
+
+      <div className="px-4 sm:px-5 py-4 sm:py-5 space-y-5 sm:space-y-6">
+        {/* Section 1 — Summary cards */}
+        <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+          <MetricCard
+            label="Top seller"
+            value="Smash Double"
+            sub="412 orders this week"
+            icon={<Flame className="size-4 text-orange-500" />}
+          />
+          <MetricCard
+            label="Average check"
+            value="$48.20"
+            delta={{ value: "+6.4%", positive: true }}
+            sub="vs prior period"
+          />
+          <MetricCard
+            label="Upsell rate"
+            value="34%"
+            sub="Target 40%"
+            delta={{ value: "-6 pts", positive: false }}
+          />
+          <MetricCard
+            label="Avg combo lift"
+            value="$18.40"
+            sub="per upsell event"
+            delta={{ value: "+$1.20", positive: true }}
+          />
         </div>
-      </PageHeader>
 
-      {/* KPI Cards */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard
-          title="Menu Revenue"
-          value={`$${(totalRevenue / 1000).toFixed(1)}k`}
-          change={8.4}
-          icon={DollarSign}
-          subtitle="from top dishes"
-        />
-        <KpiCard
-          title="Total Orders"
-          value={totalOrders.toLocaleString()}
-          change={5.2}
-          icon={Package}
-          subtitle="across all items"
-        />
-        <KpiCard
-          title="Avg Food Margin"
-          value={`${avgMargin}%`}
-          change={1.8}
-          icon={TrendingUp}
-          subtitle="target: 65%"
-        />
-        <KpiCard
-          title="Waste Cost"
-          value={`$${totalWaste.toFixed(0)}`}
-          change={-12.3}
-          icon={AlertTriangle}
-          subtitle="this period"
-          invertColor
-        />
-      </div>
-
-      <Tabs defaultValue="performance" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="performance">Performance</TabsTrigger>
-          <TabsTrigger value="margins">Margins & Mix</TabsTrigger>
-          <TabsTrigger value="waste">Waste Tracking</TabsTrigger>
-          <TabsTrigger value="underperformers">Underperformers</TabsTrigger>
-        </TabsList>
-
-        {/* ── Performance Tab ── */}
-        <TabsContent value="performance" className="space-y-6">
-          {/* Revenue Trend */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Revenue vs Cost Trend</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={revenueTrend}>
-                  <defs>
-                    <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--chart-2))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--chart-2))" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="month" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                  <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} tickFormatter={(v) => `$${v / 1000}k`} />
-                  <Tooltip
-                    contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
-                    formatter={(value: number) => [`$${value.toLocaleString()}`, ""]}
-                  />
-                  <Legend />
-                  <Area type="monotone" dataKey="revenue" stroke="hsl(var(--chart-1))" fill="url(#revGrad)" strokeWidth={2} name="Revenue" />
-                  <Area type="monotone" dataKey="profit" stroke="hsl(var(--chart-2))" fill="url(#profitGrad)" strokeWidth={2} name="Gross Profit" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          {/* Top Dishes Table */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-base">Top Performing Dishes</CardTitle>
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger className="w-[140px]">
-                  <Filter className="mr-1.5 h-3.5 w-3.5" />
-                  <SelectValue />
-                </SelectTrigger>
+        {/* Section 2 — Combo Intelligence */}
+        <Card className="p-4 sm:p-5">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end sm:justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-lg font-semibold font-sans text-foreground">Best item combos</h2>
+              <p className="text-sm text-muted-foreground">Ranked by co-order frequency</p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Select value={stage} onValueChange={setStage}>
+                <SelectTrigger className="w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  <SelectItem value="mains">Mains</SelectItem>
-                  <SelectItem value="appetizers">Appetizers</SelectItem>
-                  <SelectItem value="desserts">Desserts</SelectItem>
-                  <SelectItem value="beverages">Beverages</SelectItem>
+                  <SelectItem value="all">All stages</SelectItem>
+                  <SelectItem value="Starter → Main">Starter → Main</SelectItem>
+                  <SelectItem value="Main → Drink">Main → Drink</SelectItem>
+                  <SelectItem value="Main → Dessert">Main → Dessert</SelectItem>
                 </SelectContent>
               </Select>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>Dish</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Orders</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
-                    <TableHead className="text-right">Margin</TableHead>
-                    <TableHead className="text-right">Trend</TableHead>
-                    <TableHead className="text-right">Rating</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((d) => (
-                    <TableRow key={d.rank}>
-                      <TableCell className="font-medium text-muted-foreground">{d.rank}</TableCell>
-                      <TableCell className="font-medium">{d.name}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="text-xs">{d.category}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{d.orders}</TableCell>
-                      <TableCell className="text-right tabular-nums">${d.revenue.toLocaleString()}</TableCell>
-                      <TableCell className="text-right">
-                        <span className={d.margin >= 65 ? "text-emerald-600 dark:text-emerald-400" : d.margin >= 55 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"}>
-                          {d.margin}%
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${d.trend >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                          {d.trend >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                          {Math.abs(d.trend)}%
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className="inline-flex items-center gap-1 text-sm">
-                          <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                          {d.rating}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── Margins & Mix Tab ── */}
-        <TabsContent value="margins" className="space-y-6">
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Category Mix Pie */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Revenue by Category</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={280}>
-                  <PieChart>
-                    <Pie
-                      data={categoryMix}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={70}
-                      outerRadius={110}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {categoryMix.map((entry) => (
-                        <Cell key={entry.name} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
-                      formatter={(value: number) => [`${value}%`, "Share"]}
-                    />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            {/* Contribution Chart */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Revenue Contribution %</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={contributionData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis type="number" tick={{ fill: "hsl(var(--muted-foreground))" }} tickFormatter={(v) => `${v}%`} />
-                    <YAxis dataKey="name" type="category" width={110} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
-                    <Tooltip
-                      contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
-                      formatter={(value: number) => [`${value}%`, "Contribution"]}
-                    />
-                    <Bar dataKey="contribution" fill="hsl(var(--chart-1))" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+              <Select value={comboSort} onValueChange={setComboSort}>
+                <SelectTrigger className="w-full sm:w-[170px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rate">Co-order rate</SelectItem>
+                  <SelectItem value="lift">Revenue lift</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          {/* Margin Matrix */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Margin Analysis by Dish</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Dish</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
-                    <TableHead className="text-right">Food Cost</TableHead>
-                    <TableHead className="text-right">Gross Profit</TableHead>
-                    <TableHead className="text-right">Margin %</TableHead>
-                    <TableHead>Health</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {topDishes.map((d) => {
-                    const profit = d.revenue - d.cost;
-                    return (
-                      <TableRow key={d.rank}>
-                        <TableCell className="font-medium">{d.name}</TableCell>
-                        <TableCell className="text-right tabular-nums">${d.revenue.toLocaleString()}</TableCell>
-                        <TableCell className="text-right tabular-nums text-muted-foreground">${d.cost.toLocaleString()}</TableCell>
-                        <TableCell className="text-right tabular-nums">${profit.toLocaleString()}</TableCell>
-                        <TableCell className="text-right font-medium tabular-nums">{d.margin}%</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="secondary"
-                            className={
-                              d.margin >= 65
-                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                                : d.margin >= 55
-                                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
-                                  : "bg-red-500/10 text-red-700 dark:text-red-400"
-                            }
-                          >
-                            {d.margin >= 65 ? "Healthy" : d.margin >= 55 ? "Watch" : "Critical"}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+          <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
-        {/* ── Waste Tracking Tab ── */}
-        <TabsContent value="waste" className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Card>
-              <CardContent className="flex items-center gap-4 pt-6">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/10">
-                  <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+            {filteredCombos.map((c) => (
+              <div key={c.id} className="rounded-xl border border-border bg-card p-4 hover:shadow-sm transition-shadow">
+                <BadgePill badge={c.badge} />
+                <div className="mt-2 font-semibold text-foreground">
+                  {c.a} <span className="text-muted-foreground font-normal">+</span> {c.b}
                 </div>
-                <div>
-                  <p className="text-2xl font-bold tabular-nums">${totalWaste.toFixed(0)}</p>
-                  <p className="text-xs text-muted-foreground">Total waste cost</p>
+                <div className="mt-3 text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{c.rate}%</span> of orders include both
                 </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="flex items-center gap-4 pt-6">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
-                  <Package className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                <div className="mt-1 text-sm text-emerald-600 font-medium">
+                  +${c.lift} per table
                 </div>
-                <div>
-                  <p className="text-2xl font-bold tabular-nums">{wasteData.length}</p>
-                  <p className="text-xs text-muted-foreground">Items with waste</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="flex items-center gap-4 pt-6">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
-                  <TrendingDown className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold tabular-nums">-12.3%</p>
-                  <p className="text-xs text-muted-foreground">vs last period</p>
-                </div>
-              </CardContent>
-            </Card>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Section 3 — Tonight's Upsell Engine */}
+        <Card className="p-4 sm:p-5">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-start sm:justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-lg font-semibold font-sans text-foreground flex items-center gap-2">
+                <Sparkles className="size-4 text-amber-500" /> Tonight's upsell picks
+              </h2>
+              <p className="text-sm text-muted-foreground">Sorted by margin × conversion rate</p>
+            </div>
+            <Button onClick={() => setBriefOpen(true)} className="w-full sm:w-auto">
+              Generate server briefing <ArrowUpRight className="size-4 ml-1" />
+            </Button>
           </div>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Waste Log</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Item</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                    <TableHead className="text-right">Cost</TableHead>
-                    <TableHead>Reason</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {wasteData.map((w) => (
-                    <TableRow key={w.item}>
-                      <TableCell className="font-medium">{w.item}</TableCell>
-                      <TableCell className="text-right tabular-nums">{w.wasted} {w.unit}</TableCell>
-                      <TableCell className="text-right tabular-nums text-red-600 dark:text-red-400">${w.cost.toFixed(2)}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">{w.reason}</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+          <ul className="divide-y divide-border">
+            {UPSELLS.map((u) => (
+              <li key={u.rank} className="flex items-center gap-3 sm:gap-4 py-3">
+                <RankBadge rank={u.rank} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-foreground truncate">{u.name}</div>
+                  <div className="text-sm text-muted-foreground truncate">{u.reason}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="font-semibold">${u.price.toFixed(2)}</div>
+                  <div className="text-xs text-muted-foreground">{u.margin}% margin</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
 
-        {/* ── Underperformers Tab ── */}
-        <TabsContent value="underperformers" className="space-y-6">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Items Needing Attention</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Dish</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Orders</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
-                    <TableHead className="text-right">Margin</TableHead>
-                    <TableHead className="text-right">Trend</TableHead>
-                    <TableHead>Issue</TableHead>
-                    <TableHead>Suggested Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {underperformers.map((u) => (
-                    <TableRow key={u.name}>
-                      <TableCell className="font-medium">{u.name}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="text-xs">{u.category}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{u.orders}</TableCell>
-                      <TableCell className="text-right tabular-nums">${u.revenue}</TableCell>
-                      <TableCell className="text-right tabular-nums">{u.margin}%</TableCell>
-                      <TableCell className="text-right">
-                        <span className="inline-flex items-center gap-0.5 text-xs font-medium text-red-600 dark:text-red-400">
-                          <ArrowDownRight className="h-3 w-3" />
-                          {Math.abs(u.trend)}%
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="border-red-200 text-xs text-red-700 dark:border-red-800 dark:text-red-400">
-                          {u.reason}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {u.reason === "Low order volume" && "Promote or remove"}
-                        {u.reason === "Declining trend" && "Review recipe / pricing"}
-                        {u.reason === "Low margin" && "Reduce portion / cost"}
-                      </TableCell>
-                    </TableRow>
+        {/* Section 4 — Item Performance Table */}
+        <Card className="p-4 sm:p-5">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end sm:justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-lg font-semibold font-sans text-foreground">Item performance</h2>
+              <p className="text-sm text-muted-foreground">Tap any row for the full breakdown</p>
+            </div>
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search items…"
+                  className="pl-8 w-full sm:w-[200px]"
+                />
+              </div>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger className="w-full sm:w-[160px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c} value={c}>{c === "all" ? "All categories" : c}</SelectItem>
                   ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </AppLayout>
+                </SelectContent>
+              </Select>
+              <Select value={itemSort} onValueChange={setItemSort}>
+                <SelectTrigger className="w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="share">Revenue share</SelectItem>
+                  <SelectItem value="margin">Margin %</SelectItem>
+                  <SelectItem value="velocity">Weekly velocity</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+
+          {/* Mobile: card list */}
+          <ul className="md:hidden divide-y divide-border">
+            {filteredItems.map((i) => (
+              <li
+                key={i.id}
+                onClick={() => setSelectedItem(i)}
+                className="py-3 cursor-pointer active:bg-muted/40"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium text-foreground truncate">{i.name}</div>
+                    <div className="text-xs text-muted-foreground">{i.category}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <TrendIcon t={i.trend} />
+                    <span className="text-sm tabular-nums">{i.margin}%</span>
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="h-1.5 flex-1 rounded-lg bg-muted overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-lg" style={{ width: `${i.share * 4}%` }} />
+                  </div>
+                  <span className="text-xs text-muted-foreground tabular-nums w-10 text-right">{i.share}%</span>
+                  <span className="text-xs text-muted-foreground tabular-nums w-16 text-right">{i.orders}/wk</span>
+                </div>
+              </li>
+            ))}
+            {filteredItems.length === 0 && (
+              <li className="py-8 text-center text-muted-foreground text-sm">No items match.</li>
+            )}
+          </ul>
+
+          {/* Desktop: full table */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b border-border">
+                  <th className="py-2 font-medium">Item</th>
+                  <th className="py-2 font-medium">Category</th>
+                  <th className="py-2 font-medium w-[220px]">Revenue share</th>
+                  <th className="py-2 font-medium">Margin %</th>
+                  <th className="py-2 font-medium">Orders/wk</th>
+                  <th className="py-2 font-medium">Trend</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredItems.map((i) => (
+                  <tr
+                    key={i.id}
+                    onClick={() => setSelectedItem(i)}
+                    className="border-b border-border last:border-0 cursor-pointer hover:bg-muted/40 transition-colors"
+                  >
+                    <td className="py-3 font-medium text-foreground">{i.name}</td>
+                    <td className="py-3 text-muted-foreground">{i.category}</td>
+                    <td className="py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-full max-w-[140px] rounded-lg bg-muted overflow-hidden">
+                          <div className="h-full bg-blue-500 rounded-lg" style={{ width: `${i.share * 4}%` }} />
+                        </div>
+                        <span className="text-xs text-muted-foreground tabular-nums">{i.share}%</span>
+                      </div>
+                    </td>
+                    <td className="py-3 tabular-nums">{i.margin}%</td>
+                    <td className="py-3 tabular-nums">{i.orders}</td>
+                    <td className="py-3"><TrendIcon t={i.trend} /></td>
+                  </tr>
+                ))}
+                {filteredItems.length === 0 && (
+                  <tr><td colSpan={6} className="py-8 text-center text-muted-foreground">No items match.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+
+      {/* Server Briefing Sheet */}
+      <Sheet open={briefOpen} onOpenChange={setBriefOpen}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Server briefing</SheetTitle>
+            <SheetDescription>{today} · {shift} shift</SheetDescription>
+          </SheetHeader>
+          <div className="mt-5 space-y-4">
+            {UPSELLS.map((u) => (
+              <div key={u.rank} className="rounded-xl border border-border p-3">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold">#{u.rank} {u.name}</div>
+                  <div className="text-sm text-muted-foreground">${u.price.toFixed(2)} · {u.margin}%</div>
+                </div>
+                <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                  {u.reason}. Suggest after the guest orders their main and frame it as the chef's pick of the night.
+                </p>
+              </div>
+            ))}
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => navigator.clipboard?.writeText(briefingText)}
+              >
+                <Copy className="size-4 mr-2" /> Copy
+              </Button>
+              <Button variant="outline" className="flex-1" onClick={() => window.print()}>
+                <Printer className="size-4 mr-2" /> Print
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Item detail Sheet */}
+      <Sheet open={!!selectedItem} onOpenChange={(o) => !o && setSelectedItem(null)}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          {selectedItem && (
+            <>
+              <SheetHeader>
+                <SheetTitle>{selectedItem.name}</SheetTitle>
+                <SheetDescription>{selectedItem.category} · ${selectedItem.price.toFixed(2)}</SheetDescription>
+              </SheetHeader>
+
+              <div className="mt-5 space-y-5">
+                <div>
+                  <div className="text-sm font-medium mb-2">Orders — last 4 weeks</div>
+                  <div className="h-32">
+                    <ResponsiveContainer>
+                      <LineChart data={sparkData(selectedItem.name.length)}>
+                        <XAxis dataKey="d" hide />
+                        <YAxis hide />
+                        <Tooltip cursor={false} contentStyle={{ fontSize: 12 }} />
+                        <Line type="monotone" dataKey="v" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-sm font-medium mb-2">Top combos featuring this item</div>
+                  <ul className="space-y-1.5 text-sm">
+                    {COMBOS.filter((c) => c.a === selectedItem.name || c.b === selectedItem.name).slice(0, 3).map((c) => (
+                      <li key={c.id} className="flex justify-between rounded-lg bg-muted/50 px-3 py-2">
+                        <span>{c.a} + {c.b}</span>
+                        <span className="text-muted-foreground">{c.rate}% · +${c.lift}</span>
+                      </li>
+                    ))}
+                    {COMBOS.filter((c) => c.a === selectedItem.name || c.b === selectedItem.name).length === 0 && (
+                      <li className="text-muted-foreground text-sm">No combos yet.</li>
+                    )}
+                  </ul>
+                </div>
+
+                <div>
+                  <div className="text-sm font-medium mb-2">Margin breakdown</div>
+                  <div className="rounded-xl border border-border p-3 text-sm space-y-1.5">
+                    <Row label="Selling price" value={`$${selectedItem.price.toFixed(2)}`} />
+                    <Row label="Food cost" value={`$${selectedItem.foodCost.toFixed(2)}`} />
+                    <Row label="Margin" value={`${selectedItem.margin}%`} bold />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-sm font-medium mb-2">Suggested action</div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline">Push as upsell</Button>
+                    <Button size="sm" variant="outline">Feature in combo</Button>
+                    <Button size="sm" variant="outline">Review food cost</Button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+    </AppShell>
   );
 }
 
-function KpiCard({
-  title, value, change, icon: Icon, subtitle, invertColor,
+// ---------- Bits ----------
+function MetricCard({
+  label, value, sub, delta, icon,
 }: {
-  title: string; value: string; change: number; icon: React.ElementType; subtitle: string; invertColor?: boolean;
+  label: string; value: string; sub?: string;
+  delta?: { value: string; positive: boolean };
+  icon?: React.ReactNode;
 }) {
-  const isPositive = invertColor ? change < 0 : change >= 0;
   return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">{title}</p>
-            <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
-            <div className="mt-1 flex items-center gap-1.5">
-              <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                {change >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                {Math.abs(change)}%
-              </span>
-              <span className="text-xs text-muted-foreground">{subtitle}</span>
-            </div>
-          </div>
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-            <Icon className="h-4 w-4 text-primary" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="rounded-xl bg-muted/40 p-4">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</div>
+        {icon}
+      </div>
+      <div className="mt-2 text-2xl font-bold text-foreground">{value}</div>
+      <div className="mt-1 flex items-center gap-2 text-xs">
+        {delta && (
+          <span className={delta.positive ? "text-emerald-600 font-medium" : "text-rose-600 font-medium"}>
+            {delta.value}
+          </span>
+        )}
+        {sub && <span className="text-muted-foreground">{sub}</span>}
+      </div>
+    </div>
+  );
+}
+
+function BadgePill({ badge }: { badge: Combo["badge"] }) {
+  const styles =
+    badge === "Hot" ? "bg-orange-100 text-orange-700 border-orange-200"
+    : badge === "Rising" ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+    : "bg-blue-100 text-blue-700 border-blue-200";
+  return (
+    <Badge className={`${styles} border rounded-full text-[11px] px-2 py-0.5 font-medium`}>
+      {badge}
+    </Badge>
+  );
+}
+
+function RankBadge({ rank }: { rank: number }) {
+  const map: Record<number, { bg: string; icon: React.ReactNode }> = {
+    1: { bg: "bg-amber-100 text-amber-700", icon: <Trophy className="size-4" /> },
+    2: { bg: "bg-slate-200 text-slate-700", icon: <Medal className="size-4" /> },
+    3: { bg: "bg-orange-100 text-orange-700", icon: <Award className="size-4" /> },
+  };
+  const m = map[rank] ?? { bg: "bg-muted text-muted-foreground", icon: <span className="text-xs font-semibold">#{rank}</span> };
+  return (
+    <div className={`size-9 rounded-full flex items-center justify-center ${m.bg} shrink-0`}>
+      {m.icon}
+    </div>
+  );
+}
+
+function TrendIcon({ t }: { t: "up" | "down" | "flat" }) {
+  if (t === "up") return <TrendingUp className="size-4 text-emerald-600" />;
+  if (t === "down") return <TrendingDown className="size-4 text-rose-600" />;
+  return <Minus className="size-4 text-muted-foreground" />;
+}
+
+function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={bold ? "font-semibold" : ""}>{value}</span>
+    </div>
   );
 }

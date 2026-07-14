@@ -1,250 +1,217 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { PageHeader } from "@/components/PageHeader";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Pencil, Loader2 } from "lucide-react";
-import { toast } from "@/components/ui/sonner";
-import {
-  useMenu,
-  useCreateMenuItem,
-  useUpdateMenuItem,
-  type MenuCategory,
-  type MenuItem,
-} from "@/hooks/use-menu";
+import { AppShell } from "@/components/layout/Sidebar";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { UtensilsCrossed, Plus, Search, Pencil, MoreHorizontal, Loader2, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/auth";
+import { useQueryClient } from "@tanstack/react-query";
+import { useMenu } from "@/lib/v2-data";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/menu")({
   head: () => ({ meta: [{ title: "Menu — RestoStack" }] }),
   component: MenuPage,
 });
 
+type Category = { id: string; name: string };
+
 function MenuPage() {
+  const { staff } = useAuth();
+  const qc = useQueryClient();
+  const [cat, setCat] = useState(0);
+  const [q, setQ] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [cats, setCats] = useState<Category[]>([]);
   const { data, isLoading } = useMenu();
-  const createItem = useCreateMenuItem();
-  const updateItem = useUpdateMenuItem();
-
-  const categories = data?.categories ?? [];
+  const categories = data?.categories ?? ["All"];
   const items = data?.items ?? [];
+  const filtered = items
+    .filter((i) => cat === 0 || i.cat === categories[cat])
+    .filter((i) => !q || i.name.toLowerCase().includes(q.toLowerCase()));
 
-  const [search, setSearch] = useState("");
-  const [activeCat, setActiveCat] = useState("all");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editItem, setEditItem] = useState<MenuItem | null>(null);
-
-  // Form state
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [price, setPrice] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [prepTime, setPrepTime] = useState("");
-  const [tags, setTags] = useState("");
-
-  const filtered = items.filter((item) => {
-    if (activeCat !== "all" && item.category_id !== activeCat) return false;
-    if (search && !item.name.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
-
-  const openCreate = () => {
-    setEditItem(null);
-    setName("");
-    setDescription("");
-    setPrice("");
-    setCategoryId(categories[0]?.id || "");
-    setPrepTime("");
-    setTags("");
-    setDialogOpen(true);
-  };
-
-  const openEdit = (item: MenuItem) => {
-    setEditItem(item);
-    setName(item.name);
-    setDescription(item.description || "");
-    setPrice(String(item.price));
-    setCategoryId(item.category_id || "");
-    setPrepTime(item.prep_time_minutes ? String(item.prep_time_minutes) : "");
-    setTags((item.tags || []).join(", "));
-    setDialogOpen(true);
-  };
-
-  const handleSave = () => {
-    if (!name.trim() || !price) return;
-    const payload = {
-      name: name.trim(),
-      description: description || undefined,
-      price: parseFloat(price) || 0,
-      category_id: categoryId || undefined,
-      prep_time_minutes: prepTime ? parseInt(prepTime) : undefined,
-      tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
-    };
-
-    if (editItem) {
-      updateItem.mutate(
-        { id: editItem.id, ...payload },
-        {
-          onSuccess: () => {
-            toast.success("Menu item updated");
-            setDialogOpen(false);
-          },
-        }
-      );
-    } else {
-      createItem.mutate(payload, {
-        onSuccess: () => {
-          toast.success("Menu item created");
-          setDialogOpen(false);
-        },
-      });
-    }
-  };
-
-  const toggleAvailable = (item: MenuItem) => {
-    updateItem.mutate(
-      { id: item.id, is_available: !item.is_available },
-      { onSuccess: () => toast.success(`${item.name} ${item.is_available ? "marked unavailable" : "now available"}`) }
-    );
-  };
-
-  const catName = (id: string | null) => categories.find((c) => c.id === id)?.name || "Uncategorized";
+  useEffect(() => {
+    if (!staff) return;
+    supabase.from("v2_menu_categories").select("id,name").eq("restaurant_id", staff.restaurant_id).order("sort_order")
+      .then(({ data }) => setCats((data ?? []) as Category[]));
+  }, [staff, addOpen]);
 
   return (
-    <div>
+    <AppShell>
       <PageHeader
         title="Menu"
-        description="Manage your restaurant menu items and categories"
+        description="Organize categories, items and availability."
+        icon={UtensilsCrossed}
         actions={
-          <Button size="sm" className="gap-1.5" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Add Item
-          </Button>
+          <>
+            <div className="relative">
+              <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search menu..."
+                className="rounded-lg border border-border bg-card pl-9 pr-3 py-2 text-sm w-56"
+              />
+            </div>
+            <button onClick={() => setAddOpen(true)} className="inline-flex items-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-semibold text-success-foreground">
+              <Plus className="size-4" /> Add Item
+            </button>
+          </>
         }
       />
-
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search menu..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
-        </div>
-        <div className="flex gap-1.5 flex-wrap">
-          <Button variant={activeCat === "all" ? "default" : "outline"} size="sm" onClick={() => setActiveCat("all")}>
-            All
-          </Button>
-          {categories.map((cat) => (
-            <Button key={cat.id} variant={activeCat === cat.id ? "default" : "outline"} size="sm" onClick={() => setActiveCat(cat.id)}>
-              {cat.name}
-            </Button>
+      <div className="p-4 lg:p-5 space-y-4">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          {categories.map((c, i) => (
+            <button
+              key={c}
+              onClick={() => setCat(i)}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium whitespace-nowrap transition-colors ${
+                cat === i
+                  ? "bg-success text-success-foreground"
+                  : "bg-card border border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {c}
+            </button>
           ))}
         </div>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-20 text-muted-foreground">
+            <Loader2 className="size-5 animate-spin mr-2" /> Loading menu…
+          </div>
+        ) : items.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center">
+            <div className="inline-flex size-12 items-center justify-center rounded-full bg-muted mb-3"><UtensilsCrossed className="size-5 text-muted-foreground" /></div>
+            <h3 className="font-semibold">Your menu is empty</h3>
+            <p className="text-sm text-muted-foreground mt-1">Add a first item — you can also generate a starter menu from Onboarding → Menu.</p>
+            <button onClick={() => setAddOpen(true)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-semibold text-success-foreground">
+              <Plus className="size-4" /> Add your first item
+            </button>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-20 text-muted-foreground text-sm">No items match your filters.</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filtered.map((it) => (
+              <div key={it.id} className="rounded-xl border border-border bg-card p-4 flex gap-4">
+                <div className="size-20 shrink-0 rounded-lg bg-gradient-to-br from-accent to-secondary flex items-center justify-center text-4xl">🍽️</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-semibold truncate">{it.name}</div>
+                      <div className="text-xs text-muted-foreground">{it.cat}</div>
+                    </div>
+                    <button className="size-7 rounded-md hover:bg-muted flex items-center justify-center shrink-0">
+                      <MoreHorizontal className="size-4" />
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{it.desc}</p>
+                  <div className="mt-3 flex items-center justify-between">
+                    <div className="font-bold text-success">{it.price}</div>
+                    <div className="flex items-center gap-2">
+                      {it.popular && (
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-warning/20 text-warning">Popular</span>
+                      )}
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${it.available ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
+                        {it.available ? "Available" : "86'd"}
+                      </span>
+                      <button className="size-6 rounded hover:bg-muted flex items-center justify-center"><Pencil className="size-3.5" /></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {isLoading ? (
-        <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-      ) : filtered.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-12 text-center">
-          <p className="text-muted-foreground">No menu items found</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={openCreate}>Add First Item</Button>
-        </div>
-      ) : (
-        <div className="rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="text-left font-medium p-3">Name</th>
-                <th className="text-left font-medium p-3 hidden sm:table-cell">Category</th>
-                <th className="text-right font-medium p-3">Price</th>
-                <th className="text-left font-medium p-3 hidden md:table-cell">Tags</th>
-                <th className="text-center font-medium p-3">Available</th>
-                <th className="text-right font-medium p-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((item) => (
-                <tr key={item.id} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="p-3">
-                    <p className="font-medium">{item.name}</p>
-                    {item.description && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{item.description}</p>}
-                  </td>
-                  <td className="p-3 hidden sm:table-cell text-muted-foreground">{catName(item.category_id)}</td>
-                  <td className="p-3 text-right font-medium">${Number(item.price).toFixed(2)}</td>
-                  <td className="p-3 hidden md:table-cell">
-                    <div className="flex gap-1 flex-wrap">
-                      {(item.tags || []).map((t) => (
-                        <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="p-3 text-center">
-                    <Switch checked={item.is_available} onCheckedChange={() => toggleAvailable(item)} />
-                  </td>
-                  <td className="p-3 text-right">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(item)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {addOpen && staff && (
+        <AddItemDialog
+          restaurantId={staff.restaurant_id}
+          cats={cats}
+          onClose={() => setAddOpen(false)}
+          onAdded={() => { qc.invalidateQueries({ queryKey: ["v2_menu"] }); setAddOpen(false); }}
+        />
       )}
+    </AppShell>
+  );
+}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editItem ? "Edit Menu Item" : "Add Menu Item"}</DialogTitle>
-            <DialogDescription>
-              {editItem ? "Update the details of this menu item." : "Create a new item for your restaurant menu."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Item name" />
-            </div>
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description" rows={2} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Price ($)</Label>
-                <Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" />
-              </div>
-              <div className="space-y-2">
-                <Label>Prep Time (min)</Label>
-                <Input type="number" value={prepTime} onChange={(e) => setPrepTime(e.target.value)} placeholder="15" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Category</Label>
-              <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                <SelectContent>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Tags (comma-separated)</Label>
-              <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="vegetarian, spicy, gluten-free" />
-            </div>
+function AddItemDialog({ restaurantId, cats, onClose, onAdded }: { restaurantId: string; cats: Category[]; onClose: () => void; onAdded: () => void }) {
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [description, setDescription] = useState("");
+  const [categoryId, setCategoryId] = useState<string>(cats[0]?.id ?? "");
+  const [newCat, setNewCat] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!name.trim()) { toast.error("Name is required"); return; }
+    const p = parseFloat(price);
+    if (isNaN(p) || p < 0) { toast.error("Enter a valid price"); return; }
+    setBusy(true);
+    let catId: string | null = categoryId || null;
+    if (!catId && newCat.trim()) {
+      const { data } = await supabase.from("v2_menu_categories")
+        .insert({ restaurant_id: restaurantId, name: newCat.trim(), sort_order: cats.length })
+        .select("id").single();
+      catId = data?.id ?? null;
+    }
+    const { error } = await supabase.from("v2_menu_items").insert({
+      restaurant_id: restaurantId,
+      name: name.trim(),
+      description: description.trim() || null,
+      price: p,
+      category_id: catId,
+    });
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Item added");
+    onAdded();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-background border border-border shadow-xl">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <h2 className="font-semibold">Add menu item</h2>
+          <button onClick={onClose} className="size-8 rounded-md hover:bg-muted flex items-center justify-center"><X className="size-4" /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <Field label="Name *"><input value={name} onChange={(e) => setName(e.target.value)} className="input" /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Price *"><input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className="input" placeholder="12.00" /></Field>
+            <Field label="Category">
+              {cats.length > 0 ? (
+                <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="input">
+                  <option value="">Uncategorized</option>
+                  {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              ) : (
+                <input value={newCat} onChange={(e) => setNewCat(e.target.value)} className="input" placeholder="e.g. Mains" />
+              )}
+            </Field>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={!name.trim() || !price || createItem.isPending || updateItem.isPending}>
-              {(createItem.isPending || updateItem.isPending) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              {editItem ? "Save Changes" : "Create Item"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <Field label="Description"><textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className="input resize-none" /></Field>
+        </div>
+        <div className="flex justify-end gap-2 p-4 border-t border-border">
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm">Cancel</button>
+          <button onClick={submit} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-semibold text-success-foreground disabled:opacity-60">
+            {busy && <Loader2 className="size-4 animate-spin" />} Add item
+          </button>
+        </div>
+        <style>{`.input{width:100%;border:1px solid hsl(var(--border));border-radius:0.5rem;background:hsl(var(--background));padding:0.5rem 0.75rem;font-size:0.875rem}`}</style>
+      </div>
     </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <div className="mt-1">{children}</div>
+    </label>
   );
 }

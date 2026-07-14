@@ -1,16 +1,54 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts, useRouterState } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ThemeProvider } from "next-themes";
+import {
+  Outlet,
+  Link,
+  createRootRouteWithContext,
+  useRouter,
+  useRouterState,
+  useNavigate,
+  HeadContent,
+  Scripts,
+} from "@tanstack/react-router";
+import { useEffect } from "react";
 
 import appCss from "../styles.css?url";
+import { RoleProvider } from "@/lib/role";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { CommandPalette } from "@/components/CommandPalette";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { AuthProvider } from "@/lib/auth";
-import { ServerAuthProvider, useServerAuth } from "@/lib/server-auth";
-import { getUser } from "@/lib/auth-bootstrap";
+
+const PUBLIC_PATHS = ["/", "/book", "/login", "/admin-login", "/pitchdeck", "/signup"];
+
+function isPublicPath(pathname: string) {
+  return (
+    PUBLIC_PATHS.includes(pathname) ||
+    pathname.startsWith("/marketing") ||
+    pathname.startsWith("/book/")
+  );
+}
+
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { loading, session, staff } = useAuth();
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  useEffect(() => {
+    if (loading) return;
+    if (isPublicPath(pathname)) return;
+    // /onboarding only requires a session (staff row is created there).
+    if (pathname === "/onboarding") {
+      if (!session) navigate({ to: "/signup", replace: true });
+      return;
+    }
+    // Server pad uses its own PIN session, not Supabase staff auth.
+    if (pathname === "/server-login" || pathname === "/server-app") return;
+    if (!session || !staff) {
+      navigate({ to: "/login", replace: true });
+    }
+  }, [loading, session, staff, pathname, navigate]);
+
+  return <>{children}</>;
+}
 
 function NotFoundComponent() {
   return (
@@ -34,120 +72,95 @@ function NotFoundComponent() {
   );
 }
 
-function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { isServerMode } = useServerAuth();
-  const isPublic =
-    pathname === "/" ||
-    pathname === "/login" ||
-    pathname === "/admin-login" ||
-    pathname === "/signup" ||
-    pathname === "/onboarding" ||
-    pathname === "/server-login" ||
-    pathname === "/server-app" ||
-    pathname === "/pitchdeck" ||
-    pathname.startsWith("/book") ||
-    pathname.startsWith("/marketing");
-  const hideShell = isPublic || isServerMode;
-
-  if (hideShell) {
-    return <>{children}</>;
-  }
+function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+  console.error(error);
+  const router = useRouter();
 
   return (
-    <div className="flex min-h-screen w-full">
-      <Sidebar />
-      <main className="flex-1 overflow-auto">{children}</main>
-      <CommandPalette />
-    </div>
-  );
-}
-
-export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "RestoStack — Restaurant Operations OS" },
-      { name: "description", content: "All-in-one restaurant management: POS, reservations, staff, inventory, and analytics." },
-      { name: "author", content: "RestoStack" },
-      { property: "og:title", content: "RestoStack — Restaurant Operations OS" },
-      { property: "og:description", content: "All-in-one restaurant management: POS, reservations, staff, inventory, and analytics." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-      { name: "twitter:title", content: "RestoStack — Restaurant Operations OS" },
-      { name: "twitter:description", content: "All-in-one restaurant management: POS, reservations, staff, inventory, and analytics." },
-    ],
-    links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
-    ],
-  }),
-  beforeLoad: async () => {
-    const user = await getUser();
-    return { user };
-  },
-  shellComponent: RootShell,
-  component: RootComponent,
-  notFoundComponent: NotFoundComponent,
-  errorComponent: ({ error, reset }) => (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
-          <span className="text-2xl text-destructive">!</span>
-        </div>
-        <h1 className="text-2xl font-bold text-foreground">Something went wrong</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">
+          This page didn't load
+        </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {error?.message || "An unexpected error occurred."}
+          {error?.message || "Something went wrong on our end. You can try refreshing or head back home."}
         </p>
-        <div className="mt-6 flex items-center justify-center gap-3">
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
-            onClick={reset}
+            onClick={() => {
+              router.invalidate();
+              reset();
+            }}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Try again
           </button>
           <a
             href="/"
-            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent"
+            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             Go home
           </a>
         </div>
       </div>
     </div>
-  ),
-});
+  );
+}
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60,
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  head: () => ({
+    meta: [
+      { charSet: "utf-8" },
+      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { title: "RestoStack — Restaurant Operations OS" },
+      {
+        name: "description",
+        content:
+          "All-in-one restaurant management: reservations, guests, floor, menu, and marketing.",
+      },
+      { name: "author", content: "RestoStack" },
+      { property: "og:title", content: "RestoStack — Restaurant Operations OS" },
+      {
+        property: "og:description",
+        content:
+          "All-in-one restaurant management: reservations, guests, floor, menu, and marketing.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "RestoStack — Restaurant Operations OS" },
+      {
+        name: "twitter:description",
+        content:
+          "All-in-one restaurant management: reservations, guests, floor, menu, and marketing.",
+      },
+    ],
+    links: [
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:wght@500;600;700&display=swap",
+      },
+      {
+        rel: "stylesheet",
+        href: appCss,
+      },
+    ],
+  }),
+  shellComponent: RootShell,
+  component: RootComponent,
+  notFoundComponent: NotFoundComponent,
+  errorComponent: ErrorComponent,
 });
 
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <head>
         <HeadContent />
       </head>
       <body>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <QueryClientProvider client={queryClient}>
-            <TooltipProvider>
-              <ErrorBoundary>
-                <Toaster />
-                {children}
-              </ErrorBoundary>
-            </TooltipProvider>
-          </QueryClientProvider>
-        </ThemeProvider>
+        <ErrorBoundary>{children}</ErrorBoundary>
         <Scripts />
       </body>
     </html>
@@ -155,15 +168,18 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
+  const { queryClient } = Route.useRouteContext();
+
   return (
-    <AuthProvider>
-      <ServerAuthProvider>
-        <AppShell>
-          <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <RoleProvider>
+          <AuthGate>
             <Outlet />
-          </ErrorBoundary>
-        </AppShell>
-      </ServerAuthProvider>
-    </AuthProvider>
+          </AuthGate>
+          <Toaster />
+        </RoleProvider>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }

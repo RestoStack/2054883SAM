@@ -9,7 +9,7 @@ import { useAuth } from "@/lib/auth";
 export type Role = "admin" | "hostess" | "server";
 
 export const ROLE_META: Record<Role, { label: string; icon: typeof Shield; home: string; desc: string }> = {
-  admin:   { label: "Super Admin", icon: Shield,   home: "/",            desc: "Full dashboard access" },
+  admin:   { label: "Super Admin", icon: Shield,   home: "/dashboard",   desc: "Full dashboard access" },
   hostess: { label: "Hostess",     icon: Users,    home: "/host-stand",  desc: "Floor, reservations, waitlist" },
   server:  { label: "Server",      icon: Utensils, home: "/server-app",  desc: "Order pad with upsells" },
 };

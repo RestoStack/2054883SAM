@@ -1,321 +1,313 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { PageHeader } from "@/components/PageHeader";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { toast } from "@/components/ui/sonner";
-import { useRestaurant, useUpdateRestaurant } from "@/hooks/use-restaurant";
-import { useAuth } from "@/hooks/use-auth";
-import { Building2, Clock, Globe, Bell, CreditCard, Users, Shield, Plug, Loader2 } from "lucide-react";
+import { AppShell } from "@/components/layout/Sidebar";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Settings as SettingsIcon, Building2, CreditCard, Bell, Users, Lock, Globe, Copy, ExternalLink, Link as LinkIcon, LayoutGrid, Clock, Palette, UtensilsCrossed, Loader2 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/auth";
+import { toast } from "sonner";
+import { ProfileEditor, type ProfileRestaurant } from "@/components/onboarding/ProfileEditor";
+import { HoursEditor, type WeekHours } from "@/components/onboarding/HoursEditor";
+import { BrandEditor } from "@/components/onboarding/BrandEditor";
 
 export const Route = createFileRoute("/settings")({
-  component: SettingsPage,
   head: () => ({ meta: [{ title: "Settings — RestoStack" }] }),
+  component: SettingsPage,
 });
 
-function SettingsPage() {
-  return (
-    <div>
-      <PageHeader title="Settings" description="Configure your restaurant, team, and integrations" />
-      <Tabs defaultValue="restaurant" className="space-y-6">
-        <TabsList className="flex-wrap h-auto gap-1">
-          <TabsTrigger value="restaurant" className="gap-1.5"><Building2 className="h-3.5 w-3.5" /> Restaurant</TabsTrigger>
-          <TabsTrigger value="hours" className="gap-1.5"><Clock className="h-3.5 w-3.5" /> Hours</TabsTrigger>
-          <TabsTrigger value="channels" className="gap-1.5"><Globe className="h-3.5 w-3.5" /> Channels</TabsTrigger>
-          <TabsTrigger value="notifications" className="gap-1.5"><Bell className="h-3.5 w-3.5" /> Notifications</TabsTrigger>
-          <TabsTrigger value="billing" className="gap-1.5"><CreditCard className="h-3.5 w-3.5" /> Billing</TabsTrigger>
-          <TabsTrigger value="team" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Team</TabsTrigger>
-          <TabsTrigger value="security" className="gap-1.5"><Shield className="h-3.5 w-3.5" /> Security</TabsTrigger>
-          <TabsTrigger value="integrations" className="gap-1.5"><Plug className="h-3.5 w-3.5" /> Integrations</TabsTrigger>
-        </TabsList>
+const sections = [
+  { id: "restaurant", label: "Restaurant", icon: Building2 },
+  { id: "hours", label: "Hours", icon: Clock },
+  { id: "brand", label: "Brand & booking page", icon: Palette },
+  { id: "menu", label: "Menu & Floor plan", icon: UtensilsCrossed },
+  { id: "billing", label: "Billing & Plan", icon: CreditCard },
+  { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "team", label: "Team Access", icon: Users },
+  { id: "security", label: "Security", icon: Lock },
+  { id: "locale", label: "Locale & Currency", icon: Globe },
+];
 
-        <TabsContent value="restaurant"><RestaurantSettings /></TabsContent>
-        <TabsContent value="hours"><HoursSettings /></TabsContent>
-        <TabsContent value="channels"><ChannelsSettings /></TabsContent>
-        <TabsContent value="notifications"><NotificationSettings /></TabsContent>
-        <TabsContent value="billing"><BillingSettings /></TabsContent>
-        <TabsContent value="team"><TeamSettings /></TabsContent>
-        <TabsContent value="security"><SecuritySettings /></TabsContent>
-        <TabsContent value="integrations"><IntegrationSettings /></TabsContent>
-      </Tabs>
+function SettingsPage() {
+  const [active, setActive] = useState("restaurant");
+
+  return (
+    <AppShell>
+      <PageHeader
+        title="Settings"
+        description="Configure your restaurant, billing, team and preferences."
+        icon={SettingsIcon}
+      />
+      <div className="p-4 lg:p-5">
+        <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-4">
+          <aside className="rounded-xl border border-border bg-card p-2 h-fit">
+            <ul className="space-y-0.5">
+              {sections.map((s) => {
+                const Icon = s.icon;
+                return (
+                  <li key={s.id}>
+                    <button
+                      onClick={() => setActive(s.id)}
+                      className={`w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${active === s.id ? "bg-accent text-primary" : "text-muted-foreground hover:bg-muted/60"}`}
+                    >
+                      <Icon className="size-4" />
+                      {s.label}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </aside>
+
+          <section className="rounded-xl border border-border bg-card p-6">
+            {active === "restaurant" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-lg font-semibold">Restaurant profile</h2>
+                  <p className="text-sm text-muted-foreground">Public-facing info shown to guests.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <BookingLinkCard />
+                  <FloorplanLinkCard />
+                </div>
+                <ProfileSection />
+              </div>
+            )}
+            {active === "hours" && (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-lg font-semibold">Hours</h2>
+                  <p className="text-sm text-muted-foreground">Guests see these on your booking page.</p>
+                </div>
+                <HoursSection />
+              </div>
+            )}
+            {active === "brand" && (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-lg font-semibold">Brand & booking page</h2>
+                  <p className="text-sm text-muted-foreground">Colors and copy for your public booking page.</p>
+                </div>
+                <BrandSection />
+              </div>
+            )}
+            {active === "menu" && (
+              <div className="space-y-3 max-w-2xl">
+                <h2 className="text-lg font-semibold">Menu & floor plan</h2>
+                <p className="text-sm text-muted-foreground">Manage them on their dedicated pages.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                  <Link to="/menu" className="rounded-xl border border-border p-4 hover:bg-muted/40 transition">
+                    <UtensilsCrossed className="size-5 text-success" />
+                    <div className="mt-2 font-semibold">Menu</div>
+                    <div className="text-xs text-muted-foreground">Categories, items, prices, availability.</div>
+                  </Link>
+                  <Link to="/floorplan" className="rounded-xl border border-border p-4 hover:bg-muted/40 transition">
+                    <LayoutGrid className="size-5 text-success" />
+                    <div className="mt-2 font-semibold">Floor plan</div>
+                    <div className="text-xs text-muted-foreground">Arrange tables the way your dining room is laid out.</div>
+                  </Link>
+                </div>
+              </div>
+            )}
+            {active === "billing" && (
+              <div className="space-y-5 max-w-2xl">
+                <h2 className="text-lg font-semibold">Billing & Plan</h2>
+                <div className="rounded-xl border border-border p-5 bg-gradient-to-br from-accent/40 to-transparent">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Current Plan</div>
+                      <div className="text-2xl font-bold">Pro</div>
+                    </div>
+                    <button className="rounded-lg bg-success px-4 py-2 text-sm font-semibold text-success-foreground">Upgrade</button>
+                  </div>
+                  <div className="text-sm text-muted-foreground mt-2">$249/month • Renews Jun 28, 2024</div>
+                </div>
+                <Field label="Card on file" defaultValue="•••• •••• •••• 4242" />
+                <Field label="Billing email" defaultValue="billing@italianbistro.com" />
+              </div>
+            )}
+            {active === "notifications" && (
+              <div className="space-y-4 max-w-2xl">
+                <h2 className="text-lg font-semibold">Notifications</h2>
+                {[
+                  "Email me when a new booking is made",
+                  "Daily revenue summary at 11 PM",
+                  "Alert when no-show rate exceeds 5%",
+                  "Weekly marketing performance report",
+                ].map((l, i) => <Toggle key={l} label={l} defaultOn={i !== 2} />)}
+              </div>
+            )}
+            {active === "team" && (
+              <div className="space-y-4 max-w-2xl">
+                <h2 className="text-lg font-semibold">Team Access</h2>
+                {["Alex Morgan — Owner", "Michael Brown — Manager", "Sarah Thompson — Server"].map((m) => (
+                  <div key={m} className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="size-9 rounded-full bg-gradient-to-br from-accent to-primary/30" />
+                      <span className="text-sm font-medium">{m}</span>
+                    </div>
+                    <button className="text-xs text-muted-foreground hover:text-foreground">Manage</button>
+                  </div>
+                ))}
+                <button className="rounded-lg bg-success px-4 py-2 text-sm font-semibold text-success-foreground">Invite teammate</button>
+              </div>
+            )}
+            {active === "security" && (
+              <div className="space-y-4 max-w-2xl">
+                <h2 className="text-lg font-semibold">Security</h2>
+                <Field label="Password" defaultValue="••••••••••••" type="password" />
+                <Toggle label="Two-factor authentication" defaultOn />
+                <Toggle label="Require admin approval for refunds" defaultOn />
+              </div>
+            )}
+            {active === "locale" && (
+              <div className="space-y-4 max-w-2xl">
+                <h2 className="text-lg font-semibold">Locale & Currency</h2>
+                <Field label="Currency" defaultValue="USD ($)" />
+                <Field label="Timezone" defaultValue="America/New_York (UTC-5)" />
+                <Field label="Date format" defaultValue="MMM D, YYYY" />
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+    </AppShell>
+  );
+}
+
+function Field({ label, defaultValue, type = "text" }: { label: string; defaultValue: string; type?: string }) {
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <input type={type} defaultValue={defaultValue} className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+    </label>
+  );
+}
+
+function Toggle({ label, defaultOn = false }: { label: string; defaultOn?: boolean }) {
+  const [on, setOn] = useState(defaultOn);
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+      <span className="text-sm">{label}</span>
+      <button onClick={() => setOn(!on)} className={`relative h-6 w-11 rounded-full transition-colors ${on ? "bg-success" : "bg-muted"}`}>
+        <span className={`absolute top-0.5 size-5 rounded-full bg-white shadow transition-all ${on ? "left-5" : "left-0.5"}`} />
+      </button>
     </div>
   );
 }
 
-function RestaurantSettings() {
-  const { data: restaurant, isLoading } = useRestaurant();
-  const update = useUpdateRestaurant();
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [address, setAddress] = useState("");
-  const [cuisine, setCuisine] = useState("");
-  const [initialized, setInitialized] = useState(false);
+function BookingLinkCard() {
+  const { staff } = useAuth();
+  const [slug, setSlug] = useState<string | null>(null);
 
-  if (restaurant && !initialized) {
-    setName(restaurant.name || "");
-    setPhone(restaurant.phone || "");
-    setEmail(restaurant.email || "");
-    setAddress(restaurant.address || "");
-    setCuisine(restaurant.cuisine_type || "");
-    setInitialized(true);
-  }
+  useEffect(() => {
+    if (!staff) return;
+    (async () => {
+      const { data } = await supabase
+        .from("v2_restaurants")
+        .select("slug")
+        .eq("id", staff.restaurant_id)
+        .maybeSingle();
+      if (data?.slug) setSlug(data.slug);
+    })();
+  }, [staff]);
 
-  const handleSave = () => {
-    update.mutate(
-      { name, phone, email, address, cuisine_type: cuisine },
-      { onSuccess: () => toast.success("Restaurant settings saved") }
-    );
+  if (!slug) return null;
+  const url = typeof window !== "undefined" ? `${window.location.origin}/book/${slug}` : `/book/${slug}`;
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); toast.success("Link copied"); }
+    catch { toast.error("Copy failed"); }
   };
 
-  if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
-
   return (
-    <div className="max-w-lg space-y-4">
-      <div className="space-y-2"><Label>Restaurant Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
-      <div className="space-y-2"><Label>Phone</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
-      <div className="space-y-2"><Label>Email</Label><Input value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-      <div className="space-y-2"><Label>Address</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} /></div>
-      <div className="space-y-2"><Label>Cuisine Type</Label><Input value={cuisine} onChange={(e) => setCuisine(e.target.value)} /></div>
-      <div className="space-y-2">
-        <Label>Timezone</Label>
-        <Select defaultValue={restaurant?.timezone || "America/New_York"}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="America/New_York">Eastern (ET)</SelectItem>
-            <SelectItem value="America/Chicago">Central (CT)</SelectItem>
-            <SelectItem value="America/Denver">Mountain (MT)</SelectItem>
-            <SelectItem value="America/Los_Angeles">Pacific (PT)</SelectItem>
-          </SelectContent>
-        </Select>
+    <div className="rounded-xl border border-success/30 bg-success/5 p-4">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase text-success">
+        <LinkIcon className="size-3.5" /> Public booking link
       </div>
-      <div className="space-y-2">
-        <Label>Currency</Label>
-        <Select defaultValue={restaurant?.currency || "USD"}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="USD">USD ($)</SelectItem>
-            <SelectItem value="EUR">EUR (€)</SelectItem>
-            <SelectItem value="GBP">GBP (£)</SelectItem>
-            <SelectItem value="CAD">CAD ($)</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <Button onClick={handleSave} disabled={update.isPending}>
-        {update.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-        Save Changes
-      </Button>
-    </div>
-  );
-}
-
-function HoursSettings() {
-  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-  return (
-    <div className="max-w-lg space-y-3">
-      {days.map((day) => (
-        <div key={day} className="flex items-center gap-4">
-          <span className="w-24 text-sm font-medium">{day}</span>
-          <Input type="time" defaultValue="11:00" className="w-32" />
-          <span className="text-muted-foreground text-sm">to</span>
-          <Input type="time" defaultValue="22:00" className="w-32" />
-          <Switch defaultChecked={day !== "Monday"} />
-        </div>
-      ))}
-      <Button className="mt-4" onClick={() => toast.success("Hours updated")}>Save Hours</Button>
-    </div>
-  );
-}
-
-function ChannelsSettings() {
-  const channels = [
-    { name: "Dine-in", desc: "Walk-in and reserved tables", enabled: true },
-    { name: "Takeout", desc: "Customer pickup orders", enabled: true },
-    { name: "Delivery", desc: "Direct delivery orders", enabled: true },
-    { name: "Online Ordering", desc: "Website & app orders", enabled: true },
-    { name: "DoorDash", desc: "Third-party delivery", enabled: false },
-    { name: "Uber Eats", desc: "Third-party delivery", enabled: false },
-    { name: "Grubhub", desc: "Third-party delivery", enabled: false },
-  ];
-  return (
-    <div className="max-w-lg space-y-4">
-      {channels.map((ch) => (
-        <div key={ch.name} className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium">{ch.name}</p>
-            <p className="text-xs text-muted-foreground">{ch.desc}</p>
-          </div>
-          <Switch defaultChecked={ch.enabled} />
-        </div>
-      ))}
-      <Button className="mt-2" onClick={() => toast.success("Channel settings saved")}>Save Channels</Button>
-    </div>
-  );
-}
-
-function NotificationSettings() {
-  const settings = [
-    { label: "New order alerts", desc: "Push notification for incoming orders" },
-    { label: "Low inventory warnings", desc: "Alert when items fall below threshold" },
-    { label: "Reservation reminders", desc: "Notify staff of upcoming reservations" },
-    { label: "Review alerts", desc: "New review notifications" },
-    { label: "Daily sales summary", desc: "End-of-day email report" },
-    { label: "Staff shift reminders", desc: "Notify staff before their shift" },
-    { label: "Marketing campaign results", desc: "Campaign performance emails" },
-  ];
-  return (
-    <div className="max-w-lg space-y-4">
-      {settings.map((s) => (
-        <div key={s.label} className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium">{s.label}</p>
-            <p className="text-xs text-muted-foreground">{s.desc}</p>
-          </div>
-          <Switch defaultChecked />
-        </div>
-      ))}
-      <Button className="mt-2" onClick={() => toast.success("Notification preferences saved")}>Save Preferences</Button>
-    </div>
-  );
-}
-
-function BillingSettings() {
-  return (
-    <div className="max-w-lg space-y-6">
-      <div className="rounded-lg border p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-semibold">Pro Plan</p>
-            <p className="text-sm text-muted-foreground">$149/month · Billed monthly</p>
-          </div>
-          <Badge>Active</Badge>
-        </div>
-        <Separator />
-        <div className="text-sm space-y-1">
-          <div className="flex justify-between"><span className="text-muted-foreground">Next billing date</span><span>April 1, 2026</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Payment method</span><span>•••• 4242</span></div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm">Change Plan</Button>
-          <Button variant="outline" size="sm">Update Payment</Button>
-        </div>
-      </div>
-      <div>
-        <h3 className="font-semibold mb-2">Invoices</h3>
-        {["Mar 2026 — $149.00", "Feb 2026 — $149.00", "Jan 2026 — $149.00"].map((inv) => (
-          <div key={inv} className="flex items-center justify-between py-2 border-b text-sm">
-            <span>{inv}</span>
-            <Button variant="ghost" size="sm">Download</Button>
-          </div>
-        ))}
+      <div className="mt-1 font-mono text-sm break-all">{url}</div>
+      <div className="mt-3 flex gap-2">
+        <button onClick={copy} className="inline-flex items-center gap-1.5 rounded-lg bg-success px-3 py-1.5 text-xs font-semibold text-success-foreground">
+          <Copy className="size-3.5" /> Copy
+        </button>
+        <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium">
+          <ExternalLink className="size-3.5" /> Open
+        </a>
       </div>
     </div>
   );
 }
 
-function TeamSettings() {
-  const { profile } = useAuth();
-  const members = [
-    { name: profile?.full_name || "You", email: "owner@restaurant.com", role: "Owner" },
-  ];
+function FloorplanLinkCard() {
   return (
-    <div className="max-w-lg space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold">Team Members</h3>
-        <Button size="sm" onClick={() => toast.info("Invite dialog coming soon")}>Invite Member</Button>
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+        <LayoutGrid className="size-3.5" /> Floor plan
       </div>
-      {members.map((m) => (
-        <div key={m.email} className="flex items-center justify-between py-2 border-b">
-          <div>
-            <p className="text-sm font-medium">{m.name}</p>
-            <p className="text-xs text-muted-foreground">{m.email}</p>
-          </div>
-          <Badge variant="secondary">{m.role}</Badge>
-        </div>
-      ))}
-      <div className="pt-4">
-        <h3 className="font-semibold mb-2">Roles & Permissions</h3>
-        <div className="space-y-2 text-sm text-muted-foreground">
-          <p><strong className="text-foreground">Owner</strong> — Full access to all features and billing</p>
-          <p><strong className="text-foreground">Manager</strong> — Manage operations, staff, and reports</p>
-          <p><strong className="text-foreground">Staff</strong> — POS, floor plan, and order management</p>
-        </div>
-      </div>
+      <p className="mt-1 text-sm text-muted-foreground">Arrange your tables the way your dining room is laid out.</p>
+      <Link to="/floorplan" className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted">
+        <LayoutGrid className="size-3.5" /> Open designer
+      </Link>
     </div>
   );
 }
 
-function SecuritySettings() {
+function ProfileSection() {
+  const { staff } = useAuth();
+  const [r, setR] = useState<ProfileRestaurant | null>(null);
+  useEffect(() => {
+    if (!staff) return;
+    supabase.from("v2_restaurants")
+      .select("id,name,slug,city,address,phone,cuisine,website,logo_url,cover_url")
+      .eq("id", staff.restaurant_id).maybeSingle()
+      .then(({ data }) => setR(data as ProfileRestaurant | null));
+  }, [staff]);
+  if (!r) return <div className="text-muted-foreground flex items-center gap-2"><Loader2 className="size-4 animate-spin" /> Loading…</div>;
+  return <ProfileEditor restaurant={r} ctaLabel="Save changes" onSaved={setR} />;
+}
+
+function HoursSection() {
+  const { staff } = useAuth();
+  const [hours, setHours] = useState<WeekHours | null>(null);
+  const [id, setId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!staff) return;
+    supabase.from("v2_restaurants").select("id,hours").eq("id", staff.restaurant_id).maybeSingle()
+      .then(({ data }) => { if (data) { setId(data.id); setHours((data.hours as unknown as WeekHours) ?? null); } });
+  }, [staff]);
+  if (!id) return <div className="text-muted-foreground flex items-center gap-2"><Loader2 className="size-4 animate-spin" /> Loading…</div>;
   return (
-    <div className="max-w-lg space-y-6">
-      <div className="space-y-4">
-        <h3 className="font-semibold">Change Password</h3>
-        <div className="space-y-2"><Label>Current Password</Label><Input type="password" /></div>
-        <div className="space-y-2"><Label>New Password</Label><Input type="password" /></div>
-        <div className="space-y-2"><Label>Confirm Password</Label><Input type="password" /></div>
-        <Button onClick={() => toast.success("Password updated")}>Update Password</Button>
-      </div>
-      <Separator />
-      <div className="space-y-4">
-        <h3 className="font-semibold">Two-Factor Authentication</h3>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm">Enable 2FA</p>
-            <p className="text-xs text-muted-foreground">Add an extra layer of security</p>
-          </div>
-          <Switch />
-        </div>
-      </div>
-      <Separator />
-      <div className="space-y-4">
-        <h3 className="font-semibold">Session Management</h3>
-        <div className="flex items-center justify-between py-2">
-          <div>
-            <p className="text-sm font-medium">Current Session</p>
-            <p className="text-xs text-muted-foreground">Chrome on macOS · Active now</p>
-          </div>
-          <Badge variant="secondary">Current</Badge>
-        </div>
-      </div>
-    </div>
+    <HoursEditor value={hours} onChange={async (h) => {
+      setHours(h);
+      const { error } = await supabase.from("v2_restaurants").update({ hours: h as any }).eq("id", id);
+      if (error) toast.error(error.message);
+    }} />
   );
 }
 
-function IntegrationSettings() {
-  const integrations = [
-    { name: "Square POS", desc: "Payment processing & hardware", connected: false },
-    { name: "Stripe", desc: "Online payments", connected: false },
-    { name: "Toast", desc: "POS sync", connected: false },
-    { name: "DoorDash Drive", desc: "Delivery logistics", connected: false },
-    { name: "Mailchimp", desc: "Email marketing sync", connected: false },
-    { name: "Google Business", desc: "Reviews & listings", connected: false },
-    { name: "QuickBooks", desc: "Accounting sync", connected: false },
-    { name: "Slack", desc: "Team notifications", connected: false },
-  ];
+function BrandSection() {
+  const { staff } = useAuth();
+  const [r, setR] = useState<{ id: string; name: string; logo_url: string | null; cover_url: string | null; brand_primary: string | null; brand_accent: string | null; booking_headline: string | null; booking_welcome: string | null } | null>(null);
+  useEffect(() => {
+    if (!staff) return;
+    supabase.from("v2_restaurants")
+      .select("id,name,logo_url,cover_url,brand_primary,brand_accent,booking_headline,booking_welcome")
+      .eq("id", staff.restaurant_id).maybeSingle()
+      .then(({ data }) => setR(data as any));
+  }, [staff]);
+  if (!r) return <div className="text-muted-foreground flex items-center gap-2"><Loader2 className="size-4 animate-spin" /> Loading…</div>;
   return (
-    <div className="max-w-lg space-y-4">
-      {integrations.map((int) => (
-        <div key={int.name} className="flex items-center justify-between py-3 border-b">
-          <div>
-            <p className="text-sm font-medium">{int.name}</p>
-            <p className="text-xs text-muted-foreground">{int.desc}</p>
-          </div>
-          <Button
-            variant={int.connected ? "outline" : "default"}
-            size="sm"
-            onClick={() => toast.info(`${int.connected ? "Disconnect" : "Connect"} ${int.name} — coming soon`)}
-          >
-            {int.connected ? "Disconnect" : "Connect"}
-          </Button>
-        </div>
-      ))}
-    </div>
+    <BrandEditor
+      restaurantId={r.id}
+      name={r.name}
+      logoUrl={r.logo_url}
+      coverUrl={r.cover_url}
+      initial={{
+        brand_primary: r.brand_primary ?? undefined,
+        brand_accent: r.brand_accent ?? undefined,
+        booking_headline: r.booking_headline ?? undefined,
+        booking_welcome: r.booking_welcome ?? undefined,
+      }}
+    />
   );
 }
