@@ -7,8 +7,7 @@ import {
   LayoutDashboard, CalendarDays, ShoppingBag, Users, UtensilsCrossed, Megaphone, Award,
   BarChart3, UserCog, Settings, Calendar, Mail, MessageSquare, Tag, Search,
 } from "lucide-react";
-import { orderHistory, emailCampaigns, promotions } from "@/lib/mock-data";
-import { useBookings, useCustomers } from "@/lib/v2-data";
+import { useBookings, useCustomers, useOrders } from "@/lib/v2-data";
 
 const pages = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -32,6 +31,7 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const { data: customers = [] } = useCustomers();
   const { data: bookings = [] } = useBookings();
+  const { data: orders = [] } = useOrders();
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -93,23 +93,11 @@ export function CommandPalette() {
             ))}
           </CommandGroup>
           <CommandGroup heading="Orders">
-            {orderHistory.slice(0, 6).map((o) => (
-              <CommandItem key={o.id} value={`order ${o.id} ${o.items}`} onSelect={() => go(() => navigate({ to: "/orders" }))}>
+            {orders.slice(0, 12).map((o) => (
+              <CommandItem key={o.id} value={`order ${o.shortId} ${o.customer}`} onSelect={() => go(() => navigate({ to: "/orders" }))}>
                 <ShoppingBag className="mr-2 size-4" />
-                <span className="flex-1">{o.id} — {o.items}</span>
+                <span className="flex-1">{o.shortId} — {o.customer}</span>
                 <span className="text-xs text-muted-foreground">{o.total}</span>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-          <CommandGroup heading="Campaigns">
-            {emailCampaigns.slice(0, 5).map((c) => (
-              <CommandItem key={c.name} value={`campaign ${c.name}`} onSelect={() => go(() => navigate({ to: "/marketing/email" }))}>
-                <Mail className="mr-2 size-4" />{c.name}
-              </CommandItem>
-            ))}
-            {promotions.slice(0, 3).map((p) => (
-              <CommandItem key={p.name} value={`promo ${p.name}`} onSelect={() => go(() => navigate({ to: "/marketing/promotions" }))}>
-                <Tag className="mr-2 size-4" />{p.name}
               </CommandItem>
             ))}
           </CommandGroup>

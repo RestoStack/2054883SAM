@@ -409,3 +409,305 @@ export function useDashboardStats() {
     },
   });
 }
+
+// ============ ORDERS ============
+export type OrderRow = {
+  id: string;
+  shortId: string;
+  customer: string;
+  customerId: string | null;
+  items: number;
+  type: string;
+  table: string;
+  total: string;
+  totalRaw: number;
+  status: string;
+  statusRaw: string;
+  time: string;
+  createdAt: string;
+};
+
+const orderStatusLabel = (s: string) => {
+  switch (s) {
+    case "open":
+      return "Open";
+    case "sent":
+      return "Preparing";
+    case "ready":
+      return "Ready";
+    case "delivered":
+      return "Served";
+    case "closed":
+      return "Paid";
+    case "voided":
+      return "Cancelled";
+    default:
+      return s;
+  }
+};
+
+function relativeTime(iso: string) {
+  const ms = Date.now() - new Date(iso).getTime();
+  const mins = Math.max(0, Math.floor(ms / 60000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} h ago`;
+  return `${Math.floor(hrs / 24)} d ago`;
+}
+
+export function useOrders() {
+  return useQuery({
+    queryKey: ["v2_orders"],
+    queryFn: async (): Promise<OrderRow[]> => {
+      const { data, error } = await supabase
+        .from("v2_orders")
+        .select("id, customer_id, status, total, created_at, table_id, party_size")
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) throw error;
+
+      const rows = data ?? [];
+      const customerIds = [...new Set(rows.map((o: any) => o.customer_id).filter(Boolean))];
+      const tableIds = [...new Set(rows.map((o: any) => o.table_id).filter(Boolean))];
+      const ids = rows.map((o: any) => o.id);
+
+      const [custRes, tableRes, itemsRes] = await Promise.all([
+        customerIds.length
+          ? supabase.from("v2_customers").select("id, full_name").in("id", customerIds)
+          : Promise.resolve({ data: [] as any[] }),
+        tableIds.length
+          ? supabase.from("v2_tables").select("id, table_number").in("id", tableIds)
+          : Promise.resolve({ data: [] as any[] }),
+        ids.length
+          ? supabase.from("v2_order_items").select("order_id, quantity").in("order_id", ids)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      const customerNames = Object.fromEntries((custRes.data ?? []).map((c: any) => [c.id, c.full_name]));
+      const tableNums = Object.fromEntries((tableRes.data ?? []).map((t: any) => [t.id, t.table_number]));
+      const itemCounts: Record<string, number> = {};
+      for (const it of itemsRes.data ?? []) {
+        itemCounts[it.order_id] = (itemCounts[it.order_id] ?? 0) + (it.quantity ?? 1);
+      }
+
+      return rows.map((o: any) => ({
+        id: o.id,
+        shortId: `#${String(o.id).slice(0, 8).toUpperCase()}`,
+        customer: (o.customer_id && customerNames[o.customer_id]) || "Guest",
+        customerId: o.customer_id ?? null,
+        items: itemCounts[o.id] ?? 0,
+        type: "Dine In",
+        table: o.table_id && tableNums[o.table_id] != null ? `Table ${tableNums[o.table_id]}` : "—",
+        total: fmtMoney(Number(o.total ?? 0)),
+        totalRaw: Number(o.total ?? 0),
+        status: orderStatusLabel(o.status ?? "open"),
+        statusRaw: o.status ?? "open",
+        time: relativeTime(o.created_at),
+        createdAt: o.created_at,
+      }));
+    },
+  });
+}
+
+export function useCustomerOrders(customerId: string | undefined) {
+  return useQuery({
+    queryKey: ["v2_orders", "customer", customerId ?? "none"],
+    enabled: !!customerId,
+    queryFn: async (): Promise<OrderRow[]> => {
+      const { data, error } = await supabase
+        .from("v2_orders")
+        .select("id, customer_id, status, total, created_at, table_id")
+        .eq("customer_id", customerId!)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      const tableIds = [...new Set((data ?? []).map((o: any) => o.table_id).filter(Boolean))];
+      const { data: tables } = tableIds.length
+        ? await supabase.from("v2_tables").select("id, table_number").in("id", tableIds)
+        : { data: [] as any[] };
+      const tableNums = Object.fromEntries((tables ?? []).map((t: any) => [t.id, t.table_number]));
+      return (data ?? []).map((o: any) => ({
+        id: o.id,
+        shortId: `#${String(o.id).slice(0, 8).toUpperCase()}`,
+        customer: "Guest",
+        customerId: o.customer_id ?? null,
+        items: 0,
+        type: "Dine In",
+        table: o.table_id && tableNums[o.table_id] != null ? `Table ${tableNums[o.table_id]}` : "—",
+        total: fmtMoney(Number(o.total ?? 0)),
+        totalRaw: Number(o.total ?? 0),
+        status: orderStatusLabel(o.status ?? "open"),
+        statusRaw: o.status ?? "open",
+        time: relativeTime(o.created_at),
+        createdAt: o.created_at,
+      }));
+    },
+  });
+}
+
+// ============ STAFF ============
+export type StaffRow = {
+  id: string;
+  name: string;
+  role: string;
+  email: string;
+  active: boolean;
+  dept: "Management" | "Front of House" | "Back of House";
+};
+
+export function useStaffUsers() {
+  return useQuery({
+    queryKey: ["v2_users"],
+    queryFn: async (): Promise<StaffRow[]> => {
+      const { data, error } = await supabase
+        .from("v2_users")
+        .select("id, full_name, role, email, is_active")
+        .order("full_name");
+      if (error) throw error;
+      return (data ?? []).map((u: any) => {
+        const role = (u.role ?? "server") as string;
+        const dept: StaffRow["dept"] =
+          role === "admin" ? "Management" : role === "hostess" ? "Front of House" : "Front of House";
+        return {
+          id: u.id,
+          name: u.full_name ?? "Staff",
+          role: role.charAt(0).toUpperCase() + role.slice(1),
+          email: u.email ?? "",
+          active: u.is_active !== false,
+          dept,
+        };
+      });
+    },
+  });
+}
+
+// ============ TRENDS (real, tenant-scoped via RLS) ============
+export type DayMetric = {
+  day: string;
+  date: string;
+  bookings: number;
+  cancellations: number;
+  noshows: number;
+  covers: number;
+  revenue: number;
+};
+
+export function useLast7DayMetrics() {
+  return useQuery({
+    queryKey: ["v2_last7_metrics"],
+    queryFn: async (): Promise<DayMetric[]> => {
+      const days: DayMetric[] = [];
+      const today = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const iso = d.toISOString().slice(0, 10);
+        days.push({
+          day: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+          date: iso,
+          bookings: 0,
+          cancellations: 0,
+          noshows: 0,
+          covers: 0,
+          revenue: 0,
+        });
+      }
+      const from = days[0].date;
+      const [bkRes, odRes] = await Promise.all([
+        supabase.from("v2_bookings").select("date, party_size, status").gte("date", from),
+        supabase.from("v2_orders").select("total, created_at").gte("created_at", `${from}T00:00:00`),
+      ]);
+      if (bkRes.error) throw bkRes.error;
+      if (odRes.error) throw odRes.error;
+
+      const byDate = Object.fromEntries(days.map((d) => [d.date, d]));
+      for (const b of bkRes.data ?? []) {
+        const row = byDate[b.date as string];
+        if (!row) continue;
+        row.bookings += 1;
+        row.covers += b.party_size ?? 0;
+        if (b.status === "cancelled") row.cancellations += 1;
+        if (b.status === "no_show") row.noshows += 1;
+      }
+      for (const o of odRes.data ?? []) {
+        const iso = String(o.created_at).slice(0, 10);
+        const row = byDate[iso];
+        if (!row) continue;
+        row.revenue += Number(o.total ?? 0);
+      }
+      return days;
+    },
+  });
+}
+
+export function useTableBusyCounts() {
+  return useQuery({
+    queryKey: ["v2_table_busy"],
+    queryFn: async (): Promise<Record<number, number>> => {
+      const since = new Date();
+      since.setDate(since.getDate() - 30);
+      const from = since.toISOString().slice(0, 10);
+      const { data, error } = await supabase
+        .from("v2_bookings")
+        .select("table_number, party_size")
+        .gte("date", from)
+        .not("table_number", "is", null);
+      if (error) throw error;
+      const counts: Record<number, number> = {};
+      for (const b of data ?? []) {
+        const n = parseInt(String(b.table_number), 10);
+        if (!Number.isFinite(n)) continue;
+        counts[n] = (counts[n] ?? 0) + (b.party_size ?? 1);
+      }
+      return counts;
+    },
+  });
+}
+
+export function useLoyaltyStats() {
+  return useQuery({
+    queryKey: ["v2_loyalty_stats"],
+    queryFn: async () => {
+      const [custRes, txRes] = await Promise.all([
+        supabase.from("v2_customers").select("id, full_name, visit_count, loyalty_points, total_spent").order("loyalty_points", { ascending: false }),
+        supabase
+          .from("v2_loyalty_transactions")
+          .select("id, points_earned, points_redeemed, description, created_at, customer_id")
+          .order("created_at", { ascending: false })
+          .limit(20),
+      ]);
+      if (custRes.error) throw custRes.error;
+      if (txRes.error) throw txRes.error;
+      const customers = custRes.data ?? [];
+      const txs = txRes.data ?? [];
+      const txCustomerIds = [...new Set(txs.map((t: any) => t.customer_id).filter(Boolean))];
+      const nameById = Object.fromEntries(customers.map((c: any) => [c.id, c.full_name]));
+      if (txCustomerIds.length) {
+        const missing = txCustomerIds.filter((id) => !nameById[id as string]);
+        if (missing.length) {
+          const { data: extra } = await supabase.from("v2_customers").select("id, full_name").in("id", missing);
+          for (const c of extra ?? []) nameById[c.id] = c.full_name;
+        }
+      }
+      const members = customers.filter((c: any) => (c.loyalty_points ?? 0) > 0 || (c.visit_count ?? 0) > 0).length;
+      const totalVisits = customers.reduce((s: number, c: any) => s + (c.visit_count ?? 0), 0);
+      const creditEarned = customers.reduce((s: number, c: any) => s + (c.loyalty_points ?? 0), 0);
+      const creditRedeemed = txs.reduce((s: number, t: any) => s + (t.points_redeemed ?? 0), 0);
+      const topMembers = customers.slice(0, 5).map((c: any) => ({
+        id: c.id,
+        name: c.full_name ?? "Guest",
+        visits: c.visit_count ?? 0,
+        points: c.loyalty_points ?? 0,
+        spent: fmtMoney(Number(c.total_spent ?? 0)),
+      }));
+      const recentTx = txs.map((t: any) => ({
+        id: t.id,
+        name: nameById[t.customer_id] ?? "Guest",
+        desc: t.description ?? (t.points_earned ? `Earned ${t.points_earned} pts` : `Redeemed ${t.points_redeemed} pts`),
+        date: new Date(t.created_at).toLocaleString(),
+        positive: (t.points_earned ?? 0) > 0,
+      }));
+      return { members, totalVisits, creditEarned, creditRedeemed, topMembers, recentTx };
+    },
+  });
+}

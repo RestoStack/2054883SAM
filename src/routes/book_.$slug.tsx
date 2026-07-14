@@ -63,18 +63,6 @@ const FALLBACK_MENU = [
   { name: "Grilled Salmon", price: 28, description: "Lemon herb, seasonal vegetables", img: dishSalmon },
   { name: "Tiramisu", price: 12, description: "Classic espresso-soaked ladyfingers", img: dishTiramisu },
 ];
-const VIBES = [
-  { img: heroImg, title: "Wood-fired magic", views: "12.4K" },
-  { img: patioImg, title: "Patio nights", views: "8.2K" },
-  { img: dishTruffle, title: "Truffle pasta ASMR", views: "24K" },
-  { img: barImg, title: "Bar energy", views: "6.7K" },
-];
-const REVIEWS = [
-  { name: "Sarah M.", text: "Best dining experience in the neighborhood. The vibe is unmatched.", rating: 5 },
-  { name: "James L.", text: "Came for my birthday — they made it so special. Free dessert and the whole room sang!", rating: 5 },
-  { name: "Priya K.", text: "The food is life-changing. Already booked my next visit.", rating: 5 },
-  { name: "Mike & Ana", text: "Our go-to date spot. Intimate, great wine list, staff is warm.", rating: 4 },
-];
 const FALLBACK_HOURS: WeekHours = {
   mon: { open: "11:00", close: "22:00", closed: false },
   tue: { open: "11:00", close: "22:00", closed: false },
@@ -169,14 +157,12 @@ function BookingFlow({ restaurant, menu }: { restaurant: Restaurant; menu: MenuR
   const cover = restaurant.cover_url || heroImg;
   const hours = restaurant.hours || FALLBACK_HOURS;
   const openNow = isOpenNow(hours);
-  const displayMenu: { name: string; description: string | null; price: string; img: string }[] = menu.length > 0
-    ? menu.map((m, i) => ({
-        name: m.name,
-        description: m.description,
-        price: m.price != null ? `$${Number(m.price).toFixed(m.price % 1 === 0 ? 0 : 2)}` : "",
-        img: m.image_url || FALLBACK_MENU[i % FALLBACK_MENU.length].img,
-      }))
-    : FALLBACK_MENU.map((m) => ({ name: m.name, description: m.description, price: `$${m.price}`, img: m.img }));
+  const displayMenu: { name: string; description: string | null; price: string; img: string }[] = menu.map((m, i) => ({
+    name: m.name,
+    description: m.description,
+    price: m.price != null ? `$${Number(m.price).toFixed(m.price % 1 === 0 ? 0 : 2)}` : "",
+    img: m.image_url || FALLBACK_MENU[i % FALLBACK_MENU.length]?.img || cover,
+  }));
 
   const dayKey = dayKeyFromDate(date);
   const dayInfo = hours[dayKey];
@@ -474,73 +460,35 @@ function BookingFlow({ restaurant, menu }: { restaurant: Restaurant; menu: MenuR
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6 lg:mt-3 text-sm">
             <Trust icon={<ShieldCheck className="size-4 text-emerald-600" />} title="Instant confirmation" sub="No waiting on a callback" />
-            <Trust icon={<Gift className="size-4" style={{ color: primary }} />} title="$5 every visit" sub="Free to join" />
-            <Trust icon={<Star className="size-4 text-amber-500 fill-amber-500" />} title="Loved by guests" sub="4.8 average rating" />
-          </div>
-
-          {/* Vibe & Reviews */}
-          <div className="mt-6 space-y-6 lg:space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold flex items-center gap-2 mb-3"><Play className="size-4 brand-ic" /> The Vibe</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {VIBES.map((v, i) => (
-                  <button key={i} className="group relative rounded-xl overflow-hidden border border-border aspect-[9/16] bg-stone-900 text-left">
-                    <img src={v.img} alt={v.title} className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-60 transition" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="size-10 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition">
-                        <Play className="size-5 ml-0.5" style={{ color: primary, fill: primary }} />
-                      </div>
-                    </div>
-                    <div className="absolute bottom-0 left-0 right-0 p-2.5 bg-gradient-to-t from-black/80 to-transparent">
-                      <p className="text-white text-xs font-semibold leading-tight">{v.title}</p>
-                      <p className="text-white/70 text-[10px] mt-0.5">{v.views} views</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-sm font-semibold flex items-center gap-2 mb-3"><Quote className="size-4 brand-ic" /> What guests are saying</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {REVIEWS.map((r, i) => (
-                  <div key={i} className="rounded-xl border border-border bg-white p-4">
-                    <div className="flex items-center gap-1 mb-2">
-                      {Array.from({ length: 5 }).map((_, j) => (
-                        <Star key={j} className={`size-3.5 ${j < r.rating ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`} />
-                      ))}
-                    </div>
-                    <p className="text-sm text-foreground leading-relaxed">"{r.text}"</p>
-                    <p className="text-xs text-muted-foreground mt-2 font-medium">— {r.name}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <Trust icon={<Gift className="size-4" style={{ color: primary }} />} title="Loyalty rewards" sub="Earn on every visit" />
+            <Trust icon={<Star className="size-4 text-amber-500 fill-amber-500" />} title="Your table, your way" sub="Book in under a minute" />
           </div>
         </div>
 
         {/* Right sidebar */}
         <aside className="space-y-5 lg:space-y-3">
-          <div className="bg-white rounded-2xl border border-border shadow-sm p-5 lg:p-4">
-            <div className="flex items-center gap-2 mb-4 lg:mb-2">
-              <BookOpen className="size-5 brand-ic" />
-              <h2 className="font-semibold">Popular Menu</h2>
-            </div>
-            <div className="space-y-3 lg:space-y-2">
-              {displayMenu.slice(0, 5).map((item, i) => (
-                <div key={i} className="flex items-center gap-3 group">
-                  <img src={item.img} alt={item.name} className="size-14 lg:size-10 rounded-lg object-cover border border-border group-hover:scale-105 transition" width={56} height={56} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium truncate">{item.name}</span>
-                      <span className="text-sm font-semibold brand-ic">{item.price}</span>
+          {displayMenu.length > 0 && (
+            <div className="bg-white rounded-2xl border border-border shadow-sm p-5 lg:p-4">
+              <div className="flex items-center gap-2 mb-4 lg:mb-2">
+                <BookOpen className="size-5 brand-ic" />
+                <h2 className="font-semibold">Popular Menu</h2>
+              </div>
+              <div className="space-y-3 lg:space-y-2">
+                {displayMenu.slice(0, 5).map((item, i) => (
+                  <div key={i} className="flex items-center gap-3 group">
+                    <img src={item.img} alt={item.name} className="size-14 lg:size-10 rounded-lg object-cover border border-border group-hover:scale-105 transition" width={56} height={56} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium truncate">{item.name}</span>
+                        <span className="text-sm font-semibold brand-ic">{item.price}</span>
+                      </div>
+                      {item.description && <p className="text-xs text-muted-foreground truncate">{item.description}</p>}
                     </div>
-                    {item.description && <p className="text-xs text-muted-foreground truncate">{item.description}</p>}
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="bg-white rounded-2xl border border-border shadow-sm p-5 lg:p-4">
             <div className="flex items-center gap-2 mb-4 lg:mb-2">

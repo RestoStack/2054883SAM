@@ -174,16 +174,6 @@ export const sendOrderFn = createServerFn({ method: "POST" })
     const { error: itemsErr } = await supabaseAdmin.from("order_items").insert(itemRows);
     if (itemsErr) throw new Error(itemsErr.message);
 
-    // Seed a synthetic rating 70% of the time so the ratings stat looks alive.
-    if (Math.random() < 0.7) {
-      const stars = 3 + Math.floor(Math.random() * 3); // 3..5
-      await supabaseAdmin.from("table_ratings").insert({
-        server_id: me.id,
-        table_number: data.tableNumber,
-        rating: stars,
-      });
-    }
-
     return { ok: true, orderId: order.id };
   });
 
