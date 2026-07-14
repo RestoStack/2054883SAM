@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable";
 import type { PlanId } from "@/lib/plans";
 import { saveSelectedPlan } from "@/lib/plans";
 
@@ -9,12 +9,13 @@ export function oauthCallbackUrl() {
 
 export async function signInWithGoogle(plan?: PlanId) {
   if (plan) saveSelectedPlan(plan);
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: oauthCallbackUrl(),
-      queryParams: { access_type: "offline", prompt: "consent" },
-    },
+  const result = await lovable.auth.signInWithOAuth("google", {
+    redirect_uri: oauthCallbackUrl(),
   });
-  if (error) throw error;
+  if (result?.error) {
+    throw result.error instanceof Error
+      ? result.error
+      : new Error((result.error as { message?: string })?.message || "Google sign-in failed");
+  }
+  return result;
 }
