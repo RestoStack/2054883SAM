@@ -1,135 +1,190 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, Utensils } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { signInWithGoogle } from "@/lib/oauth";
+import { isPlanId, PLANS, readSelectedPlan, saveSelectedPlan, type PlanId } from "@/lib/plans";
+
+type SignupSearch = { plan?: string };
 
 export const Route = createFileRoute("/signup")({
-  head: () => ({ meta: [{ title: "Create your restaurant — RestoStack" }] }),
+  validateSearch: (search: Record<string, unknown>): SignupSearch => ({
+    plan: typeof search.plan === "string" ? search.plan : undefined,
+  }),
+  head: () => ({ meta: [{ title: "Create your account — RestoStack" }] }),
   component: SignupPage,
 });
 
-function slugify(s: string) {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
 function SignupPage() {
   const navigate = useNavigate();
-  const { refreshStaff } = useAuth();
+  const { session, staff, loading, refreshStaff } = useAuth();
+  const { plan: planParam } = Route.useSearch();
+  const [plan, setPlan] = useState<PlanId>("starter");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [restaurantName, setRestaurantName] = useState("");
-  const [city, setCity] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"google" | "email" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const onSubmit = async (e: React.FormEvent) => {
+  useEffect(() => {
+    if (isPlanId(planParam)) {
+      saveSelectedPlan(planParam);
+      setPlan(planParam);
+    } else {
+      setPlan(readSelectedPlan());
+    }
+  }, [planParam]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (session && staff) {
+      navigate({ to: "/onboarding", replace: true });
+    } else if (session && !staff) {
+      navigate({ to: "/onboarding", replace: true });
+    }
+  }, [loading, session, staff, navigate]);
+
+  const selected = PLANS.find((p) => p.id === plan) ?? PLANS[0];
+
+  const onGoogle = async () => {
+    setError(null);
+    setBusy("google");
+    try {
+      await signInWithGoogle(plan);
+    } catch (e) {
+      setError((e as Error).message || "Google sign-in failed. Try email instead.");
+      setBusy(null);
+    }
+  };
+
+  const onEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (password.length < 6) return setError("Password must be at least 6 characters.");
-    if (!restaurantName.trim()) return setError("Restaurant name is required.");
-    setBusy(true);
+    setBusy("email");
+    saveSelectedPlan(plan);
     try {
-      // 1) create auth user (or recover if already registered)
       const { data: signUp, error: suErr } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: window.location.origin,
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: { full_name: fullName },
         },
       });
 
       if (suErr) {
-        const msg = (suErr as { message?: string })?.message ?? "";
+        const msg = suErr.message ?? "";
         if (/already|registered|exists/i.test(msg)) {
-          // Try signing in with provided password to recover partial signup
           const { error: siErr } = await supabase.auth.signInWithPassword({ email, password });
-          if (siErr) {
-            const sm = (siErr as { message?: string })?.message ?? "Could not sign in with that email/password.";
-            throw new Error(`This email is already registered. ${sm}`);
-          }
+          if (siErr) throw new Error(`This email is already registered. ${siErr.message}`);
         } else {
           throw suErr;
         }
       } else if (!signUp.session) {
-        // Email confirmations on — sign in immediately
         const { error: siErr } = await supabase.auth.signInWithPassword({ email, password });
         if (siErr) throw siErr;
       }
 
-      // 2) create restaurant + admin staff row
-      const { data, error: rpcErr } = await supabase.rpc("v2_signup_create_restaurant", {
-        _restaurant_name: restaurantName,
-        _slug: slugify(restaurantName),
-        _city: city,
-        _full_name: fullName,
-      });
-      if (rpcErr) throw rpcErr;
-
       await refreshStaff();
-      const row = Array.isArray(data) ? (data[0] as Record<string, unknown> | undefined) : (data as Record<string, unknown> | null);
-      const slug = (row?.out_slug ?? row?.slug) as string | undefined;
-      toast.success("Restaurant created!", { description: slug ? `Public slug: ${slug}` : undefined });
       navigate({ to: "/onboarding", replace: true });
     } catch (err: unknown) {
-      const e = err as { message?: string; error_description?: string; hint?: string; details?: string };
-      const msg = e?.message || e?.error_description || e?.details || e?.hint || (typeof err === "string" ? err : "Something went wrong. Please try again.");
-      setError(msg);
+      const e = err as { message?: string };
+      setError(e?.message || "Something went wrong. Please try again.");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/20 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#ecfdf5_0%,_#f8fafc_50%,_#ffffff_100%)] flex items-center justify-center p-6">
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
           <div className="inline-flex items-center gap-2 text-lg font-semibold">
-            <span className="inline-flex size-9 items-center justify-center rounded-lg bg-success text-success-foreground">
+            <span className="inline-flex size-9 items-center justify-center rounded-lg bg-emerald-600 text-white">
               <Utensils className="size-5" />
             </span>
             RestoStack
           </div>
-          <h1 className="mt-4 text-2xl font-bold">Create your restaurant</h1>
-          <p className="text-sm text-muted-foreground mt-1">Free trial · no credit card required</p>
+          <h1 className="mt-4 text-2xl font-bold tracking-tight">Create your account</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Plan: <span className="font-medium text-slate-800">{selected.name}</span> · 14-day free trial
+          </p>
         </div>
 
-        <form onSubmit={onSubmit} className="rounded-2xl border border-border bg-card p-6 space-y-4 shadow-sm">
-          <Field label="Your full name" value={fullName} onChange={setFullName} required autoComplete="name" />
-          <Field label="Work email" value={email} onChange={setEmail} type="email" required autoComplete="email" />
-          <div>
-            <Field label="Password" value={password} onChange={setPassword} type="password" required autoComplete="new-password" />
-            <p className="mt-1 text-[11px] text-muted-foreground">Use a stronger password (avoid common ones like password123).</p>
-          </div>
-          <Field label="Restaurant name" value={restaurantName} onChange={setRestaurantName} required placeholder="Nonna's Kitchen" />
-          <Field label="City / neighborhood" value={city} onChange={setCity} placeholder="Brooklyn, NY" />
-
-          {error && (
-            <div className="rounded-lg bg-destructive/10 text-destructive text-sm px-3 py-2">{error}</div>
-          )}
-
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
           <button
-            type="submit"
-            disabled={busy}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-success px-4 py-2.5 text-sm font-semibold text-success-foreground disabled:opacity-60"
+            type="button"
+            onClick={onGoogle}
+            disabled={!!busy}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50 disabled:opacity-60"
           >
-            {busy && <Loader2 className="size-4 animate-spin" />} Create restaurant
+            {busy === "google" ? <Loader2 className="size-4 animate-spin" /> : <GoogleIcon />}
+            Continue with Google
           </button>
 
-          <p className="text-xs text-center text-muted-foreground">
+          <div className="relative py-1">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center">
+              <span className="bg-white px-2 text-xs text-slate-400">or use email</span>
+            </div>
+          </div>
+
+          <form onSubmit={onEmail} className="space-y-3">
+            <Field label="Your full name" value={fullName} onChange={setFullName} required autoComplete="name" />
+            <Field label="Work email" value={email} onChange={setEmail} type="email" required autoComplete="email" />
+            <Field
+              label="Password"
+              value={password}
+              onChange={setPassword}
+              type="password"
+              required
+              autoComplete="new-password"
+            />
+
+            {error && (
+              <div className="rounded-lg bg-rose-50 text-rose-700 text-sm px-3 py-2 border border-rose-100">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={!!busy}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 hover:bg-emerald-500"
+            >
+              {busy === "email" && <Loader2 className="size-4 animate-spin" />}
+              Continue to setup
+            </button>
+          </form>
+
+          <p className="text-xs text-center text-slate-500">
             Already have an account?{" "}
-            <Link to="/login" className="text-primary font-medium hover:underline">Sign in</Link>
+            <Link to="/login" className="text-emerald-700 font-medium hover:underline">
+              Sign in
+            </Link>
+            {" · "}
+            <Link to="/start" className="text-slate-600 hover:underline">
+              Change plan
+            </Link>
           </p>
-        </form>
+        </div>
       </div>
     </div>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg className="size-4" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="#EA4335"
+        d="M12 10.2v3.9h5.5c-.2 1.3-1.7 3.9-5.5 3.9-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.4 14.6 2.5 12 2.5 6.8 2.5 2.5 6.8 2.5 12S6.8 21.5 12 21.5c5.5 0 9.1-3.9 9.1-9.3 0-.6-.1-1.1-.2-1.6H12z"
+      />
+    </svg>
   );
 }
 
@@ -139,7 +194,6 @@ function Field({
   onChange,
   type = "text",
   required,
-  placeholder,
   autoComplete,
 }: {
   label: string;
@@ -147,20 +201,18 @@ function Field({
   onChange: (v: string) => void;
   type?: string;
   required?: boolean;
-  placeholder?: string;
   autoComplete?: string;
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium text-muted-foreground">{label}{required && " *"}</span>
+      <span className="text-xs font-medium text-slate-500">{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         type={type}
         required={required}
-        placeholder={placeholder}
         autoComplete={autoComplete}
-        className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-success/40"
+        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
       />
     </label>
   );

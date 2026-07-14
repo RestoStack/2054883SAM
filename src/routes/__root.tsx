@@ -25,27 +25,30 @@ const PUBLIC_PATHS = [
   "/super-admin-login",
   "/pitchdeck",
   "/signup",
+  "/start",
+  "/auth/callback",
 ];
 
 function isPublicPath(pathname: string) {
   return (
     PUBLIC_PATHS.includes(pathname) ||
     pathname.startsWith("/marketing") ||
-    pathname.startsWith("/book/")
+    pathname.startsWith("/book/") ||
+    pathname.startsWith("/auth/")
   );
 }
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { loading, session, staff, platformAdmin } = useAuth();
+  const { loading, session, staff, platformAdmin, needsOnboarding } = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
     if (loading) return;
     if (isPublicPath(pathname)) return;
-    // /onboarding only requires a session (staff row is created there).
+    // /onboarding only requires a session (staff row may be created mid-flow).
     if (pathname === "/onboarding") {
-      if (!session) navigate({ to: "/signup", replace: true });
+      if (!session) navigate({ to: "/start", replace: true });
       return;
     }
     // Server pad uses its own PIN session, not Supabase staff auth.
@@ -57,15 +60,23 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       }
       return;
     }
-    if (!session || !staff) {
-      // Platform-only accounts (no restaurant staff row) use the Super Admin portal.
-      if (session && platformAdmin) {
-        navigate({ to: "/platform", replace: true });
-        return;
-      }
+    if (!session) {
+      navigate({ to: "/login", replace: true });
+      return;
+    }
+    if (platformAdmin && !staff) {
+      navigate({ to: "/platform", replace: true });
+      return;
+    }
+    // New owners: finish Typeform onboarding before the restaurant app.
+    if (needsOnboarding) {
+      navigate({ to: "/onboarding", replace: true });
+      return;
+    }
+    if (!staff) {
       navigate({ to: "/login", replace: true });
     }
-  }, [loading, session, staff, platformAdmin, pathname, navigate]);
+  }, [loading, session, staff, platformAdmin, needsOnboarding, pathname, navigate]);
 
   return <>{children}</>;
 }

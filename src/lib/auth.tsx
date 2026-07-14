@@ -11,6 +11,7 @@ export interface StaffUser {
   role: StaffRole;
   email: string | null;
   avatar_url: string | null;
+  onboarding_completed_at?: string | null;
 }
 
 interface AuthCtx {
@@ -19,6 +20,8 @@ interface AuthCtx {
   staff: StaffUser | null;
   /** Platform operator who can see every restaurant signup. */
   platformAdmin: boolean;
+  /** True when staff exists but restaurant onboarding is unfinished. */
+  needsOnboarding: boolean;
   signOut: () => Promise<void>;
   refreshStaff: () => Promise<void>;
 }
@@ -36,7 +39,18 @@ async function loadStaffFor(authUserId: string): Promise<StaffUser | null> {
     const { data: linked } = await supabase.rpc("v2_link_current_user_to_staff");
     if (linked) data = linked as any;
   }
-  return (data as StaffUser | null) ?? null;
+  if (!data) return null;
+
+  const { data: restaurant } = await supabase
+    .from("v2_restaurants")
+    .select("onboarding_completed_at")
+    .eq("id", (data as StaffUser).restaurant_id)
+    .maybeSingle();
+
+  return {
+    ...(data as StaffUser),
+    onboarding_completed_at: restaurant?.onboarding_completed_at ?? null,
+  };
 }
 
 async function loadPlatformAdmin(): Promise<boolean> {
@@ -105,8 +119,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
   };
 
+  const needsOnboarding = !!session && (!staff || !staff.onboarding_completed_at);
+
   return (
-    <Ctx.Provider value={{ loading, session, staff, platformAdmin, signOut, refreshStaff }}>
+    <Ctx.Provider
+      value={{ loading, session, staff, platformAdmin, needsOnboarding, signOut, refreshStaff }}
+    >
       {children}
     </Ctx.Provider>
   );

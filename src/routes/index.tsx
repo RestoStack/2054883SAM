@@ -293,7 +293,7 @@ function ComingSoon() {
 
         <div className="flex items-center gap-2 sm:gap-3">
           <Link
-            to="/signup"
+            to="/start"
             className="hidden sm:inline-flex rounded-full px-4 py-2 text-sm font-semibold text-black transition hover:opacity-90"
             style={{ background: GREEN }}
           >
@@ -334,7 +334,7 @@ function ComingSoon() {
         {/* Mobile primary CTA */}
         <div className="mt-7 flex flex-col items-center gap-2 sm:hidden">
           <Link
-            to="/signup"
+            to="/start"
             className="inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-black transition hover:opacity-90"
             style={{ background: GREEN }}
           >

@@ -701,8 +701,10 @@ export type Database = {
           name: string
           onboarding_completed_at: string | null
           phone: string | null
+          plan: string
           slug: string
           timezone: string | null
+          trial_started_at: string | null
           website: string | null
         }
         Insert: {
@@ -722,8 +724,10 @@ export type Database = {
           name: string
           onboarding_completed_at?: string | null
           phone?: string | null
+          plan?: string
           slug: string
           timezone?: string | null
+          trial_started_at?: string | null
           website?: string | null
         }
         Update: {
@@ -743,8 +747,10 @@ export type Database = {
           name?: string
           onboarding_completed_at?: string | null
           phone?: string | null
+          plan?: string
           slug?: string
           timezone?: string | null
+          trial_started_at?: string | null
           website?: string | null
         }
         Relationships: []
@@ -1014,6 +1020,7 @@ export type Database = {
           _full_name: string
           _restaurant_name: string
           _slug: string
+          _plan?: string
         }
         Returns: {
           out_restaurant_id: string

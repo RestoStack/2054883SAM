@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SuperAdminLoginRouteImport } from './routes/super-admin-login'
+import { Route as StartRouteImport } from './routes/start'
 import { Route as StaffRouteImport } from './routes/staff'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -48,10 +49,16 @@ import { Route as MarketingCreatorsRouteImport } from './routes/marketing.creato
 import { Route as MarketingCatchBackRouteImport } from './routes/marketing.catch-back'
 import { Route as CustomersIdRouteImport } from './routes/customers_.$id'
 import { Route as BookSlugRouteImport } from './routes/book_.$slug'
+import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 
 const SuperAdminLoginRoute = SuperAdminLoginRouteImport.update({
   id: '/super-admin-login',
   path: '/super-admin-login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StartRoute = StartRouteImport.update({
+  id: '/start',
+  path: '/start',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StaffRoute = StaffRouteImport.update({
@@ -244,6 +251,11 @@ const BookSlugRoute = BookSlugRouteImport.update({
   path: '/book/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthCallbackRoute = AuthCallbackRouteImport.update({
+  id: '/auth/callback',
+  path: '/auth/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -272,7 +284,9 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
+  '/start': typeof StartRoute
   '/super-admin-login': typeof SuperAdminLoginRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/book/$slug': typeof BookSlugRoute
   '/customers/$id': typeof CustomersIdRoute
   '/marketing/catch-back': typeof MarketingCatchBackRoute
@@ -313,7 +327,9 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
+  '/start': typeof StartRoute
   '/super-admin-login': typeof SuperAdminLoginRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/book/$slug': typeof BookSlugRoute
   '/customers/$id': typeof CustomersIdRoute
   '/marketing/catch-back': typeof MarketingCatchBackRoute
@@ -355,7 +371,9 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
+  '/start': typeof StartRoute
   '/super-admin-login': typeof SuperAdminLoginRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/book_/$slug': typeof BookSlugRoute
   '/customers_/$id': typeof CustomersIdRoute
   '/marketing/catch-back': typeof MarketingCatchBackRoute
@@ -398,7 +416,9 @@ export interface FileRouteTypes {
     | '/settings'
     | '/signup'
     | '/staff'
+    | '/start'
     | '/super-admin-login'
+    | '/auth/callback'
     | '/book/$slug'
     | '/customers/$id'
     | '/marketing/catch-back'
@@ -439,7 +459,9 @@ export interface FileRouteTypes {
     | '/settings'
     | '/signup'
     | '/staff'
+    | '/start'
     | '/super-admin-login'
+    | '/auth/callback'
     | '/book/$slug'
     | '/customers/$id'
     | '/marketing/catch-back'
@@ -480,7 +502,9 @@ export interface FileRouteTypes {
     | '/settings'
     | '/signup'
     | '/staff'
+    | '/start'
     | '/super-admin-login'
+    | '/auth/callback'
     | '/book_/$slug'
     | '/customers_/$id'
     | '/marketing/catch-back'
@@ -522,7 +546,9 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SignupRoute: typeof SignupRoute
   StaffRoute: typeof StaffRoute
+  StartRoute: typeof StartRoute
   SuperAdminLoginRoute: typeof SuperAdminLoginRoute
+  AuthCallbackRoute: typeof AuthCallbackRoute
   BookSlugRoute: typeof BookSlugRoute
   CustomersIdRoute: typeof CustomersIdRoute
   PlatformRestaurantsRoute: typeof PlatformRestaurantsRoute
@@ -536,6 +562,13 @@ declare module '@tanstack/react-router' {
       path: '/super-admin-login'
       fullPath: '/super-admin-login'
       preLoaderRoute: typeof SuperAdminLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/start': {
+      id: '/start'
+      path: '/start'
+      fullPath: '/start'
+      preLoaderRoute: typeof StartRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/staff': {
@@ -804,6 +837,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BookSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/callback': {
+      id: '/auth/callback'
+      path: '/auth/callback'
+      fullPath: '/auth/callback'
+      preLoaderRoute: typeof AuthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -860,7 +900,9 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SignupRoute: SignupRoute,
   StaffRoute: StaffRoute,
+  StartRoute: StartRoute,
   SuperAdminLoginRoute: SuperAdminLoginRoute,
+  AuthCallbackRoute: AuthCallbackRoute,
   BookSlugRoute: BookSlugRoute,
   CustomersIdRoute: CustomersIdRoute,
   PlatformRestaurantsRoute: PlatformRestaurantsRoute,
