@@ -699,9 +699,14 @@ export type Database = {
           id: string
           logo_url: string | null
           name: string
+          custom_domain: string | null
+          google_business_url: string | null
+          integrations: Json
+          menu_source_url: string | null
           onboarding_completed_at: string | null
           phone: string | null
           plan: string
+          seating_plan_url: string | null
           slug: string
           timezone: string | null
           trial_started_at: string | null
@@ -718,13 +723,18 @@ export type Database = {
           created_at?: string
           cuisine?: string | null
           currency?: string
+          custom_domain?: string | null
+          google_business_url?: string | null
           hours?: Json | null
           id?: string
+          integrations?: Json
           logo_url?: string | null
+          menu_source_url?: string | null
           name: string
           onboarding_completed_at?: string | null
           phone?: string | null
           plan?: string
+          seating_plan_url?: string | null
           slug: string
           timezone?: string | null
           trial_started_at?: string | null
@@ -867,6 +877,7 @@ export type Database = {
           created_at: string
           email: string | null
           full_name: string
+          hourly_wage: number | null
           id: string
           is_active: boolean
           pin: string | null
@@ -879,6 +890,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           full_name: string
+          hourly_wage?: number | null
           id?: string
           is_active?: boolean
           pin?: string | null
@@ -891,6 +903,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           full_name?: string
+          hourly_wage?: number | null
           id?: string
           is_active?: boolean
           pin?: string | null
