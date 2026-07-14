@@ -1,1126 +1,843 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  Copy,
-  ExternalLink,
-  Link2,
-  Loader2,
-  Plus,
-  Sparkles,
-  Trash2,
-  Upload,
-} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { clearSelectedPlan, readSelectedPlan } from "@/lib/plans";
+import { toast } from "sonner";
+import {
+  ArrowRight, ArrowLeft, Loader2, Check, Copy, ExternalLink, Sparkles,
+  Upload, Trash2, Plus, MapPin, Utensils, Clock, Globe, Users, Puzzle, Link2, Database,
+} from "lucide-react";
 import { DEFAULT_HOURS, DAYS, type WeekHours } from "@/components/onboarding/HoursEditor";
+import { TablesQuickAdd } from "@/components/onboarding/TablesQuickAdd";
 
 export const Route = createFileRoute("/onboarding")({
-  head: () => ({ meta: [{ title: "Setup — RestoStack" }] }),
-  component: TypeformOnboardingPage,
+  head: () => ({ meta: [{ title: "Get set up — RestoStack" }] }),
+  component: OnboardingPage,
 });
 
-type Restaurant = {
-  id: string;
-  name: string;
-  slug: string;
-  city: string | null;
-  cuisine: string | null;
-  brand_primary: string | null;
-  brand_accent: string | null;
-  booking_headline: string | null;
-  booking_welcome: string | null;
-  hours: WeekHours | null;
-  google_business_url: string | null;
-  seating_plan_url: string | null;
-  custom_domain: string | null;
-  menu_source_url: string | null;
-  integrations: string[] | null;
-  onboarding_completed_at: string | null;
-};
-
-type StaffDraft = {
-  id: string;
-  full_name: string;
-  role: "hostess" | "server" | "admin";
-  hourly_wage: string;
-};
-
-type CustomerDraft = { full_name: string; email: string; phone: string };
-
-const CUISINES = ["Italian", "American", "Japanese", "Mexican", "Café", "Seafood", "Steakhouse", "Other"];
-const COLORS = ["#059669", "#0f766e", "#1d4ed8", "#7c3aed", "#be123c", "#c2410c", "#171717"];
-const TOOLS = [
-  "Toast",
-  "Square",
-  "OpenTable",
-  "Resy",
-  "DoorDash",
-  "Uber Eats",
-  "Google Reserve",
-  "Mailchimp",
-  "Stripe",
-  "QuickBooks",
-];
-const BOOKING_FLASH_STEPS = [
-  { id: "headline", title: "Headline", hint: "The first words guests see" },
-  { id: "welcome", title: "Welcome note", hint: "Short reassurance under the headline" },
-  { id: "color", title: "Brand color", hint: "Buttons & accents on the booking page" },
-  { id: "flow", title: "Guest journey", hint: "Date → party size → time → details → confirm" },
+const CUISINES = [
+  "Italian", "American", "Japanese", "Mexican", "French", "Indian",
+  "Chinese", "Thai", "Mediterranean", "Steakhouse", "Cafe", "Wine bar", "Vegan",
 ];
 
-const HOUR_PRESETS: { id: string; label: string; hint: string; hours: WeekHours }[] = [
-  {
-    id: "dinner",
-    label: "Dinner focused",
-    hint: "Tue–Sun evenings",
-    hours: {
-      mon: { closed: true, open: "17:00", close: "22:00" },
-      tue: { closed: false, open: "17:00", close: "22:00" },
-      wed: { closed: false, open: "17:00", close: "22:00" },
-      thu: { closed: false, open: "17:00", close: "22:00" },
-      fri: { closed: false, open: "17:00", close: "23:00" },
-      sat: { closed: false, open: "17:00", close: "23:00" },
-      sun: { closed: false, open: "17:00", close: "21:00" },
-    },
-  },
-  {
-    id: "allday",
-    label: "All day",
-    hint: "Brunch through dinner",
-    hours: DEFAULT_HOURS,
-  },
-  {
-    id: "weekends",
-    label: "Weekends + weeknights",
-    hint: "Thu–Sun peak",
-    hours: {
-      mon: { closed: true, open: "11:00", close: "22:00" },
-      tue: { closed: true, open: "11:00", close: "22:00" },
-      wed: { closed: true, open: "11:00", close: "22:00" },
-      thu: { closed: false, open: "16:00", close: "23:00" },
-      fri: { closed: false, open: "11:00", close: "23:00" },
-      sat: { closed: false, open: "10:00", close: "23:00" },
-      sun: { closed: false, open: "10:00", close: "21:00" },
-    },
-  },
+const COLORS = [
+  { name: "Emerald", value: "#059669", accent: "#10b981" },
+  { name: "Rose", value: "#e11d48", accent: "#f43f5e" },
+  { name: "Amber", value: "#d97706", accent: "#f59e0b" },
+  { name: "Indigo", value: "#4f46e5", accent: "#6366f1" },
+  { name: "Slate", value: "#0f172a", accent: "#334155" },
+  { name: "Rust", value: "#9a3412", accent: "#c2410c" },
+];
+
+const HOURS_PRESETS: { label: string; hours: WeekHours }[] = [
+  { label: "Every day 11am – 10pm", hours: Object.fromEntries(DAYS.map((d) => [d.key, { open: "11:00", close: "22:00", closed: false }])) },
+  { label: "Dinner only 5pm – 11pm", hours: Object.fromEntries(DAYS.map((d) => [d.key, { open: "17:00", close: "23:00", closed: false }])) },
+  { label: "Cafe 8am – 4pm", hours: Object.fromEntries(DAYS.map((d) => [d.key, { open: "08:00", close: "16:00", closed: false }])) },
+  { label: "Closed Mondays, else 11–10", hours: Object.fromEntries(DAYS.map((d) => [d.key, d.key === "mon" ? { open: "11:00", close: "22:00", closed: true } : { open: "11:00", close: "22:00", closed: false }])) },
+];
+
+const INTEGRATIONS = [
+  "Toast", "Square", "OpenTable", "Resy", "DoorDash", "Uber Eats",
+  "Google Reserve", "Mailchimp", "Stripe", "QuickBooks",
 ];
 
 function slugify(s: string) {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-function parseMenuLines(text: string) {
-  return text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .slice(0, 40)
-    .map((line, i) => {
-      const m = line.match(/^(.*?)[\s\-–—]+\$?\s*(\d+(?:\.\d{1,2})?)\s*$/);
-      if (m) return { name: m[1].trim(), price: Number(m[2]) };
-      return { name: line.replace(/^[-*•]\s*/, ""), price: 16 + (i % 6) * 2 };
-    });
-}
+const TOTAL = 14;
 
-function parseCustomerCsv(text: string): CustomerDraft[] {
-  return text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .filter((l) => !/^name[,;\t]/i.test(l))
-    .map((line) => {
-      const parts = line.split(/[,;\t]/).map((p) => p.trim().replace(/^"|"$/g, ""));
-      const [full_name = "", email = "", phone = ""] = parts;
-      return { full_name, email, phone };
-    })
-    .filter((r) => r.full_name);
-}
+type StaffDraft = { id: string; name: string; role: "hostess" | "server" | "admin"; wage: string };
+type MenuDraft = { name: string; price: string; description: string };
+type CustDraft = { name: string; email: string; phone: string };
 
-async function uploadMedia(restaurantId: string, file: File, kind: string) {
-  const ext = (file.name.split(".").pop() || "bin").toLowerCase();
-  const path = `${restaurantId}/${kind}-${Date.now()}.${ext}`;
-  const { error } = await supabase.storage.from("restaurant-media").upload(path, file, {
-    contentType: file.type || "application/octet-stream",
-    upsert: true,
-  });
-  if (error) throw error;
-  return supabase.storage.from("restaurant-media").getPublicUrl(path).data.publicUrl;
-}
-
-function TypeformOnboardingPage() {
+function OnboardingPage() {
   const { session, staff, loading, refreshStaff } = useAuth();
   const navigate = useNavigate();
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
 
+  // Data
   const [fullName, setFullName] = useState("");
   const [restaurantName, setRestaurantName] = useState("");
   const [city, setCity] = useState("");
-  const [cuisine, setCuisine] = useState("Italian");
-  const [seatingMode, setSeatingMode] = useState<"create" | "upload">("create");
-  const [tablePreset, setTablePreset] = useState<"small" | "medium" | "large">("medium");
-  const [seatingPreview, setSeatingPreview] = useState<string | null>(null);
-  const [hoursId, setHoursId] = useState("dinner");
-  const [gmbUrl, setGmbUrl] = useState("");
+  const [cuisine, setCuisine] = useState("");
+  const [seatingUrl, setSeatingUrl] = useState<string | null>(null);
+  const [seatingBusy, setSeatingBusy] = useState(false);
+  const [hoursIdx, setHoursIdx] = useState(0);
+  const [gbUrl, setGbUrl] = useState("");
   const [menuUrl, setMenuUrl] = useState("");
-  const [menuText, setMenuText] = useState("Margherita Pizza — 18\nHouse Salad — 14\nTiramisu — 12");
+  const [menuPasted, setMenuPasted] = useState("");
   const [menuFileUrl, setMenuFileUrl] = useState<string | null>(null);
-  const [brand, setBrand] = useState(COLORS[0]);
-  const [headline, setHeadline] = useState("");
-  const [welcome, setWelcome] = useState("");
-  const [flashIdx, setFlashIdx] = useState(0);
-  const [staffRows, setStaffRows] = useState<StaffDraft[]>([
-    { id: crypto.randomUUID(), full_name: "", role: "hostess", hourly_wage: "18" },
-    { id: crypto.randomUUID(), full_name: "", role: "server", hourly_wage: "16" },
-  ]);
-  const [tools, setTools] = useState<string[]>([]);
-  const [domain, setDomain] = useState("");
-  const [customerText, setCustomerText] = useState("Full Name,email@example.com,555-0100");
-  const [copied, setCopied] = useState(false);
-  const seatingInputRef = useRef<HTMLInputElement>(null);
-  const menuInputRef = useRef<HTMLInputElement>(null);
+  const [menuBusy, setMenuBusy] = useState(false);
+  const [menuItems, setMenuItems] = useState<MenuDraft[]>([]);
+  const [colorIdx, setColorIdx] = useState(0);
+  const [bookingHeadline, setBookingHeadline] = useState("");
+  const [bookingWelcome, setBookingWelcome] = useState("");
+  const [staffDrafts, setStaffDrafts] = useState<StaffDraft[]>([]);
+  const [integrations, setIntegrations] = useState<string[]>([]);
+  const [customDomain, setCustomDomain] = useState("");
+  const [customerPaste, setCustomerPaste] = useState("");
+  const [customerDrafts, setCustomerDrafts] = useState<CustDraft[]>([]);
 
-  const STEPS = [
-    "Welcome",
-    "Restaurant",
-    "Location",
-    "Cuisine",
-    "Seating",
-    "Hours",
-    "Google Business",
-    "Menu",
-    "Booking page",
-    "Employees",
-    "Integrations",
-    "Domain",
-    "Customers",
-    "Ready",
-  ] as const;
-  const totalSteps = STEPS.length;
-  const progress = ((step + 1) / totalSteps) * 100;
+  const [slug, setSlug] = useState<string | null>(null);
+  const restaurantIdRef = useRef<string | null>(null);
+  const bootstrapped = useRef(false);
 
   useEffect(() => {
     if (loading) return;
-    if (!session) {
-      navigate({ to: "/start", replace: true });
-      return;
-    }
-    const metaName = (session.user.user_metadata?.full_name as string | undefined) || "";
-    if (metaName) setFullName((v) => v || metaName);
-
+    if (!session) { navigate({ to: "/signup", replace: true }); return; }
+    if (bootstrapped.current) return;
+    bootstrapped.current = true;
     (async () => {
-      if (!staff) return;
-      const { data } = await supabase
-        .from("v2_restaurants")
-        .select(
-          "id,name,slug,city,cuisine,brand_primary,brand_accent,booking_headline,booking_welcome,hours,google_business_url,seating_plan_url,custom_domain,menu_source_url,integrations,onboarding_completed_at",
-        )
-        .eq("id", staff.restaurant_id)
-        .maybeSingle();
-      if (data) {
-        const r = data as unknown as Restaurant;
-        setRestaurant(r);
-        setRestaurantName(r.name || "");
-        setCity(r.city || "");
-        setCuisine(r.cuisine || "Italian");
-        setBrand(r.brand_primary || COLORS[0]);
-        setHeadline(r.booking_headline || "");
-        setWelcome(r.booking_welcome || "");
-        setGmbUrl(r.google_business_url || "");
-        setSeatingPreview(r.seating_plan_url);
-        setDomain(r.custom_domain || "");
-        setMenuUrl(r.menu_source_url || "");
-        setTools(Array.isArray(r.integrations) ? r.integrations : []);
+      const meta = (session.user.user_metadata as any) ?? {};
+      const seedName = meta.full_name || meta.name || (session.user.email ?? "").split("@")[0];
+      setFullName(seedName ?? "");
+      if (staff) {
+        restaurantIdRef.current = staff.restaurant_id;
+        const { data: r } = await supabase
+          .from("v2_restaurants")
+          .select("*")
+          .eq("id", staff.restaurant_id)
+          .maybeSingle();
+        if (r) {
+          const anyR = r as any;
+          setRestaurantName(anyR.name ?? "");
+          setSlug(anyR.slug ?? null);
+          setCity(anyR.city ?? "");
+          setCuisine(anyR.cuisine ?? "");
+          setSeatingUrl(anyR.seating_plan_url ?? null);
+          setGbUrl(anyR.google_business_url ?? "");
+          setMenuUrl(anyR.menu_source_url ?? "");
+          setBookingHeadline(anyR.booking_headline ?? "");
+          setBookingWelcome(anyR.booking_welcome ?? "");
+          setCustomDomain(anyR.custom_domain ?? "");
+          if (Array.isArray(anyR.integrations)) setIntegrations(anyR.integrations);
+          if (anyR.onboarding_completed_at) {
+            navigate({ to: "/dashboard", replace: true });
+            return;
+          }
+        }
+        setFullName(staff.full_name || seedName || "");
       }
-      if (staff.full_name) setFullName((v) => v || staff.full_name);
     })();
   }, [loading, session, staff, navigate]);
 
-  useEffect(() => {
-    if (step !== 8) return;
-    const t = window.setInterval(() => {
-      setFlashIdx((i) => (i + 1) % BOOKING_FLASH_STEPS.length);
-    }, 1600);
-    return () => window.clearInterval(t);
-  }, [step]);
-
-  const bookingUrl = useMemo(() => {
-    if (!restaurant?.slug || typeof window === "undefined") return "";
-    return `${window.location.origin}/book/${restaurant.slug}`;
-  }, [restaurant?.slug]);
-
-  const ensureRestaurant = async () => {
-    if (restaurant) return restaurant;
-    if (!restaurantName.trim()) throw new Error("Restaurant name is required.");
-    const plan = readSelectedPlan();
-    const { data, error: rpcErr } = await supabase.rpc("v2_signup_create_restaurant", {
+  const ensureRestaurant = async (): Promise<string | null> => {
+    if (restaurantIdRef.current) return restaurantIdRef.current;
+    if (!restaurantName.trim()) return null;
+    const plan = (typeof window !== "undefined" && sessionStorage.getItem("restostack:plan")) || "starter";
+    const { data, error } = await (supabase.rpc as any)("v2_signup_create_restaurant", {
       _restaurant_name: restaurantName.trim(),
       _slug: slugify(restaurantName),
-      _city: city.trim(),
-      _full_name: fullName.trim() || "Owner",
+      _city: city,
+      _full_name: fullName,
       _plan: plan,
     });
-    if (rpcErr) {
-      if (/already has a restaurant/i.test(rpcErr.message)) {
-        await refreshStaff();
-        throw new Error("Restaurant already linked — please continue.");
-      }
-      throw rpcErr;
-    }
+    if (error) { toast.error(error.message); return null; }
     const row = Array.isArray(data) ? data[0] : data;
-    const id = (row as { out_restaurant_id?: string })?.out_restaurant_id;
+    const id = (row?.out_restaurant_id ?? row?.id) as string;
+    const s = (row?.out_slug ?? row?.slug) as string;
+    restaurantIdRef.current = id;
+    setSlug(s);
     await refreshStaff();
-    clearSelectedPlan();
-    if (!id) throw new Error("Could not create restaurant.");
-    const { data: r } = await supabase
-      .from("v2_restaurants")
-      .select(
-        "id,name,slug,city,cuisine,brand_primary,brand_accent,booking_headline,booking_welcome,hours,google_business_url,seating_plan_url,custom_domain,menu_source_url,integrations,onboarding_completed_at",
-      )
-      .eq("id", id)
-      .maybeSingle();
-    const created = r as unknown as Restaurant;
-    setRestaurant(created);
-    return created;
+    return id;
   };
 
-  const seedTables = async (r: Restaurant) => {
-    const { count } = await supabase
-      .from("v2_tables")
-      .select("id", { count: "exact", head: true })
-      .eq("restaurant_id", r.id);
-    if (count) return;
-    const packs =
-      tablePreset === "small"
-        ? { twos: 4, fours: 3 }
-        : tablePreset === "large"
-          ? { twos: 10, fours: 12 }
-          : { twos: 6, fours: 8 };
-    const rows = [
-      ...Array.from({ length: packs.twos }, (_, i) => ({
-        restaurant_id: r.id,
-        table_number: `T${i + 1}`,
-        capacity: 2,
-        section: "Main Floor",
-        shape: "square" as const,
-        status: "available" as const,
-      })),
-      ...Array.from({ length: packs.fours }, (_, i) => ({
-        restaurant_id: r.id,
-        table_number: `B${i + 1}`,
-        capacity: 4,
-        section: i % 3 === 0 ? "Patio" : "Main Floor",
-        shape: "rectangle" as const,
-        status: "available" as const,
-      })),
-    ];
-    await supabase.from("v2_tables").insert(rows as never);
+  const uploadTo = async (file: File, prefix: string): Promise<string | null> => {
+    const id = restaurantIdRef.current;
+    if (!id) { toast.error("Save restaurant name first"); return null; }
+    if (file.size > 10 * 1024 * 1024) { toast.error("File must be under 10 MB"); return null; }
+    const ext = (file.name.split(".").pop() || "png").toLowerCase();
+    const path = `${id}/${prefix}-${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("restaurant-media").upload(path, file, {
+      contentType: file.type, upsert: true,
+    });
+    if (error) { toast.error(error.message); return null; }
+    return supabase.storage.from("restaurant-media").getPublicUrl(path).data.publicUrl;
   };
 
-  const next = async (opts?: { skip?: boolean }) => {
-    setError(null);
+  const parseMenuText = (text: string): MenuDraft[] => {
+    const out: MenuDraft[] = [];
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line) continue;
+      // Match patterns like "Name - Description - $12.50" or "Name $12.50" or "Name — 12"
+      const m = line.match(/^(.+?)\s*[-–—]\s*(.+?)\s*[-–—]?\s*\$?(\d+(?:\.\d{1,2})?)\s*$/)
+             || line.match(/^(.+?)\s+\$?(\d+(?:\.\d{1,2})?)\s*$/);
+      if (m) {
+        if (m.length === 4) out.push({ name: m[1].trim(), description: m[2].trim(), price: m[3] });
+        else out.push({ name: m[1].trim(), description: "", price: m[2] });
+      } else {
+        out.push({ name: line, description: "", price: "" });
+      }
+    }
+    return out.slice(0, 60);
+  };
+
+  const parseCustomerText = (text: string): CustDraft[] => {
+    const out: CustDraft[] = [];
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line) continue;
+      const parts = line.split(/[,\t]/).map((p) => p.trim());
+      const [name, email, phone] = [parts[0] ?? "", parts[1] ?? "", parts[2] ?? ""];
+      if (!name && !email && !phone) continue;
+      out.push({ name, email, phone });
+    }
+    return out.slice(0, 2000);
+  };
+
+  const next = async () => {
     setBusy(true);
     try {
-      if (step === 0) {
-        if (!fullName.trim()) throw new Error("Tell us your name to continue.");
+      if (step === 1) {
+        if (!fullName.trim()) { toast.error("Please enter your name"); return; }
         if (staff) await supabase.from("v2_users").update({ full_name: fullName.trim() }).eq("id", staff.id);
-        setStep(1);
-      } else if (step === 1) {
-        if (!restaurantName.trim()) throw new Error("What’s the restaurant called?");
-        setStep(2);
-      } else if (step === 2) {
-        const r = await ensureRestaurant();
-        if (city.trim()) {
-          await supabase.from("v2_restaurants").update({ city: city.trim() }).eq("id", r.id);
-          setRestaurant({ ...r, city: city.trim() });
+      }
+      if (step === 2) {
+        if (!restaurantName.trim()) { toast.error("Restaurant name is required"); return; }
+        if (restaurantIdRef.current) {
+          await supabase.from("v2_restaurants").update({ name: restaurantName.trim() }).eq("id", restaurantIdRef.current);
         }
-        setStep(3);
-      } else if (step === 3) {
-        const r = restaurant ?? (await ensureRestaurant());
-        await supabase.from("v2_restaurants").update({ cuisine }).eq("id", r.id);
-        setRestaurant({ ...r, cuisine });
-        setStep(4);
-      } else if (step === 4) {
-        const r = restaurant ?? (await ensureRestaurant());
-        if (seatingMode === "create") {
-          await seedTables(r);
-        } else if (!seatingPreview && !opts?.skip) {
-          throw new Error("Upload a seating screenshot, or switch to Create seating.");
-        }
-        if (seatingPreview) {
-          await supabase.from("v2_restaurants").update({ seating_plan_url: seatingPreview }).eq("id", r.id);
-          setRestaurant({ ...r, seating_plan_url: seatingPreview });
-        }
-        setStep(5);
-      } else if (step === 5) {
-        const r = restaurant ?? (await ensureRestaurant());
-        const preset = HOUR_PRESETS.find((h) => h.id === hoursId) ?? HOUR_PRESETS[0];
-        await supabase.from("v2_restaurants").update({ hours: preset.hours as never }).eq("id", r.id);
-        setRestaurant({ ...r, hours: preset.hours });
-        setStep(6);
-      } else if (step === 6) {
-        const r = restaurant ?? (await ensureRestaurant());
-        if (!opts?.skip && gmbUrl.trim()) {
-          await supabase
-            .from("v2_restaurants")
-            .update({ google_business_url: gmbUrl.trim() })
-            .eq("id", r.id);
-          setRestaurant({ ...r, google_business_url: gmbUrl.trim() });
-        }
-        setStep(7);
-      } else if (step === 7) {
-        const r = restaurant ?? (await ensureRestaurant());
-        const items = parseMenuLines(menuText);
-        if (!opts?.skip && items.length) {
-          const { data: existingCats } = await supabase
-            .from("v2_menu_categories")
-            .select("id")
-            .eq("restaurant_id", r.id)
-            .limit(1);
-          let catId = existingCats?.[0]?.id;
-          if (!catId) {
-            const { data: cat } = await supabase
-              .from("v2_menu_categories")
-              .insert({ restaurant_id: r.id, name: "Menu", sort_order: 0 } as never)
-              .select("id")
-              .maybeSingle();
-            catId = cat?.id;
-          }
-          if (catId) {
-            const { count } = await supabase
-              .from("v2_menu_items")
-              .select("id", { count: "exact", head: true })
-              .eq("restaurant_id", r.id);
-            if (!count) {
+      }
+      if (step === 3) {
+        const id = await ensureRestaurant();
+        if (!id) return;
+        await supabase.from("v2_restaurants").update({ city: city || null }).eq("id", id);
+      }
+      if (step === 4) {
+        const id = await ensureRestaurant();
+        if (id) await supabase.from("v2_restaurants").update({ cuisine: cuisine || null }).eq("id", id);
+      }
+      if (step === 6) {
+        const id = await ensureRestaurant();
+        if (id) await supabase.from("v2_restaurants").update({ hours: HOURS_PRESETS[hoursIdx].hours as any }).eq("id", id);
+      }
+      if (step === 7) {
+        const id = await ensureRestaurant();
+        if (id) await supabase.from("v2_restaurants").update({ google_business_url: gbUrl.trim() || null } as any).eq("id", id);
+      }
+      if (step === 8) {
+        const id = await ensureRestaurant();
+        if (id) {
+          await supabase.from("v2_restaurants").update({ menu_source_url: menuUrl.trim() || menuFileUrl || null } as any).eq("id", id);
+          const rows = menuItems
+            .map((m) => ({ name: m.name.trim(), description: m.description.trim() || null, price: Number(m.price) || 0 }))
+            .filter((m) => m.name);
+          if (rows.length) {
+            const { data: existingCat } = await supabase
+              .from("v2_menu_categories").select("id").eq("restaurant_id", id).limit(1).maybeSingle();
+            let catId = (existingCat as any)?.id as string | undefined;
+            if (!catId) {
+              const { data: nc } = await supabase.from("v2_menu_categories")
+                .insert({ restaurant_id: id, name: "Menu", sort_order: 0 }).select("id").single();
+              catId = (nc as any)?.id;
+            }
+            if (catId) {
               await supabase.from("v2_menu_items").insert(
-                items.map((it) => ({
-                  restaurant_id: r.id,
-                  category_id: catId,
-                  name: it.name,
-                  price: it.price,
-                  is_available: true,
-                })) as never,
+                rows.map((r) => ({ restaurant_id: id, category_id: catId!, name: r.name, description: r.description, price: r.price, is_available: true }))
               );
             }
           }
         }
-        await supabase
-          .from("v2_restaurants")
-          .update({
-            menu_source_url: menuUrl.trim() || menuFileUrl,
-          } as never)
-          .eq("id", r.id);
-        if (!headline) setHeadline(`Reserve a table at ${r.name}`);
-        if (!welcome) setWelcome(`Welcome to ${r.name}. Book in a few taps.`);
-        setStep(8);
-      } else if (step === 8) {
-        const r = restaurant ?? (await ensureRestaurant());
-        const h = headline.trim() || `Reserve a table at ${r.name}`;
-        const w = welcome.trim() || `Welcome to ${r.name}. Book in a few taps.`;
-        await supabase
-          .from("v2_restaurants")
-          .update({
-            brand_primary: brand,
-            brand_accent: brand,
-            booking_headline: h,
-            booking_welcome: w,
-          })
-          .eq("id", r.id);
-        setRestaurant({
-          ...r,
-          brand_primary: brand,
-          brand_accent: brand,
-          booking_headline: h,
-          booking_welcome: w,
-        });
-        setStep(9);
-      } else if (step === 9) {
-        const r = restaurant ?? (await ensureRestaurant());
-        const rows = staffRows
-          .map((s) => ({
-            ...s,
-            full_name: s.full_name.trim(),
-            hourly_wage: Number(s.hourly_wage) || null,
-          }))
-          .filter((s) => s.full_name);
-        if (!opts?.skip && rows.length) {
-          await supabase.from("v2_users").insert(
-            rows.map((s) => ({
-              restaurant_id: r.id,
-              full_name: s.full_name,
-              role: s.role,
-              hourly_wage: s.hourly_wage,
-              is_active: true,
-              pin: String(1000 + Math.floor(Math.random() * 8999)),
-            })) as never,
-          );
-        }
-        setStep(10);
-      } else if (step === 10) {
-        const r = restaurant ?? (await ensureRestaurant());
-        await supabase
-          .from("v2_restaurants")
-          .update({ integrations: tools } as never)
-          .eq("id", r.id);
-        setRestaurant({ ...r, integrations: tools });
-        setStep(11);
-      } else if (step === 11) {
-        const r = restaurant ?? (await ensureRestaurant());
-        if (!opts?.skip && domain.trim()) {
-          await supabase
-            .from("v2_restaurants")
-            .update({ custom_domain: domain.trim().toLowerCase() })
-            .eq("id", r.id);
-          setRestaurant({ ...r, custom_domain: domain.trim().toLowerCase() });
-        }
-        setStep(12);
-      } else if (step === 12) {
-        const r = restaurant ?? (await ensureRestaurant());
-        const customers = parseCustomerCsv(customerText);
-        if (!opts?.skip && customers.length) {
-          await supabase.from("v2_customers").insert(
-            customers.slice(0, 500).map((c) => ({
-              restaurant_id: r.id,
-              full_name: c.full_name,
-              email: c.email || null,
-              phone: c.phone || null,
-            })) as never,
-          );
-        }
-        setStep(13);
-      } else if (step === 13) {
-        const r = restaurant ?? (await ensureRestaurant());
-        await supabase
-          .from("v2_restaurants")
-          .update({ onboarding_completed_at: new Date().toISOString() })
-          .eq("id", r.id);
-        await refreshStaff();
-        navigate({ to: "/dashboard", replace: true });
       }
-    } catch (e) {
-      setError((e as Error).message || "Could not continue.");
+      if (step === 9) {
+        const id = await ensureRestaurant();
+        const c = COLORS[colorIdx];
+        if (id) await supabase.from("v2_restaurants").update({
+          brand_primary: c.value, brand_accent: c.accent,
+          booking_headline: bookingHeadline.trim() || null,
+          booking_welcome: bookingWelcome.trim() || null,
+        }).eq("id", id);
+      }
+      if (step === 10) {
+        const id = await ensureRestaurant();
+        if (id) {
+          const rows = staffDrafts
+            .map((s) => ({
+              restaurant_id: id, full_name: s.name.trim(), role: s.role,
+              hourly_wage: s.wage ? Number(s.wage) : null, is_active: true,
+            }))
+            .filter((r) => r.full_name);
+          if (rows.length) await (supabase.from("v2_users") as any).insert(rows);
+        }
+      }
+      if (step === 11) {
+        const id = await ensureRestaurant();
+        if (id) await supabase.from("v2_restaurants").update({ integrations } as any).eq("id", id);
+      }
+      if (step === 12) {
+        const id = await ensureRestaurant();
+        if (id) await supabase.from("v2_restaurants").update({ custom_domain: customDomain.trim() || null } as any).eq("id", id);
+      }
+      if (step === 13) {
+        const id = await ensureRestaurant();
+        if (id) {
+          const all = [...customerDrafts, ...parseCustomerText(customerPaste)]
+            .map((c) => ({
+              restaurant_id: id,
+              full_name: c.name.trim() || "Guest",
+              email: c.email.trim() || null,
+              phone: c.phone.trim() || null,
+            }))
+            .filter((c) => c.full_name !== "Guest" || c.email || c.phone);
+          if (all.length) await supabase.from("v2_customers").insert(all);
+        }
+      }
+      setStep((s) => Math.min(TOTAL, s + 1));
+    } catch (e: any) {
+      toast.error(e?.message ?? "Something went wrong");
     } finally {
       setBusy(false);
     }
   };
 
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && ![7, 9, 12].includes(step)) {
-      e.preventDefault();
-      void next();
-    }
+  const skip = () => setStep((s) => Math.min(TOTAL, s + 1));
+  const back = () => setStep((s) => Math.max(1, s - 1));
+
+  const finish = async () => {
+    setBusy(true);
+    try {
+      const id = await ensureRestaurant();
+      if (id) {
+        await supabase.from("v2_restaurants")
+          .update({ onboarding_completed_at: new Date().toISOString() })
+          .eq("id", id);
+      }
+      try { sessionStorage.removeItem("restostack:plan"); } catch {}
+      await refreshStaff();
+      navigate({ to: "/dashboard", replace: true });
+    } finally { setBusy(false); }
   };
 
   if (loading || !session) {
-    return (
-      <div className="min-h-screen grid place-items-center bg-slate-950 text-slate-300">
-        <Loader2 className="size-6 animate-spin" />
-      </div>
-    );
+    return <div className="min-h-screen grid place-items-center bg-background"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>;
   }
 
+  const canContinue =
+    (step === 1 && fullName.trim().length > 0) ||
+    (step === 2 && restaurantName.trim().length > 0) ||
+    step > 2;
+
+  const skippable = [3, 4, 5, 7, 8, 10, 11, 12, 13].includes(step);
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100" onKeyDown={onKeyDown}>
-      <div className="h-1 bg-slate-800">
-        <div className="h-full bg-emerald-400 transition-all duration-500 ease-out" style={{ width: `${progress}%` }} />
+    <div className="min-h-screen bg-gradient-to-b from-white to-emerald-50/40">
+      <div className="fixed top-0 inset-x-0 h-1 bg-emerald-100 z-10">
+        <div className="h-full bg-emerald-600 transition-all duration-500" style={{ width: `${(step / TOTAL) * 100}%` }} />
       </div>
+      <div className="fixed top-4 right-6 text-xs text-muted-foreground z-10">{step} of {TOTAL}</div>
+      {step > 1 && (
+        <button onClick={back} className="fixed top-4 left-6 z-10 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="size-3.5" /> Back
+        </button>
+      )}
 
-      <div className="mx-auto max-w-2xl px-4 sm:px-6 py-8 min-h-[calc(100vh-4px)] flex flex-col">
-        <div className="flex items-center justify-between text-xs text-slate-500">
-          <span>RestoStack setup</span>
-          <span>
-            {STEPS[step]} · {step + 1}/{totalSteps}
-          </span>
-        </div>
+      <main className="mx-auto max-w-3xl px-6 pt-24 pb-16 min-h-screen flex flex-col justify-center">
+        <div key={step} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {step === 1 && (
+            <QuestionShell index={1} title={`Welcome${fullName ? `, ${fullName.split(" ")[0]}` : ""} 👋`} prompt="What should we call you?" onEnter={next}>
+              <BigInput value={fullName} onChange={setFullName} placeholder="Your full name" autoFocus />
+            </QuestionShell>
+          )}
 
-        <div className="flex-1 flex flex-col justify-center py-8">
-          <div key={step} className="space-y-6">
-            {step === 0 && (
-              <Question eyebrow="Welcome" title="First — what’s your name?" subtitle="Owner profile for your restaurant.">
-                <BigInput value={fullName} onChange={setFullName} placeholder="Alex Morgan" autoFocus />
-              </Question>
-            )}
+          {step === 2 && (
+            <QuestionShell index={2} title="Your restaurant" prompt="What's it called?" onEnter={next}>
+              <BigInput value={restaurantName} onChange={setRestaurantName} placeholder="e.g. Nonna's Kitchen" autoFocus />
+            </QuestionShell>
+          )}
 
-            {step === 1 && (
-              <Question eyebrow="Restaurant" title="What’s your restaurant called?" subtitle="This powers your public booking page.">
-                <BigInput value={restaurantName} onChange={setRestaurantName} placeholder="Nonna’s Kitchen" autoFocus />
-              </Question>
-            )}
+          {step === 3 && (
+            <QuestionShell index={3} title="Location" prompt="Where is it?" icon={<MapPin className="size-5" />} onEnter={next}>
+              <BigInput value={city} onChange={setCity} placeholder="City or neighborhood" autoFocus />
+            </QuestionShell>
+          )}
 
-            {step === 2 && (
-              <Question eyebrow="Location" title="Where is it?" subtitle="City or neighborhood is enough for now.">
-                <BigInput value={city} onChange={setCity} placeholder="Brooklyn, NY" autoFocus />
-              </Question>
-            )}
+          {step === 4 && (
+            <QuestionShell index={4} title="Cuisine" prompt="What kind of food do you serve?" icon={<Utensils className="size-5" />} onEnter={next}>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {CUISINES.map((c) => (
+                  <button key={c} onClick={() => setCuisine(c)}
+                    className={`rounded-full border px-4 py-2 text-sm font-medium transition ${cuisine === c ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-border bg-white hover:bg-muted"}`}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <BigInput value={cuisine} onChange={setCuisine} placeholder="Or type your own…" />
+            </QuestionShell>
+          )}
 
-            {step === 3 && (
-              <Question eyebrow="Cuisine" title="What kind of food do you serve?" subtitle="Pick one — editable later.">
-                <ChipRow options={CUISINES} value={cuisine} onChange={setCuisine} />
-              </Question>
-            )}
-
-            {step === 4 && (
-              <Question
-                eyebrow="Seating"
-                title="Create your seating — or upload what you already use"
-                subtitle="Quick-add a layout, or drop a screenshot from OpenTable, Resy, Toast, etc."
-              >
-                <div className="flex gap-2 mb-4">
-                  {(
-                    [
-                      ["create", "Create seating"],
-                      ["upload", "Upload screenshot"],
-                    ] as const
-                  ).map(([id, label]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setSeatingMode(id)}
-                      className={`rounded-full px-4 py-2 text-sm border ${
-                        seatingMode === id
-                          ? "bg-emerald-500 text-slate-950 border-emerald-400"
-                          : "border-slate-700 text-slate-300"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                {seatingMode === "create" ? (
-                  <div className="space-y-2">
-                    {(
-                      [
-                        ["small", "Intimate", "~14 seats"],
-                        ["medium", "Neighborhood", "~40 seats"],
-                        ["large", "Busy room", "~80 seats"],
-                      ] as const
-                    ).map(([id, label, hint]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => setTablePreset(id)}
-                        className={`w-full rounded-2xl border px-4 py-3 text-left ${
-                          tablePreset === id ? "border-emerald-400 bg-emerald-500/10" : "border-slate-800"
-                        }`}
-                      >
-                        <div className="font-medium">{label}</div>
-                        <div className="text-sm text-slate-400">{hint}</div>
-                      </button>
-                    ))}
+          {step === 5 && (
+            <QuestionShell index={5} title="Seating" prompt="Set up tables now, or upload a screenshot of your current seating.">
+              {restaurantIdRef.current ? (
+                <div className="space-y-6">
+                  <div className="rounded-2xl border border-border bg-white p-5">
+                    <div className="text-xs font-semibold uppercase text-muted-foreground mb-3">Option A — Quick add tables</div>
+                    <TablesQuickAdd restaurantId={restaurantIdRef.current} />
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    <button
-                      type="button"
-                      onClick={() => seatingInputRef.current?.click()}
-                      className="w-full rounded-2xl border border-dashed border-slate-700 px-4 py-10 text-center hover:border-emerald-400/60"
-                    >
-                      <Upload className="size-5 mx-auto mb-2 text-emerald-400" />
-                      <div className="text-sm">Upload seating screenshot</div>
-                      <div className="text-xs text-slate-500 mt-1">PNG/JPG up to 5MB</div>
-                    </button>
-                    <input
-                      ref={seatingInputRef}
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        e.target.value = "";
-                        if (!file) return;
-                        setBusy(true);
-                        try {
-                          const r = restaurant ?? (await ensureRestaurant());
-                          const url = await uploadMedia(r.id, file, "seating");
-                          setSeatingPreview(url);
-                        } catch (err) {
-                          setError((err as Error).message);
-                        } finally {
-                          setBusy(false);
-                        }
-                      }}
-                    />
-                    {seatingPreview && (
-                      <img src={seatingPreview} alt="Seating plan" className="rounded-xl border border-slate-800 max-h-56 w-full object-cover" />
+                  <div className="rounded-2xl border border-border bg-white p-5">
+                    <div className="text-xs font-semibold uppercase text-muted-foreground mb-3">Option B — Upload a floorplan / seating screenshot</div>
+                    {seatingUrl ? (
+                      <div className="flex items-start gap-3">
+                        <img src={seatingUrl} alt="Seating" className="h-32 w-auto rounded-lg border border-border" />
+                        <button onClick={async () => {
+                          await supabase.from("v2_restaurants").update({ seating_plan_url: null } as any).eq("id", restaurantIdRef.current!);
+                          setSeatingUrl(null);
+                        }} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive">
+                          <Trash2 className="size-3.5" /> Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="inline-flex items-center gap-2 rounded-lg border border-dashed border-border bg-background px-4 py-3 text-sm cursor-pointer hover:bg-muted">
+                        {seatingBusy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+                        Upload image (PNG, JPG)
+                        <input type="file" accept="image/*" hidden onChange={async (e) => {
+                          const f = e.target.files?.[0]; e.target.value = "";
+                          if (!f) return; setSeatingBusy(true);
+                          const url = await uploadTo(f, "seating");
+                          if (url) {
+                            await supabase.from("v2_restaurants").update({ seating_plan_url: url } as any).eq("id", restaurantIdRef.current!);
+                            setSeatingUrl(url);
+                          }
+                          setSeatingBusy(false);
+                        }} />
+                      </label>
                     )}
                   </div>
-                )}
-              </Question>
-            )}
-
-            {step === 5 && (
-              <Question eyebrow="Hours" title="When are you usually open?" subtitle="Guests see this on your booking page.">
-                <div className="space-y-2">
-                  {HOUR_PRESETS.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => setHoursId(p.id)}
-                      className={`w-full rounded-2xl border px-4 py-4 text-left ${
-                        hoursId === p.id ? "border-emerald-400 bg-emerald-500/10" : "border-slate-800"
-                      }`}
-                    >
-                      <div className="font-medium">{p.label}</div>
-                      <div className="text-sm text-slate-400">{p.hint}</div>
-                    </button>
-                  ))}
                 </div>
-                <p className="text-xs text-slate-500 mt-3">
-                  Days covered: {DAYS.map((d) => d.label.slice(0, 3)).join(" · ")}
-                </p>
-              </Question>
-            )}
+              ) : (
+                <p className="text-sm text-muted-foreground">Finish the previous steps first.</p>
+              )}
+            </QuestionShell>
+          )}
 
-            {step === 6 && (
-              <Question
-                eyebrow="Google Business"
-                title="Link your Google Business profile"
-                subtitle="Paste your Google Maps / Business URL so guests find the same place."
-              >
-                <BigInput
-                  value={gmbUrl}
-                  onChange={setGmbUrl}
-                  placeholder="https://maps.google.com/… or https://g.page/…"
-                  autoFocus
-                />
-              </Question>
-            )}
-
-            {step === 7 && (
-              <Question
-                eyebrow="Menu"
-                title="Upload a menu, or give us a link"
-                subtitle="Paste a menu URL and/or dish list — we’ll autopopulate items you can edit."
-              >
-                <div className="space-y-3">
-                  <BigInput value={menuUrl} onChange={setMenuUrl} placeholder="https://yoursite.com/menu" />
-                  <button
-                    type="button"
-                    onClick={() => menuInputRef.current?.click()}
-                    className="inline-flex items-center gap-2 rounded-xl border border-slate-700 px-3 py-2 text-sm"
-                  >
-                    <Upload className="size-4" /> Upload menu image/PDF
+          {step === 6 && (
+            <QuestionShell index={6} title="Hours of operation" prompt="Pick a preset — you can fine-tune each day later." icon={<Clock className="size-5" />}>
+              <div className="grid grid-cols-1 gap-2">
+                {HOURS_PRESETS.map((p, i) => (
+                  <button key={p.label} onClick={() => setHoursIdx(i)}
+                    className={`rounded-xl border px-4 py-3 text-left transition ${hoursIdx === i ? "border-emerald-600 bg-emerald-50" : "border-border bg-white hover:bg-muted"}`}>
+                    <div className="font-medium">{p.label}</div>
+                    <div className="text-xs text-muted-foreground">Adjust each day later in Settings.</div>
                   </button>
-                  <input
-                    ref={menuInputRef}
-                    type="file"
-                    accept="image/*,application/pdf"
-                    hidden
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = "";
-                      if (!file) return;
-                      setBusy(true);
-                      try {
-                        const r = restaurant ?? (await ensureRestaurant());
-                        const url = await uploadMedia(r.id, file, "menu");
-                        setMenuFileUrl(url);
-                      } catch (err) {
-                        setError((err as Error).message);
-                      } finally {
-                        setBusy(false);
-                      }
-                    }}
-                  />
-                  {menuFileUrl && <p className="text-xs text-emerald-400">Uploaded: {menuFileUrl}</p>}
-                  <textarea
-                    value={menuText}
-                    onChange={(e) => setMenuText(e.target.value)}
-                    rows={6}
-                    className="w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                    placeholder={"Dish — 18\nAnother dish — 22"}
-                  />
-                  <p className="text-xs text-slate-500">
-                    Tip: one dish per line. Add a price after a dash like `Pasta — 19`.
-                  </p>
-                </div>
-              </Question>
-            )}
+                ))}
+              </div>
+            </QuestionShell>
+          )}
 
-            {step === 8 && (
-              <Question
-                eyebrow="Booking page"
-                title="Customize the guest booking experience"
-                subtitle="We’ll walk through each part of your public booking page."
-              >
-                <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 mb-4">
-                  <div className="text-xs text-slate-500 mb-1">Your booking link</div>
-                  <div className="font-mono text-sm text-emerald-300 break-all">{bookingUrl || "Creating…"}</div>
-                </div>
+          {step === 7 && (
+            <QuestionShell index={7} title="Google My Business" prompt="Paste your Google Business or Maps URL so we can pull in reviews." icon={<Globe className="size-5" />}>
+              <BigInput value={gbUrl} onChange={setGbUrl} placeholder="https://maps.google.com/…" autoFocus />
+              <p className="mt-2 text-xs text-muted-foreground">Optional — you can add this later.</p>
+            </QuestionShell>
+          )}
 
-                <div className="space-y-2 mb-5">
-                  {BOOKING_FLASH_STEPS.map((s, i) => {
-                    const active = i === flashIdx;
-                    return (
-                      <div
-                        key={s.id}
-                        className={`rounded-xl border px-4 py-3 transition-all duration-500 ${
-                          active
-                            ? "border-emerald-400 bg-emerald-500/15 shadow-[0_0_24px_rgba(52,211,153,0.25)] scale-[1.02]"
-                            : "border-slate-800 opacity-60"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`size-2 rounded-full ${active ? "bg-emerald-400 animate-pulse" : "bg-slate-600"}`}
-                          />
-                          <span className="font-medium text-sm">{s.title}</span>
+          {step === 8 && (
+            <QuestionShell index={8} title="Menu" prompt="Upload a menu, paste a URL, or type items in.">
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="rounded-xl border border-dashed border-border bg-white p-4 cursor-pointer hover:bg-muted flex items-center gap-3">
+                    {menuBusy ? <Loader2 className="size-5 animate-spin" /> : <Upload className="size-5 text-emerald-600" />}
+                    <div>
+                      <div className="text-sm font-medium">Upload menu (image / PDF)</div>
+                      <div className="text-xs text-muted-foreground truncate">{menuFileUrl ? "Uploaded ✓" : "PNG, JPG, PDF"}</div>
+                    </div>
+                    <input type="file" accept="image/*,application/pdf" hidden onChange={async (e) => {
+                      const f = e.target.files?.[0]; e.target.value = "";
+                      if (!f) return; setMenuBusy(true);
+                      const url = await uploadTo(f, "menu");
+                      if (url) setMenuFileUrl(url);
+                      setMenuBusy(false);
+                    }} />
+                  </label>
+                  <div className="rounded-xl border border-border bg-white p-4">
+                    <div className="text-sm font-medium mb-2">Or paste a menu URL</div>
+                    <input value={menuUrl} onChange={(e) => setMenuUrl(e.target.value)}
+                      placeholder="https://yoursite.com/menu"
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border bg-white p-4">
+                  <div className="text-sm font-medium mb-1">Paste menu text (one item per line)</div>
+                  <div className="text-xs text-muted-foreground mb-2">Format: <code>Dish name - Description - $12.50</code></div>
+                  <textarea value={menuPasted} onChange={(e) => setMenuPasted(e.target.value)} rows={5}
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono"
+                    placeholder="Bruschetta - Grilled bread, tomato, basil - $12&#10;Cacio e Pepe - Pecorino, black pepper - $21" />
+                  <button onClick={() => setMenuItems(parseMenuText(menuPasted))}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white">
+                    <Sparkles className="size-3.5" /> Parse into items
+                  </button>
+                </div>
+                {menuItems.length > 0 && (
+                  <div className="rounded-xl border border-border bg-white overflow-hidden">
+                    <div className="px-4 py-2 text-xs font-semibold uppercase text-muted-foreground bg-muted/40">
+                      {menuItems.length} items detected — review before saving
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      {menuItems.map((it, i) => (
+                        <div key={i} className="grid grid-cols-[1fr_1fr_90px_36px] gap-2 px-3 py-2 border-t border-border">
+                          <input value={it.name} onChange={(e) => setMenuItems((m) => m.map((r, idx) => idx === i ? { ...r, name: e.target.value } : r))}
+                            className="rounded-md border border-border bg-background px-2 py-1 text-sm" placeholder="Name" />
+                          <input value={it.description} onChange={(e) => setMenuItems((m) => m.map((r, idx) => idx === i ? { ...r, description: e.target.value } : r))}
+                            className="rounded-md border border-border bg-background px-2 py-1 text-sm" placeholder="Description" />
+                          <input value={it.price} onChange={(e) => setMenuItems((m) => m.map((r, idx) => idx === i ? { ...r, price: e.target.value.replace(/[^0-9.]/g, "") } : r))}
+                            className="rounded-md border border-border bg-background px-2 py-1 text-sm" placeholder="Price" inputMode="decimal" />
+                          <button onClick={() => setMenuItems((m) => m.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-destructive"><Trash2 className="size-4" /></button>
                         </div>
-                        <div className="text-xs text-slate-400 mt-1 pl-4">{s.hint}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="space-y-3">
-                  <label className="block">
-                    <span className="text-xs text-slate-500">Headline</span>
-                    <input
-                      value={headline}
-                      onChange={(e) => setHeadline(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm"
-                      placeholder="Reserve a table tonight"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs text-slate-500">Welcome sentence</span>
-                    <input
-                      value={welcome}
-                      onChange={(e) => setWelcome(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm"
-                      placeholder="Book in seconds — we’ll take care of the rest."
-                    />
-                  </label>
-                  <div>
-                    <div className="text-xs text-slate-500 mb-2">Brand color</div>
-                    <div className="flex flex-wrap gap-2">
-                      {COLORS.map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => setBrand(c)}
-                          className={`size-10 rounded-full border-2 ${brand === c ? "border-white scale-110" : "border-transparent"}`}
-                          style={{ backgroundColor: c }}
-                        />
                       ))}
                     </div>
-                  </div>
-                </div>
-              </Question>
-            )}
-
-            {step === 9 && (
-              <Question
-                eyebrow="Employees"
-                title="Add your team (with hourly pay)"
-                subtitle="Hostesses, servers, admins — you can invite more later."
-              >
-                <div className="space-y-3">
-                  {staffRows.map((row) => (
-                    <div key={row.id} className="grid grid-cols-1 sm:grid-cols-[1fr_120px_100px_36px] gap-2">
-                      <input
-                        value={row.full_name}
-                        onChange={(e) =>
-                          setStaffRows((rows) =>
-                            rows.map((r) => (r.id === row.id ? { ...r, full_name: e.target.value } : r)),
-                          )
-                        }
-                        placeholder="Full name"
-                        className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm"
-                      />
-                      <select
-                        value={row.role}
-                        onChange={(e) =>
-                          setStaffRows((rows) =>
-                            rows.map((r) =>
-                              r.id === row.id
-                                ? { ...r, role: e.target.value as StaffDraft["role"] }
-                                : r,
-                            ),
-                          )
-                        }
-                        className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm"
-                      >
-                        <option value="hostess">Hostess</option>
-                        <option value="server">Server</option>
-                        <option value="admin">Admin</option>
-                      </select>
-                      <input
-                        value={row.hourly_wage}
-                        onChange={(e) =>
-                          setStaffRows((rows) =>
-                            rows.map((r) =>
-                              r.id === row.id ? { ...r, hourly_wage: e.target.value.replace(/[^\d.]/g, "") } : r,
-                            ),
-                          )
-                        }
-                        placeholder="$/hr"
-                        className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setStaffRows((rows) => rows.filter((r) => r.id !== row.id))}
-                        className="rounded-xl border border-slate-800 grid place-items-center text-slate-400"
-                      >
-                        <Trash2 className="size-4" />
+                    <div className="border-t border-border p-2">
+                      <button onClick={() => setMenuItems((m) => [...m, { name: "", description: "", price: "" }])}
+                        className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted">
+                        <Plus className="size-3.5" /> Add item
                       </button>
                     </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setStaffRows((rows) => [
-                        ...rows,
-                        { id: crypto.randomUUID(), full_name: "", role: "server", hourly_wage: "16" },
-                      ])
-                    }
-                    className="inline-flex items-center gap-2 text-sm text-emerald-400"
-                  >
-                    <Plus className="size-4" /> Add employee
-                  </button>
-                </div>
-              </Question>
-            )}
-
-            {step === 10 && (
-              <Question
-                eyebrow="Integrations"
-                title="Which tools do you already use?"
-                subtitle="We’ll prioritize these connections next. Nothing is charged here."
-              >
-                <div className="flex flex-wrap gap-2">
-                  {TOOLS.map((t) => {
-                    const on = tools.includes(t);
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() =>
-                          setTools((prev) => (on ? prev.filter((x) => x !== t) : [...prev, t]))
-                        }
-                        className={`rounded-full px-4 py-2 text-sm border ${
-                          on
-                            ? "bg-emerald-500 text-slate-950 border-emerald-400"
-                            : "border-slate-700 text-slate-300"
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    );
-                  })}
-                </div>
-              </Question>
-            )}
-
-            {step === 11 && (
-              <Question
-                eyebrow="Domain"
-                title="Connect a custom domain"
-                subtitle="Optional — skip and use your RestoStack booking link for now."
-              >
-                <BigInput
-                  value={domain}
-                  onChange={setDomain}
-                  placeholder="book.yourrestaurant.com"
-                  autoFocus
-                />
-                <p className="text-xs text-slate-500 mt-2 inline-flex items-center gap-1">
-                  <Link2 className="size-3.5" /> DNS setup can be finished later in Settings.
-                </p>
-              </Question>
-            )}
-
-            {step === 12 && (
-              <Question
-                eyebrow="Customers"
-                title="Upload your old customer list"
-                subtitle="Paste CSV rows: Name, Email, Phone — or skip and start fresh."
-              >
-                <textarea
-                  value={customerText}
-                  onChange={(e) => setCustomerText(e.target.value)}
-                  rows={7}
-                  className="w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                />
-                <p className="text-xs text-slate-500 mt-2">
-                  We’ll import up to 500 guests into your restaurant CRM.
-                </p>
-              </Question>
-            )}
-
-            {step === 13 && (
-              <Question
-                eyebrow="You’re ready"
-                title="Your restaurant is ready from scratch."
-                subtitle="Share the booking link, invite the team, and keep polishing in the dashboard."
-              >
-                <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-                  <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium mb-2">
-                    <Sparkles className="size-4" /> Public booking page
                   </div>
-                  <div className="font-mono text-sm text-emerald-300 break-all">{bookingUrl}</div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={!bookingUrl}
-                      onClick={async () => {
-                        await navigator.clipboard.writeText(bookingUrl);
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 1500);
-                      }}
-                      className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-xs"
-                    >
-                      <Copy className="size-3.5" /> {copied ? "Copied" : "Copy link"}
+                )}
+              </div>
+            </QuestionShell>
+          )}
+
+          {step === 9 && (
+            <BookingCustomizer
+              slug={slug}
+              color={COLORS[colorIdx]}
+              colors={COLORS}
+              colorIdx={colorIdx}
+              setColorIdx={setColorIdx}
+              headline={bookingHeadline}
+              setHeadline={setBookingHeadline}
+              welcome={bookingWelcome}
+              setWelcome={setBookingWelcome}
+              restaurantName={restaurantName}
+            />
+          )}
+
+          {step === 10 && (
+            <QuestionShell index={10} title="Employees" prompt="Add your team — you can invite them later." icon={<Users className="size-5" />}>
+              <StaffList value={staffDrafts} onChange={setStaffDrafts} />
+            </QuestionShell>
+          )}
+
+          {step === 11 && (
+            <QuestionShell index={11} title="Integrations" prompt="Which tools do you already use? (Connect later)" icon={<Puzzle className="size-5" />}>
+              <div className="flex flex-wrap gap-2">
+                {INTEGRATIONS.map((t) => {
+                  const on = integrations.includes(t);
+                  return (
+                    <button key={t} onClick={() => setIntegrations((s) => on ? s.filter((x) => x !== t) : [...s, t])}
+                      className={`rounded-full border px-4 py-2 text-sm font-medium transition ${on ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-border bg-white hover:bg-muted"}`}>
+                      {on && <Check className="inline size-3.5 mr-1" />}{t}
                     </button>
-                    {bookingUrl && (
-                      <a
-                        href={bookingUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-xs"
-                      >
-                        <ExternalLink className="size-3.5" /> Open page
-                      </a>
-                    )}
-                  </div>
-                </div>
-              </Question>
-            )}
-          </div>
+                  );
+                })}
+              </div>
+            </QuestionShell>
+          )}
 
-          {error && (
-            <div className="mt-6 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-              {error}
+          {step === 12 && (
+            <QuestionShell index={12} title="Custom domain" prompt="Have your own domain? Add it here (optional)." icon={<Link2 className="size-5" />}>
+              <BigInput value={customDomain} onChange={setCustomDomain} placeholder="book.yourrestaurant.com" autoFocus />
+              <p className="mt-2 text-xs text-muted-foreground">We'll help you set up DNS after onboarding.</p>
+            </QuestionShell>
+          )}
+
+          {step === 13 && (
+            <QuestionShell index={13} title="Import customers" prompt="Bring your existing guest list — CSV or paste it in." icon={<Database className="size-5" />}>
+              <div className="rounded-xl border border-border bg-white p-4">
+                <div className="text-sm font-medium mb-1">Paste rows (Name, Email, Phone)</div>
+                <div className="text-xs text-muted-foreground mb-2">One per line, comma or tab separated.</div>
+                <textarea value={customerPaste} onChange={(e) => setCustomerPaste(e.target.value)} rows={6}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono"
+                  placeholder="Jane Doe, jane@example.com, 555-0100&#10;John Smith, john@example.com, 555-0101" />
+                <div className="mt-2 flex items-center gap-3">
+                  <label className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium cursor-pointer hover:bg-muted">
+                    <Upload className="size-3.5" /> Upload CSV
+                    <input type="file" accept=".csv,text/csv" hidden onChange={async (e) => {
+                      const f = e.target.files?.[0]; e.target.value = "";
+                      if (!f) return; setCustomerPaste(await f.text());
+                    }} />
+                  </label>
+                  <button onClick={() => setCustomerDrafts(parseCustomerText(customerPaste))}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white">
+                    <Sparkles className="size-3.5" /> Preview
+                  </button>
+                  {customerDrafts.length > 0 && <span className="text-xs text-muted-foreground">{customerDrafts.length} rows ready</span>}
+                </div>
+              </div>
+            </QuestionShell>
+          )}
+
+          {step === 14 && (
+            <CelebrateStep
+              restaurantName={restaurantName}
+              slug={slug}
+              onFinish={finish}
+              busy={busy}
+              primary={COLORS[colorIdx].value}
+              accent={COLORS[colorIdx].accent}
+            />
+          )}
+
+          {step < TOTAL && (
+            <div className="mt-8 flex items-center gap-3">
+              <button onClick={next} disabled={busy || !canContinue}
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60">
+                {busy && <Loader2 className="size-4 animate-spin" />} Continue <ArrowRight className="size-4" />
+              </button>
+              {skippable && (
+                <button onClick={skip} className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2">
+                  Skip this
+                </button>
+              )}
+              <span className="ml-auto text-xs text-muted-foreground">press <kbd className="rounded border border-border bg-white px-1.5 py-0.5">Enter</kbd></span>
             </div>
           )}
         </div>
-
-        <div className="flex items-center justify-between gap-3 pb-6">
-          <button
-            type="button"
-            disabled={busy || step === 0}
-            onClick={() => setStep((s) => Math.max(0, s - 1))}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2.5 text-sm text-slate-300 disabled:opacity-30"
-          >
-            <ArrowLeft className="size-4" /> Back
-          </button>
-
-          <div className="flex items-center gap-2">
-            {[6, 7, 9, 11, 12].includes(step) && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void next({ skip: true })}
-                className="rounded-xl px-4 py-2.5 text-sm text-slate-400 hover:text-slate-200"
-              >
-                Skip
-              </button>
-            )}
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void next()}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-60"
-            >
-              {busy && <Loader2 className="size-4 animate-spin" />}
-              {step === 13 ? (
-                <>
-                  <Check className="size-4" /> Open dashboard
-                </>
-              ) : (
-                <>
-                  OK <ArrowRight className="size-4" />
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {step < 13 && (
-          <p className="text-center text-[11px] text-slate-600 pb-4">Press Enter ↵ to continue</p>
-        )}
-      </div>
+      </main>
     </div>
   );
 }
 
-function Question({
-  eyebrow,
-  title,
-  subtitle,
-  children,
+function QuestionShell({
+  index, title, prompt, children, onEnter, icon,
 }: {
-  eyebrow: string;
-  title: string;
-  subtitle: string;
-  children: React.ReactNode;
+  index?: number; title: string; prompt?: string; children: React.ReactNode;
+  onEnter?: () => void; icon?: React.ReactNode;
 }) {
   return (
-    <div>
-      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400/90">{eyebrow}</div>
-      <h1 className="mt-3 text-3xl sm:text-4xl font-semibold tracking-tight text-white leading-tight">{title}</h1>
-      <p className="mt-3 text-slate-400">{subtitle}</p>
-      <div className="mt-8">{children}</div>
+    <div
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && onEnter && !(e.target instanceof HTMLTextAreaElement)) {
+          e.preventDefault();
+          onEnter();
+        }
+      }}
+    >
+      {index !== undefined && (
+        <div className="text-[11px] font-bold uppercase tracking-widest text-emerald-700 inline-flex items-center gap-1.5">
+          {icon}Question {index}
+        </div>
+      )}
+      <h1 className="mt-1 text-3xl md:text-4xl font-serif font-bold tracking-tight">{title}</h1>
+      {prompt && <p className="mt-2 text-lg text-muted-foreground">{prompt}</p>}
+      <div className="mt-6">{children}</div>
     </div>
   );
 }
 
 function BigInput({
-  value,
-  onChange,
-  placeholder,
-  autoFocus,
+  value, onChange, placeholder, autoFocus, inputMode,
 }: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  autoFocus?: boolean;
+  value: string; onChange: (v: string) => void;
+  placeholder?: string; autoFocus?: boolean; inputMode?: "numeric" | "decimal" | "text";
 }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (autoFocus) ref.current?.focus(); }, [autoFocus]);
   return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      autoFocus={autoFocus}
-      className="w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-4 text-xl text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-    />
+    <input ref={ref} value={value} onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder} inputMode={inputMode}
+      className="w-full rounded-xl border-2 border-border bg-white px-5 py-4 text-xl focus:outline-none focus:border-emerald-600 transition" />
   );
 }
 
-function ChipRow({
-  options,
-  value,
-  onChange,
-}: {
-  options: string[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
+function StaffList({ value, onChange }: { value: StaffDraft[]; onChange: (s: StaffDraft[]) => void }) {
+  const add = () => onChange([...value, { id: crypto.randomUUID(), name: "", role: "server", wage: "" }]);
+  const update = (id: string, patch: Partial<StaffDraft>) => onChange(value.map((s) => s.id === id ? { ...s, ...patch } : s));
+  const remove = (id: string) => onChange(value.filter((s) => s.id !== id));
   return (
-    <div className="flex flex-wrap gap-2">
-      {options.map((c) => (
-        <button
-          key={c}
-          type="button"
-          onClick={() => onChange(c)}
-          className={`rounded-full px-4 py-2 text-sm border ${
-            value === c
-              ? "bg-emerald-500 text-slate-950 border-emerald-400"
-              : "border-slate-700 text-slate-300 hover:border-slate-500"
-          }`}
-        >
-          {c}
-        </button>
+    <div className="space-y-2">
+      {value.length === 0 && (
+        <div className="rounded-xl border border-dashed border-border bg-white p-6 text-center text-sm text-muted-foreground">
+          No employees added yet.
+        </div>
+      )}
+      {value.map((s) => (
+        <div key={s.id} className="grid grid-cols-[1fr_140px_120px_36px] gap-2 items-center">
+          <input value={s.name} onChange={(e) => update(s.id, { name: e.target.value })}
+            placeholder="Full name" className="rounded-md border border-border bg-white px-3 py-2 text-sm" />
+          <select value={s.role} onChange={(e) => update(s.id, { role: e.target.value as any })}
+            className="rounded-md border border-border bg-white px-3 py-2 text-sm">
+            <option value="hostess">Hostess</option>
+            <option value="server">Server</option>
+            <option value="admin">Admin</option>
+          </select>
+          <input value={s.wage} onChange={(e) => update(s.id, { wage: e.target.value.replace(/[^0-9.]/g, "") })}
+            placeholder="$/hr" inputMode="decimal" className="rounded-md border border-border bg-white px-3 py-2 text-sm" />
+          <button onClick={() => remove(s.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="size-4" /></button>
+        </div>
       ))}
+      <button onClick={add} className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border bg-white px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted">
+        <Plus className="size-4" /> Add employee
+      </button>
     </div>
   );
 }
+
+function BookingCustomizer({
+  slug, color, colors, colorIdx, setColorIdx, headline, setHeadline, welcome, setWelcome, restaurantName,
+}: {
+  slug: string | null; color: { value: string; accent: string };
+  colors: typeof COLORS; colorIdx: number; setColorIdx: (i: number) => void;
+  headline: string; setHeadline: (v: string) => void;
+  welcome: string; setWelcome: (v: string) => void;
+  restaurantName: string;
+}) {
+  // Flashing walkthrough — cycle highlight through the 4 elements
+  const [flash, setFlash] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setFlash((f) => (f + 1) % 4), 1800);
+    return () => clearInterval(t);
+  }, []);
+  const url = slug ? (typeof window !== "undefined" ? `${window.location.origin}/book/${slug}` : `/book/${slug}`) : "";
+  const [copied, setCopied] = useState(false);
+
+  const ring = (i: number) => flash === i
+    ? "ring-4 ring-offset-2 ring-emerald-400 animate-pulse"
+    : "ring-0";
+
+  return (
+    <div>
+      <div className="text-[11px] font-bold uppercase tracking-widest text-emerald-700">Question 9</div>
+      <h1 className="mt-1 text-3xl md:text-4xl font-serif font-bold tracking-tight">Customize your booking page</h1>
+      <p className="mt-2 text-lg text-muted-foreground">Walk through what your guests will see. Watch the highlighted step ✨</p>
+
+      {slug && (
+        <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 text-sm">
+          <Globe className="size-4 text-emerald-600" />
+          <span className="font-mono text-xs break-all flex-1">{url}</span>
+          <button onClick={async () => { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1200); } catch {} }}
+            className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-xs font-semibold text-white">
+            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}{copied ? "Copied" : "Copy"}
+          </button>
+          <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs">
+            <ExternalLink className="size-3.5" />
+          </a>
+        </div>
+      )}
+
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Editor */}
+        <div className="space-y-3">
+          <div className={`rounded-xl border-2 border-border bg-white p-4 transition ${ring(0)}`}>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1">1 · Headline</div>
+            <input value={headline} onChange={(e) => setHeadline(e.target.value)}
+              placeholder={`Book a table at ${restaurantName || "your place"}`}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+          </div>
+          <div className={`rounded-xl border-2 border-border bg-white p-4 transition ${ring(1)}`}>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1">2 · Welcome message</div>
+            <textarea value={welcome} onChange={(e) => setWelcome(e.target.value)} rows={2}
+              placeholder="A short note guests see before booking."
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+          </div>
+          <div className={`rounded-xl border-2 border-border bg-white p-4 transition ${ring(2)}`}>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-2">3 · Brand color</div>
+            <div className="grid grid-cols-6 gap-2">
+              {colors.map((c, i) => (
+                <button key={c.name} onClick={() => setColorIdx(i)}
+                  className={`h-10 rounded-lg border-2 ${colorIdx === i ? "border-foreground" : "border-transparent"}`}
+                  style={{ background: `linear-gradient(135deg, ${c.value}, ${c.accent})` }}
+                  title={c.name} />
+              ))}
+            </div>
+          </div>
+          <div className={`rounded-xl border-2 border-border bg-white p-4 transition ${ring(3)}`}>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1">4 · Occasion options</div>
+            <div className="flex flex-wrap gap-1.5">
+              {["Birthday", "Anniversary", "Date night", "Business", "Family"].map((o) => (
+                <span key={o} className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs">{o}</span>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">Auto-included on your booking form.</p>
+          </div>
+        </div>
+
+        {/* Preview */}
+        <div className="rounded-2xl overflow-hidden border border-border shadow-sm">
+          <div className={`p-6 text-white transition ${flash === 0 || flash === 2 ? "" : ""}`}
+            style={{ background: `linear-gradient(135deg, ${color.value}, ${color.accent})` }}>
+            <div className={`text-2xl font-serif font-bold ${flash === 0 ? "animate-pulse" : ""}`}>
+              {headline || `Book a table at ${restaurantName || "your restaurant"}`}
+            </div>
+            <div className={`mt-2 text-sm opacity-90 ${flash === 1 ? "animate-pulse" : ""}`}>
+              {welcome || "We can't wait to have you. Reserve your table in seconds."}
+            </div>
+          </div>
+          <div className="p-4 bg-white space-y-2">
+            <div className="text-xs text-muted-foreground">Party size</div>
+            <div className="flex gap-1.5">
+              {[2, 3, 4, 5, 6].map((n) => (
+                <span key={n} className="grid size-8 place-items-center rounded-md border border-border text-sm">{n}</span>
+              ))}
+            </div>
+            <div className={`mt-3 rounded-lg border border-border p-2 ${flash === 3 ? "ring-2 ring-emerald-400 animate-pulse" : ""}`}>
+              <div className="text-[10px] font-semibold uppercase text-muted-foreground mb-1">Occasion</div>
+              <div className="flex flex-wrap gap-1">
+                {["Birthday", "Anniversary", "Date night"].map((o) => (
+                  <span key={o} className="rounded-full border border-border px-2 py-0.5 text-[11px]">{o}</span>
+                ))}
+              </div>
+            </div>
+            <button className="mt-2 w-full rounded-md py-2 text-sm font-semibold text-white"
+              style={{ background: color.value }}>Reserve</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CelebrateStep({
+  restaurantName, slug, onFinish, busy, primary, accent,
+}: {
+  restaurantName: string; slug: string | null; onFinish: () => void; busy: boolean;
+  primary: string; accent: string;
+}) {
+  const url = useMemo(() => {
+    if (typeof window === "undefined" || !slug) return slug ? `/book/${slug}` : "";
+    return `${window.location.origin}/book/${slug}`;
+  }, [slug]);
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); }
+    catch { toast.error("Copy failed"); }
+  };
+
+  return (
+    <div className="text-center">
+      <div className="mx-auto inline-flex size-16 items-center justify-center rounded-full bg-emerald-100">
+        <Sparkles className="size-8 text-emerald-600" />
+      </div>
+      <h1 className="mt-4 text-4xl md:text-5xl font-serif font-bold tracking-tight">You're all set 🎉</h1>
+      <p className="mt-2 text-lg text-muted-foreground">
+        {restaurantName || "Your restaurant"} is live on RestoStack.
+      </p>
+
+      {slug && (
+        <div className="mt-8 rounded-2xl overflow-hidden border border-border shadow-sm text-left">
+          <div className="p-6 text-white" style={{ background: `linear-gradient(135deg, ${primary}, ${accent})` }}>
+            <div className="text-[10px] font-semibold uppercase tracking-wider opacity-80">Your public booking page</div>
+            <div className="mt-1 font-mono text-sm break-all">{url}</div>
+          </div>
+          <div className="p-4 bg-white flex flex-wrap gap-2">
+            <button onClick={copy} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
+              {copied ? <Check className="size-4" /> : <Copy className="size-4" />} {copied ? "Copied!" : "Copy link"}
+            </button>
+            <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium">
+              <ExternalLink className="size-4" /> Open
+            </a>
+          </div>
+        </div>
+      )}
+
+      <button onClick={onFinish} disabled={busy}
+        className="mt-8 inline-flex items-center gap-2 rounded-lg bg-foreground px-6 py-3 text-base font-semibold text-background hover:opacity-90 disabled:opacity-60">
+        {busy && <Loader2 className="size-4 animate-spin" />} Go to my dashboard <ArrowRight className="size-4" />
+      </button>
+    </div>
+  );
+}
+
+void DEFAULT_HOURS;
