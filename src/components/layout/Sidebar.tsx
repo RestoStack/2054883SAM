@@ -3,7 +3,7 @@ import {
   LayoutDashboard, CalendarDays, ShoppingBag, Users, UtensilsCrossed,
   Megaphone, Award, BarChart3, UserCog, Network, Settings, ChevronRight,
   Sparkles, Mail, MessageSquare, UserPlus, Star, Tag, FileText, Share2, Wallet,
-  Calendar, LineChart, ClipboardList, Utensils, Trophy, Menu, Building2, Shield,
+  Calendar, LineChart, ClipboardList, Utensils, Trophy, Menu,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import logo from "@/assets/logo.png";
@@ -69,9 +69,8 @@ const marketingActions = [
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { role } = useRole();
-  const { platformAdmin, staff } = useAuth();
-  const nav = staff ? NAV_BY_ROLE[role] : [];
-  const showMarketing = !!staff && role === "admin" && (pathname.startsWith("/marketing") || pathname.startsWith("/loyalty"));
+  const nav = NAV_BY_ROLE[role];
+  const showMarketing = role === "admin" && (pathname.startsWith("/marketing") || pathname.startsWith("/loyalty"));
 
   return (
     <>
@@ -80,25 +79,6 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-2">
-        {platformAdmin && (
-          <div className="mb-3">
-            <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Platform
-            </div>
-            <Link
-              to="/platform/restaurants"
-              onClick={onNavigate}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                pathname.startsWith("/platform")
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent/50"
-              }`}
-            >
-              <Building2 className="size-4" />
-              All Restaurants
-            </Link>
-          </div>
-        )}
         <ul className="space-y-0.5">
           {nav.map((item) => {
             const Icon = item.icon;
@@ -171,7 +151,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function RestaurantTile() {
-  const { staff, platformAdmin } = useAuth();
+  const { staff } = useAuth();
   const [info, setInfo] = useState<{ name: string; city: string | null; logo_url: string | null } | null>(null);
 
   useEffect(() => {
@@ -185,20 +165,6 @@ function RestaurantTile() {
       if (data) setInfo(data);
     })();
   }, [staff]);
-
-  if (!staff && platformAdmin) {
-    return (
-      <div className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left">
-        <div className="size-8 rounded-md bg-primary/15 flex items-center justify-center shrink-0">
-          <Shield className="size-4 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-foreground truncate">Platform Admin</div>
-          <div className="text-xs text-muted-foreground truncate">All restaurants</div>
-        </div>
-      </div>
-    );
-  }
 
   const name = info?.name ?? (staff ? "Your restaurant" : "RestoStack");
   const city = info?.city ?? (staff ? "—" : "");

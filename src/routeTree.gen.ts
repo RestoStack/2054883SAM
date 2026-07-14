@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SuperAdminLoginRouteImport } from './routes/super-admin-login'
 import { Route as StaffRouteImport } from './routes/staff'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -47,6 +48,11 @@ import { Route as MarketingCatchBackRouteImport } from './routes/marketing.catch
 import { Route as CustomersIdRouteImport } from './routes/customers_.$id'
 import { Route as BookSlugRouteImport } from './routes/book_.$slug'
 
+const SuperAdminLoginRoute = SuperAdminLoginRouteImport.update({
+  id: '/super-admin-login',
+  path: '/super-admin-login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StaffRoute = StaffRouteImport.update({
   id: '/staff',
   path: '/staff',
@@ -260,6 +266,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
+  '/super-admin-login': typeof SuperAdminLoginRoute
   '/book/$slug': typeof BookSlugRoute
   '/customers/$id': typeof CustomersIdRoute
   '/marketing/catch-back': typeof MarketingCatchBackRoute
@@ -299,6 +306,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
+  '/super-admin-login': typeof SuperAdminLoginRoute
   '/book/$slug': typeof BookSlugRoute
   '/customers/$id': typeof CustomersIdRoute
   '/marketing/catch-back': typeof MarketingCatchBackRoute
@@ -339,6 +347,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
+  '/super-admin-login': typeof SuperAdminLoginRoute
   '/book_/$slug': typeof BookSlugRoute
   '/customers_/$id': typeof CustomersIdRoute
   '/marketing/catch-back': typeof MarketingCatchBackRoute
@@ -380,6 +389,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/signup'
     | '/staff'
+    | '/super-admin-login'
     | '/book/$slug'
     | '/customers/$id'
     | '/marketing/catch-back'
@@ -419,6 +429,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/signup'
     | '/staff'
+    | '/super-admin-login'
     | '/book/$slug'
     | '/customers/$id'
     | '/marketing/catch-back'
@@ -458,6 +469,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/signup'
     | '/staff'
+    | '/super-admin-login'
     | '/book_/$slug'
     | '/customers_/$id'
     | '/marketing/catch-back'
@@ -498,6 +510,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SignupRoute: typeof SignupRoute
   StaffRoute: typeof StaffRoute
+  SuperAdminLoginRoute: typeof SuperAdminLoginRoute
   BookSlugRoute: typeof BookSlugRoute
   CustomersIdRoute: typeof CustomersIdRoute
   PlatformRestaurantsRoute: typeof PlatformRestaurantsRoute
@@ -505,6 +518,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/super-admin-login': {
+      id: '/super-admin-login'
+      path: '/super-admin-login'
+      fullPath: '/super-admin-login'
+      preLoaderRoute: typeof SuperAdminLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/staff': {
       id: '/staff'
       path: '/staff'
@@ -820,6 +840,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SignupRoute: SignupRoute,
   StaffRoute: StaffRoute,
+  SuperAdminLoginRoute: SuperAdminLoginRoute,
   BookSlugRoute: BookSlugRoute,
   CustomersIdRoute: CustomersIdRoute,
   PlatformRestaurantsRoute: PlatformRestaurantsRoute,

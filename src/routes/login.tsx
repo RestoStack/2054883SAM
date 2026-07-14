@@ -22,7 +22,7 @@ interface Tile {
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { session, staff, platformAdmin, loading } = useAuth();
+  const { session, staff, loading } = useAuth();
   const [tab, setTab] = useState<"admin" | "staff">("admin");
   const [tiles, setTiles] = useState<Tile[]>([]);
   const [selectedTile, setSelectedTile] = useState<Tile | null>(null);
@@ -37,16 +37,17 @@ function LoginPage() {
   useEffect(() => {
     if (loading) return;
     if (session && staff) {
+      try {
+        sessionStorage.setItem("restostack:portal", "restaurant");
+      } catch {
+        /* ignore */
+      }
       const home =
         staff.role === "admin" ? "/dashboard" :
         staff.role === "hostess" ? "/host-stand" : "/server-app";
       navigate({ to: home, replace: true });
-      return;
     }
-    if (session && platformAdmin) {
-      navigate({ to: "/platform/restaurants", replace: true });
-    }
-  }, [loading, session, staff, platformAdmin, navigate]);
+  }, [loading, session, staff, navigate]);
 
   // Auto-run bootstrap on first mount (idempotent — creates auth users for unlinked staff).
   useEffect(() => {
@@ -247,7 +248,14 @@ function LoginPage() {
           </div>
         </div>
 
-        <details className="mt-6 text-xs text-muted-foreground">
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          Platform operators:{" "}
+          <a href="/super-admin-login" className="underline underline-offset-2 hover:text-foreground">
+            Super Admin login
+          </a>
+        </p>
+
+        <details className="mt-4 text-xs text-muted-foreground">
           <summary className="cursor-pointer hover:text-foreground">First-time setup</summary>
           <div className="mt-3 rounded-lg border border-border bg-card p-4 space-y-2">
             <p>

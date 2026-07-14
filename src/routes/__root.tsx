@@ -17,7 +17,15 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { Toaster } from "@/components/ui/sonner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
-const PUBLIC_PATHS = ["/", "/book", "/login", "/admin-login", "/pitchdeck", "/signup"];
+const PUBLIC_PATHS = [
+  "/",
+  "/book",
+  "/login",
+  "/admin-login",
+  "/super-admin-login",
+  "/pitchdeck",
+  "/signup",
+];
 
 function isPublicPath(pathname: string) {
   return (
@@ -42,13 +50,15 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     }
     // Server pad uses its own PIN session, not Supabase staff auth.
     if (pathname === "/server-login" || pathname === "/server-app") return;
-    // Platform super-admin console (all restaurants).
+    // Platform super-admin console — separate from restaurant login.
     if (pathname.startsWith("/platform")) {
-      if (!session || !platformAdmin) navigate({ to: "/login", replace: true });
+      if (!session || !platformAdmin) {
+        navigate({ to: "/super-admin-login", replace: true });
+      }
       return;
     }
     if (!session || !staff) {
-      // Platform-only accounts land on the restaurant directory.
+      // Platform-only accounts (no restaurant staff row) use the Super Admin portal.
       if (session && platformAdmin) {
         navigate({ to: "/platform/restaurants", replace: true });
         return;
