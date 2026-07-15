@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { useBookings, useUpdateBooking, type BookingRow } from "@/lib/v2-data";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { AppShell } from "@/components/layout/Sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -386,10 +385,12 @@ function HostStandPage() {
   const clock = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
   return (
-    <AppShell fullBleed>
-      <div className="flex-1 min-h-0 flex flex-col bg-[#14171b] text-zinc-100">
+    <div className="fixed inset-0 z-40 flex flex-col bg-[#14171b] text-zinc-100">
         {/* Top bar — date + shift */}
         <header className="shrink-0 h-12 border-b border-white/10 px-3 sm:px-4 flex items-center gap-3 bg-[#1a1e24]">
+          <Link to="/dashboard" className="text-xs text-zinc-400 hover:text-white shrink-0">
+            ← Back
+          </Link>
           <div className="font-semibold text-sm sm:text-base truncate max-w-[180px] sm:max-w-xs">
             {restaurantName}
           </div>
@@ -886,6 +887,6 @@ function HostStandPage() {
           </div>
         </div>
       )}
-    </AppShell>
+    </div>
   );
 }
