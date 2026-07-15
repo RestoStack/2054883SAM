@@ -435,7 +435,7 @@ function HostStandPage() {
 
         <div className="flex-1 min-h-0 flex">
           {/* Left panel */}
-          <aside className="w-full max-w-[340px] shrink-0 border-r border-white/10 bg-[#1a1e24] flex flex-col min-h-0">
+          <aside className="w-[260px] md:w-[300px] shrink-0 border-r border-white/10 bg-[#1a1e24] flex flex-col min-h-0">
             <div className="p-2.5 flex gap-1 border-b border-white/10">
               {(
                 [
@@ -617,11 +617,10 @@ function HostStandPage() {
             </div>
           </aside>
 
-          {/* Floor plan */}
-          <section className="flex-1 min-w-0 relative flex flex-col bg-[#12151a]">
-            {/* Forced seating banner */}
+          {/* Floor plan — full remaining viewport */}
+          <section className="flex-1 min-w-0 relative flex flex-col bg-[#1e2329]">
             {seatTarget && (
-              <div className="shrink-0 px-4 py-2.5 bg-emerald-500 text-zinc-950 flex items-center gap-3">
+              <div className="shrink-0 z-20 px-4 py-2.5 bg-emerald-500 text-zinc-950 flex items-center gap-3">
                 <MapPin className="size-4 shrink-0" />
                 <div className="text-sm font-semibold flex-1">
                   Select a table for {seatTarget.name}
@@ -637,8 +636,7 @@ function HostStandPage() {
               </div>
             )}
 
-            {/* Section pills */}
-            <div className="shrink-0 px-3 pt-3 flex flex-wrap gap-1.5">
+            <div className="shrink-0 z-10 px-3 py-2 flex flex-wrap items-center gap-1.5 bg-[#1a1e24]/90 border-b border-white/5">
               {SECTIONS.map((s) => (
                 <button
                   key={s}
@@ -654,36 +652,40 @@ function HostStandPage() {
                   {s === "All" ? "All floors" : s}
                 </button>
               ))}
+              <div className="ml-auto hidden md:flex items-center gap-3 text-[10px] text-zinc-500">
+                <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-zinc-300" /> Free</span>
+                <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-violet-300" /> Booked</span>
+                <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-violet-600" /> Seated</span>
+                <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-rose-400" /> Late</span>
+              </div>
             </div>
 
             <div
               className={cn(
-                "flex-1 min-h-0 p-3 sm:p-4 overflow-auto flex items-center justify-center transition",
-                seatTarget && "ring-inset ring-2 ring-emerald-500/40",
+                "flex-1 min-h-0 relative",
+                seatTarget && "ring-inset ring-2 ring-emerald-500/50",
               )}
             >
-              <div className="w-full max-w-5xl">
-                <FloorPlan
-                  items={floorItems}
-                  selectedId={selectedTable}
-                  zoom={zoom}
-                  onSelect={onTableClick}
-                  className={cn(seatTarget && "brightness-110")}
-                />
-                {positionedTables.length === 0 && (
-                  <p className="text-center text-[11px] text-zinc-500 mt-2">
-                    Demo layout —{" "}
-                    <Link to="/floorplan" className="text-emerald-400 underline">
-                      place your tables
-                    </Link>{" "}
-                    for a custom floor plan.
-                  </p>
-                )}
-              </div>
+              <FloorPlan
+                fill
+                items={floorItems}
+                selectedId={selectedTable}
+                zoom={zoom}
+                onSelect={onTableClick}
+                className="absolute inset-0"
+              />
+              {positionedTables.length === 0 && (
+                <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] text-zinc-400 bg-black/50 px-3 py-1 rounded-full pointer-events-none">
+                  Demo layout ·{" "}
+                  <Link to="/floorplan" className="text-emerald-400 underline pointer-events-auto">
+                    place your tables
+                  </Link>
+                </p>
+              )}
             </div>
 
-            <div className="absolute bottom-4 right-4 flex items-center gap-2">
-              <div className="flex items-center rounded-lg border border-white/10 bg-[#1a1e24]/95 overflow-hidden">
+            <div className="absolute bottom-4 right-4 z-20 flex items-center gap-2">
+              <div className="flex items-center rounded-lg border border-white/10 bg-[#1a1e24]/95 backdrop-blur overflow-hidden shadow-lg">
                 <button
                   type="button"
                   className="size-8 grid place-items-center hover:bg-white/5"

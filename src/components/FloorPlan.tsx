@@ -49,6 +49,8 @@ export type FloorPlanProps = {
   compact?: boolean;
   /** Scale factor for zoom (1 = 100%) */
   zoom?: number;
+  /** Stretch to parent width/height instead of locked aspect-ratio box */
+  fill?: boolean;
 };
 
 const statusFill: Record<FloorTableStatus, string> = {
@@ -72,6 +74,7 @@ export function FloorPlan({
   className,
   compact = false,
   zoom = 1,
+  fill = false,
 }: FloorPlanProps) {
   const pct = (v: number, total: number) => `${(v / total) * 100}%`;
 
@@ -84,12 +87,15 @@ export function FloorPlan({
   return (
     <div
       className={cn(
-        "relative w-full overflow-hidden rounded-xl border border-zinc-700/80 bg-[#2a2f36]",
+        "relative overflow-hidden bg-[#2a2f36]",
+        fill
+          ? "h-full w-full rounded-none border-0"
+          : "w-full rounded-xl border border-zinc-700/80",
         className,
       )}
       style={{
-        aspectRatio: `${width} / ${height}`,
-        transform: `scale(${zoom})`,
+        ...(fill ? {} : { aspectRatio: `${width} / ${height}` }),
+        transform: zoom !== 1 ? `scale(${zoom})` : undefined,
         transformOrigin: "center center",
       }}
     >
