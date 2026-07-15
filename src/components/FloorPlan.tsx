@@ -112,7 +112,7 @@ export function FloorPlan({
       )}
       style={
         fill
-          ? undefined
+          ? { width: "100%", height: "100%" }
           : {
               width: width * zoom,
               height: height * zoom,

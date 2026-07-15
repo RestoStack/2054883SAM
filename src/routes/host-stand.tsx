@@ -436,7 +436,7 @@ function HostStandPage() {
 
         <div className="flex-1 min-h-0 flex">
           {/* Left panel */}
-          <aside className="w-[260px] md:w-[300px] shrink-0 border-r border-white/10 bg-[#1a1e24] flex flex-col min-h-0">
+          <aside className="w-[240px] md:w-[280px] shrink-0 border-r border-white/10 bg-[#1a1e24] flex flex-col min-h-0">
             <div className="p-2.5 flex gap-1 border-b border-white/10">
               {(
                 [
@@ -637,7 +637,7 @@ function HostStandPage() {
               </div>
             )}
 
-            <div className="shrink-0 z-10 px-3 py-2 flex flex-wrap items-center gap-1.5 bg-[#1a1e24]/90 border-b border-white/5">
+            <div className="shrink-0 z-10 px-2 py-1.5 flex flex-wrap items-center gap-1 bg-[#1a1e24]/90 border-b border-white/5">
               {SECTIONS.map((s) => (
                 <button
                   key={s}
@@ -673,7 +673,7 @@ function HostStandPage() {
                 selectedId={selectedTable}
                 zoom={zoom}
                 onSelect={onTableClick}
-                className="absolute inset-0"
+                className="absolute inset-0 h-full w-full"
               />
               {positionedTables.length === 0 && (
                 <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] text-zinc-400 bg-black/50 px-3 py-1 rounded-full pointer-events-none">
