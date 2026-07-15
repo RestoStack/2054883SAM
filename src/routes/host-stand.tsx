@@ -14,14 +14,21 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
 import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { FloorPlan, mainFloorPlan, type FloorItem } from "@/components/FloorPlan";
 import { toast } from "sonner";
 import {
   Clock, Users, Phone, StickyNote, UserPlus, CheckCircle2, AlertCircle,
-  CalendarClock, Utensils, Timer,
+  CalendarClock, Utensils, Timer, MapPin,
 } from "lucide-react";
+
+type SeatTarget =
+  | { kind: "waitlist"; id: string; name: string; party: number }
+  | { kind: "reservation"; id: string; name: string; party: number; existingTable?: string | number };
 
 export const Route = createFileRoute("/host-stand")({
   head: () => ({
@@ -72,6 +79,9 @@ function HostStandPage() {
   const qc = useQueryClient();
   const [selectedTable, setSelectedTable] = useState<number | string | null>(null);
   const [activeRes, setActiveRes] = useState<Reservation | null>(null);
+  const [seatTarget, setSeatTarget] = useState<SeatTarget | null>(null);
+  const [seatPick, setSeatPick] = useState<number | string | null>(null);
+  const [seatingBusy, setSeatingBusy] = useState(false);
   const [newName, setNewName] = useState("");
   const [newParty, setNewParty] = useState("2");
   const [newPhone, setNewPhone] = useState("");
@@ -185,8 +195,47 @@ function HostStandPage() {
     [todays]
   );
 
+  const occupiedTableIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of seatedList) {
+      if (s.table != null && s.table !== "—") set.add(String(s.table));
+    }
+    return set;
+  }, [seatedList]);
+
+  const floorItemsWithStatus = useMemo<FloorItem[]>(
+    () =>
+      floorItems.map((it) => {
+        if (it.kind !== "round" && it.kind !== "rect") return it;
+        if (it.id == null) return it;
+        const occupied = occupiedTableIds.has(String(it.id));
+        return { ...it, status: occupied ? "booked" : "free" };
+      }),
+    [floorItems, occupiedTableIds],
+  );
+
   const matchedRes = selectedTable != null ? RESERVATIONS.find((r) => r.table === selectedTable) : null;
   const matchedSeated = selectedTable != null ? seatedList.find((s) => s.table === selectedTable) : null;
+
+  const openSeatPicker = (target: SeatTarget) => {
+    const pre =
+      selectedTable ??
+      ("existingTable" in target ? target.existingTable ?? null : null);
+    const usable =
+      pre != null && !occupiedTableIds.has(String(pre)) ? pre : null;
+    setSeatPick(usable);
+    setSeatTarget(target);
+    setActiveRes(null);
+  };
+
+  const markTableOccupied = async (tableNumber: string, bookingId: string | null) => {
+    if (!staff?.restaurant_id) return;
+    await supabase
+      .from("v2_tables")
+      .update({ status: "occupied", current_booking_id: bookingId } as never)
+      .eq("restaurant_id", staff.restaurant_id)
+      .eq("table_number", tableNumber);
+  };
 
   const addWaitlist = () => {
     if (!newName.trim()) return;
@@ -203,12 +252,10 @@ function HostStandPage() {
     );
   };
 
-  const seatWaitlist = (id: string) => {
-    const w = waitlist.find(x => x.id === id);
-    updateWaitlistMut.mutate(
-      { id, status: "seated", table_number: selectedTable != null ? String(selectedTable) : null },
-      { onSuccess: () => toast.success(`${w?.guest_name} seated${selectedTable != null ? ` at ${selectedTable}` : ""}`) }
-    );
+  const askSeatWaitlist = (id: string) => {
+    const w = waitlist.find((x) => x.id === id);
+    if (!w) return;
+    openSeatPicker({ kind: "waitlist", id: w.id, name: w.guest_name, party: w.party_size });
   };
 
   const removeWaitlist = (id: string) => {
@@ -222,15 +269,55 @@ function HostStandPage() {
     );
   };
 
-  const seatNow = (res: Reservation) => {
-    updateBooking.mutate(
-      {
-        id: res.id,
-        status: "seated",
-        table_number: selectedTable != null ? String(selectedTable) : (res.table != null ? String(res.table) : null),
-      },
-      { onSuccess: () => { toast.success(`${res.name} seated`); setActiveRes(null); } }
-    );
+  const askSeatReservation = (res: Reservation) => {
+    openSeatPicker({
+      kind: "reservation",
+      id: res.id,
+      name: res.name,
+      party: res.party,
+      existingTable: res.table,
+    });
+  };
+
+  const confirmSeat = async () => {
+    if (!seatTarget) return;
+    if (seatPick == null) {
+      toast.error("Tap a table on the floor plan");
+      return;
+    }
+    if (occupiedTableIds.has(String(seatPick))) {
+      toast.error("That table is already occupied — pick another");
+      return;
+    }
+
+    const tableNumber = String(seatPick);
+    setSeatingBusy(true);
+    try {
+      if (seatTarget.kind === "waitlist") {
+        await updateWaitlistMut.mutateAsync({
+          id: seatTarget.id,
+          status: "seated",
+          table_number: tableNumber,
+        });
+        await markTableOccupied(tableNumber, null);
+        toast.success(`${seatTarget.name} seated at table ${tableNumber}`);
+      } else {
+        await updateBooking.mutateAsync({
+          id: seatTarget.id,
+          status: "seated",
+          table_number: tableNumber,
+        });
+        await markTableOccupied(tableNumber, seatTarget.id);
+        toast.success(`${seatTarget.name} seated at table ${tableNumber}`);
+      }
+      setSelectedTable(seatPick);
+      setSeatTarget(null);
+      setSeatPick(null);
+    } catch (e) {
+      toast.error((e as Error).message || "Could not seat guest");
+    } finally {
+      setSeatingBusy(false);
+    }
   };
 
   const markSelectedSeated = () => {
@@ -238,7 +325,22 @@ function HostStandPage() {
       toast.message(`No reservation on table ${selectedTable}`);
       return;
     }
-    seatNow(matchedRes);
+    askSeatReservation(matchedRes);
+  };
+
+  const seatNextWaitlistHere = () => {
+    if (selectedTable == null) return;
+    if (occupiedTableIds.has(String(selectedTable))) {
+      toast.error("This table is occupied");
+      return;
+    }
+    const next = waitlist[0];
+    if (!next) {
+      toast.message("No one on the waitlist");
+      return;
+    }
+    openSeatPicker({ kind: "waitlist", id: next.id, name: next.guest_name, party: next.party_size });
+    setSeatPick(selectedTable);
   };
 
   // KPIs from real data
@@ -299,7 +401,7 @@ function HostStandPage() {
               </div>
             </div>
             <FloorPlan
-              items={floorItems}
+              items={floorItemsWithStatus}
               selectedId={selectedTable}
               onSelect={(id) => setSelectedTable(id)}
             />
@@ -348,7 +450,7 @@ function HostStandPage() {
                         </div>
                       </div>
                       <div className="flex gap-1">
-                        <Button size="sm" variant="outline" onClick={() => seatWaitlist(w.id)}>Seat</Button>
+                        <Button size="sm" variant="outline" onClick={() => askSeatWaitlist(w.id)}>Seat</Button>
                         <Button size="sm" variant="ghost" onClick={() => removeWaitlist(w.id)}>×</Button>
                       </div>
                     </li>
@@ -397,13 +499,23 @@ function HostStandPage() {
                     </button>
                   )}
                   {!matchedRes && !matchedSeated && (
-                    <div className="text-sm text-muted-foreground rounded-lg border border-dashed border-border p-3">
-                      Table free. Seat the next waitlist party here.
+                    <div className="space-y-2">
+                      <div className="text-sm text-muted-foreground rounded-lg border border-dashed border-border p-3">
+                        Table free. Seat the next waitlist party here.
+                      </div>
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        onClick={seatNextWaitlistHere}
+                        disabled={waitlist.length === 0}
+                      >
+                        <MapPin className="size-4 mr-1" /> Seat next waitlist here
+                      </Button>
                     </div>
                   )}
                   <div className="flex gap-2">
                     <Button size="sm" className="flex-1" onClick={markSelectedSeated} disabled={!matchedRes || updateBooking.isPending}>
-                      <CheckCircle2 className="size-4 mr-1" /> Mark seated
+                      <CheckCircle2 className="size-4 mr-1" /> Seat guest
                     </Button>
                     <Button size="sm" variant="outline" className="flex-1" onClick={() => toast.message(`Server assigned to table ${selectedTable}`)}>
                       Assign server
@@ -518,7 +630,12 @@ function HostStandPage() {
                   <Button className="flex-1" onClick={() => markArrived(activeRes)} disabled={updateBooking.isPending}>
                     Mark arrived
                   </Button>
-                  <Button variant="outline" className="flex-1" onClick={() => seatNow(activeRes)} disabled={updateBooking.isPending}>
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => askSeatReservation(activeRes)}
+                    disabled={updateBooking.isPending || activeRes.status === "Seated"}
+                  >
                     Seat now
                   </Button>
                 </div>
@@ -527,6 +644,62 @@ function HostStandPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      <Dialog open={!!seatTarget} onOpenChange={(o) => { if (!o) { setSeatTarget(null); setSeatPick(null); } }}>
+        <DialogContent className="sm:max-w-3xl">
+          {seatTarget && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Where should {seatTarget.name} sit?</DialogTitle>
+                <DialogDescription>
+                  Party of {seatTarget.party}. Tap a free table on the floor plan, then confirm.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+                  <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-zinc-300" /> Free</span>
+                  <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-zinc-700" /> Occupied</span>
+                  {seatPick != null && (
+                    <Badge variant="outline" className="text-[11px] border-success/40 text-success">
+                      Selected table {seatPick}
+                    </Badge>
+                  )}
+                  {positionedTables.length === 0 && (
+                    <span className="text-amber-600">Using demo layout — edit floor plan to save your own</span>
+                  )}
+                </div>
+                <FloorPlan
+                  items={floorItemsWithStatus}
+                  selectedId={seatPick}
+                  onSelect={(id) => {
+                    if (occupiedTableIds.has(String(id))) {
+                      toast.message(`Table ${id} is occupied`);
+                      return;
+                    }
+                    setSeatPick(id);
+                    setSelectedTable(id);
+                  }}
+                  className="max-h-[420px]"
+                />
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => { setSeatTarget(null); setSeatPick(null); }}
+                  disabled={seatingBusy}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={confirmSeat} disabled={seatPick == null || seatingBusy}>
+                  {seatingBusy ? "Seating…" : `Seat at table ${seatPick ?? "—"}`}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

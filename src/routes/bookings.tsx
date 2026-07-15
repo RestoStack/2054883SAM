@@ -158,6 +158,10 @@ function BookingsPage() {
 
   const handleStatus = async (status: BookingStatus) => {
     if (!sel) return;
+    if (status === "seated" && !sel.tableNumber) {
+      toast.message("Pick a table on the floor plan below first, then mark Seated.");
+      return;
+    }
     try {
       await updateBooking.mutateAsync({ id: sel.id, status });
       toast.success(`Marked as ${statusLabel(status)}`);
