@@ -764,7 +764,7 @@ function HostStandPage() {
                   <Link
                     to="/customers/$id"
                     params={{ id: detail.customerId }}
-                    search={{}}
+                    search={{ tab: "overview" }}
                     className="inline-flex items-center gap-1.5 text-sm text-emerald-400 hover:underline"
                   >
                     View customer profile <ExternalLink className="size-3.5" />
