@@ -12,6 +12,7 @@ import { RoleSwitcher, useRole, type Role } from "@/lib/role";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
+import { cn } from "@/lib/utils";
 
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
 
@@ -193,41 +194,90 @@ export function Sidebar() {
   );
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  children,
+  fullBleed = false,
+}: {
+  children: ReactNode;
+  /** Hide chrome padding for immersive pages like Host Stand */
+  fullBleed?: boolean;
+}) {
   const { role } = useRole();
   const [open, setOpen] = useState(false);
   return (
-    <div className="flex min-h-screen bg-background">
-      <Sidebar />
-      <main className="flex-1 min-w-0 overflow-x-hidden">
-        <div className="lg:hidden sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-background/95 backdrop-blur px-3 py-2">
-          <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger asChild>
-              <button
-                aria-label="Open menu"
-                className="inline-flex size-10 items-center justify-center rounded-lg border border-border bg-card hover:bg-accent"
-              >
-                <Menu className="size-5" />
-              </button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-72 p-0 flex flex-col bg-sidebar">
-              <SidebarBody onNavigate={() => setOpen(false)} />
-            </SheetContent>
-          </Sheet>
-          <img src={logo} alt="RestoStack" className="h-7 w-auto" />
-          <div className="ml-auto">
-            <RoleSwitcher />
-          </div>
-        </div>
+    <div className={cn("flex bg-background", fullBleed ? "h-screen overflow-hidden" : "min-h-screen")}>
+      {!fullBleed && <Sidebar />}
+      {fullBleed && (
+        <aside className="hidden lg:flex w-14 shrink-0 flex-col border-r border-sidebar-border bg-sidebar sticky top-0 h-screen items-center py-3 gap-2">
+          <Link to="/dashboard" className="mb-2" title="Dashboard">
+            <img src={logo} alt="RestoStack" className="h-8 w-8 object-contain" />
+          </Link>
+          {(NAV_BY_ROLE[role] ?? ADMIN_NAV).slice(0, 6).map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              title={item.label}
+              className="inline-flex size-9 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            >
+              <item.icon className="size-4" />
+            </Link>
+          ))}
+        </aside>
+      )}
+      <main className={cn("flex-1 min-w-0", fullBleed ? "overflow-hidden flex flex-col" : "overflow-x-hidden")}>
+        {!fullBleed && (
+          <>
+            <div className="lg:hidden sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-background/95 backdrop-blur px-3 py-2">
+              <Sheet open={open} onOpenChange={setOpen}>
+                <SheetTrigger asChild>
+                  <button
+                    aria-label="Open menu"
+                    className="inline-flex size-10 items-center justify-center rounded-lg border border-border bg-card hover:bg-accent"
+                  >
+                    <Menu className="size-5" />
+                  </button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-72 p-0 flex flex-col bg-sidebar">
+                  <SidebarBody onNavigate={() => setOpen(false)} />
+                </SheetContent>
+              </Sheet>
+              <img src={logo} alt="RestoStack" className="h-7 w-auto" />
+              <div className="ml-auto">
+                <RoleSwitcher />
+              </div>
+            </div>
 
-        <div className="hidden lg:flex items-center gap-2 px-4 sm:px-8 pt-3 sm:pt-4">
-          <div className="flex flex-1 justify-center">
-            {role === "admin" && <CommandPaletteTrigger />}
+            <div className="hidden lg:flex items-center gap-2 px-4 sm:px-8 pt-3 sm:pt-4">
+              <div className="flex flex-1 justify-center">
+                {role === "admin" && <CommandPaletteTrigger />}
+              </div>
+              <div className="ml-auto">
+                <RoleSwitcher />
+              </div>
+            </div>
+          </>
+        )}
+        {fullBleed && (
+          <div className="lg:hidden shrink-0 flex items-center gap-2 border-b border-border bg-background px-3 py-2">
+            <Sheet open={open} onOpenChange={setOpen}>
+              <SheetTrigger asChild>
+                <button
+                  aria-label="Open menu"
+                  className="inline-flex size-9 items-center justify-center rounded-lg border border-border bg-card"
+                >
+                  <Menu className="size-4" />
+                </button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-72 p-0 flex flex-col bg-sidebar">
+                <SidebarBody onNavigate={() => setOpen(false)} />
+              </SheetContent>
+            </Sheet>
+            <span className="text-sm font-semibold">Host Stand</span>
+            <div className="ml-auto">
+              <RoleSwitcher />
+            </div>
           </div>
-          <div className="ml-auto">
-            <RoleSwitcher />
-          </div>
-        </div>
+        )}
         {children}
       </main>
     </div>
