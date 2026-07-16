@@ -52,13 +52,15 @@ export type FloorPlanProps = {
   compact?: boolean;
   /** Stretch to fill parent — no fixed pixel box / gutters */
   fill?: boolean;
+  /** Light canvas for dashboard Host Stand */
+  light?: boolean;
 };
 
 const statusFill: Record<FloorStatus, string> = {
-  free: "bg-zinc-200 text-zinc-800",
-  booked: "bg-zinc-500 text-white",
-  seated: "bg-violet-500 text-white",
-  alert: "bg-rose-400 text-rose-950",
+  free: "bg-emerald-500 text-white",
+  booked: "bg-white text-slate-700 ring-2 ring-slate-300",
+  seated: "bg-sky-500 text-white",
+  alert: "bg-rose-400 text-white",
 };
 
 /**
@@ -78,6 +80,7 @@ export function FloorPlan({
   className,
   compact = false,
   fill = false,
+  light = false,
 }: FloorPlanProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ id: number | string; offX: number; offY: number } | null>(null);
@@ -106,8 +109,13 @@ export function FloorPlan({
         dragRef.current = null;
       }}
       className={cn(
-        "relative overflow-hidden bg-[#22262c] touch-none select-none",
-        fill ? "h-full w-full rounded-none border-0" : "rounded-lg border border-zinc-700/80",
+        "relative overflow-hidden touch-none select-none",
+        light ? "bg-[#f4f6f8]" : "bg-[#22262c]",
+        fill
+          ? "h-full w-full rounded-none border-0"
+          : light
+            ? "rounded-xl border border-slate-200"
+            : "rounded-lg border border-zinc-700/80",
         className,
       )}
       style={
@@ -139,8 +147,9 @@ export function FloorPlan({
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.06]"
           style={{
-            backgroundImage:
-              "linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)",
+            backgroundImage: light
+              ? "linear-gradient(#94a3b8 1px, transparent 1px), linear-gradient(90deg, #94a3b8 1px, transparent 1px)"
+              : "linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)",
             backgroundSize: "48px 48px",
           }}
         />
@@ -150,7 +159,10 @@ export function FloorPlan({
             return (
               <div
                 key={i}
-                className="absolute -translate-x-1/2 -translate-y-1/2 text-emerald-400 leading-none select-none"
+                className={cn(
+                  "absolute -translate-x-1/2 -translate-y-1/2 leading-none select-none",
+                  light ? "text-emerald-500" : "text-emerald-400",
+                )}
                 style={{
                   left: pct(it.x, width),
                   top: pct(it.y, height),
@@ -246,7 +258,10 @@ export function FloorPlan({
                 "absolute z-10 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center font-semibold shadow-md transition-all border border-black/10",
                 shape,
                 statusFill[status],
-                isSelected && "ring-2 ring-emerald-300 ring-offset-2 ring-offset-[#22262c] scale-105",
+                isSelected &&
+                  (light
+                    ? "ring-2 ring-emerald-500 ring-offset-2 ring-offset-[#f4f6f8] scale-105"
+                    : "ring-2 ring-emerald-300 ring-offset-2 ring-offset-[#22262c] scale-105"),
                 onSelect && "cursor-pointer hover:brightness-110",
                 movable && "cursor-grab active:cursor-grabbing",
               )}

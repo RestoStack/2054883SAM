@@ -2,8 +2,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { useBookings, useUpdateBooking, type BookingRow } from "@/lib/v2-data";
+import { useBookings, useStaffUsers, useUpdateBooking, type BookingRow } from "@/lib/v2-data";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { AppShell } from "@/components/layout/Sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,8 +20,9 @@ import { FloorPlan, mainFloorPlan, type FloorItem } from "@/components/FloorPlan
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
-  Clock, Users, StickyNote, UserPlus, CheckCircle2, Phone, Mail,
-  MapPin, Search, Minus, Plus, X, ExternalLink, Calendar,
+  Users, StickyNote, UserPlus, Phone, Mail, MapPin, X, ExternalLink,
+  Calendar, Bell, Sparkles, MessageSquare, Check, AlertTriangle, Utensils,
+  Clock, Crown,
 } from "lucide-react";
 
 export const Route = createFileRoute("/host-stand")({
@@ -56,22 +58,24 @@ type WaitlistRow = {
 };
 
 type SeatTarget =
-  | { kind: "booking"; id: string; name: string; party: number }
-  | { kind: "waitlist"; id: string; name: string; party: number };
+  | { kind: "booking"; id: string; name: string; party: number; tag?: string }
+  | { kind: "waitlist"; id: string; name: string; party: number; tag?: string };
 
-type LeftTab = "reservations" | "waiting" | "seated";
-type Shift = "AM" | "PM";
+type UpNextItem = {
+  key: string;
+  kind: "booking" | "waitlist";
+  id: string;
+  name: string;
+  party: number;
+  whenLabel: string;
+  statusLabel: string;
+  statusTone: "ready" | "waiting" | "vip" | "note";
+  tag?: string;
+  notes?: string | null;
+  booking?: BookingRow;
+};
 
 const SECTIONS = ["All", "Main", "Patio", "Bar", "Private"] as const;
-
-function hour24(rawTime: string): number {
-  const h = parseInt((rawTime || "0").split(":")[0] || "0", 10);
-  return Number.isFinite(h) ? h : 0;
-}
-
-function isAm(rawTime: string) {
-  return hour24(rawTime) < 15;
-}
 
 function minutesSince(iso: string) {
   return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -81,16 +85,17 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function lastName(name: string) {
+  const parts = name.trim().split(/\s+/);
+  return parts[parts.length - 1] || name;
+}
+
 function HostStandPage() {
   const { staff } = useAuth();
   const qc = useQueryClient();
 
   const [dateISO, setDateISO] = useState(todayISO);
-  const [shift, setShift] = useState<Shift>(() => (new Date().getHours() < 15 ? "AM" : "PM"));
-  const [leftTab, setLeftTab] = useState<LeftTab>("reservations");
-  const [search, setSearch] = useState("");
   const [section, setSection] = useState<(typeof SECTIONS)[number]>("All");
-  const [zoom, setZoom] = useState(1);
   const [selectedTable, setSelectedTable] = useState<number | string | null>(null);
   const [detail, setDetail] = useState<BookingRow | null>(null);
   const [seatTarget, setSeatTarget] = useState<SeatTarget | null>(null);
@@ -101,9 +106,11 @@ function HostStandPage() {
   const [newName, setNewName] = useState("");
   const [newParty, setNewParty] = useState("2");
   const [newPhone, setNewPhone] = useState("");
+  const [now, setNow] = useState(() => new Date());
 
-  const { data: todays = [], isLoading } = useBookings(dateISO);
+  const { data: todays = [] } = useBookings(dateISO);
   const updateBooking = useUpdateBooking();
+  const { data: staffUsers = [] } = useStaffUsers();
 
   const { data: waitlist = [] } = useQuery({
     queryKey: ["v2_waitlist", staff?.restaurant_id],
@@ -135,12 +142,11 @@ function HostStandPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["v2_waitlist"] });
-      toast.success("Added to waitlist");
+      toast.success("Walk-in added");
       setWalkInOpen(false);
       setNewName("");
       setNewParty("2");
       setNewPhone("");
-      setLeftTab("waiting");
     },
   });
 
@@ -169,7 +175,11 @@ function HostStandPage() {
     })();
   }, [staff]);
 
-  // Esc cancels forced seating
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(t);
+  }, []);
+
   useEffect(() => {
     if (!seatTarget) return;
     const onKey = (e: KeyboardEvent) => {
@@ -179,67 +189,82 @@ function HostStandPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [seatTarget]);
 
-  const shiftBookings = useMemo(() => {
-    return todays.filter((b) => (shift === "AM" ? isAm(b.rawTime) : !isAm(b.rawTime)));
-  }, [todays, shift]);
-
-  const q = search.trim().toLowerCase();
-  const matchesSearch = (name: string, phone?: string | null, email?: string | null) => {
-    if (!q) return true;
-    return (
-      name.toLowerCase().includes(q) ||
-      (phone || "").toLowerCase().includes(q) ||
-      (email || "").toLowerCase().includes(q)
-    );
-  };
-
   const reservations = useMemo(
     () =>
-      shiftBookings.filter(
+      todays.filter(
         (b) =>
           b.status !== "seated" &&
           b.status !== "completed" &&
           b.status !== "cancelled" &&
-          matchesSearch(b.name, b.phone, b.email),
+          b.status !== "no_show",
       ),
-    [shiftBookings, q],
+    [todays],
   );
 
-  const seated = useMemo(
-    () =>
-      shiftBookings.filter(
-        (b) => b.status === "seated" && matchesSearch(b.name, b.phone, b.email),
-      ),
-    [shiftBookings, q],
-  );
+  const seated = useMemo(() => todays.filter((b) => b.status === "seated"), [todays]);
 
-  const waitingFiltered = useMemo(
-    () => waitlist.filter((w) => matchesSearch(w.guest_name, w.phone)),
-    [waitlist, q],
-  );
+  const coversToday = useMemo(() => todays.reduce((s, b) => s + (b.people || 0), 0), [todays]);
+  const diningCount = seated.length;
+  const waitingCount = waitlist.length + reservations.length;
 
-  const byTime = useMemo(() => {
-    const map = new Map<string, BookingRow[]>();
-    for (const b of reservations) {
-      const key = b.time || b.rawTime;
-      const list = map.get(key) ?? [];
-      list.push(b);
-      map.set(key, list);
-    }
-    return Array.from(map.entries()).sort((a, b) => {
-      const aa = a[1][0]?.rawTime ?? "";
-      const bb = b[1][0]?.rawTime ?? "";
-      return aa.localeCompare(bb);
+  const upNext = useMemo<UpNextItem[]>(() => {
+    const fromWait: UpNextItem[] = waitlist.map((w) => {
+      const waited = minutesSince(w.created_at);
+      return {
+        key: `w-${w.id}`,
+        kind: "waitlist",
+        id: w.id,
+        name: w.guest_name,
+        party: w.party_size,
+        whenLabel: waited <= 1 ? "NOW" : `${waited} min`,
+        statusLabel: waited <= 1 ? "Ready to seat" : `Waiting ${waited} min`,
+        statusTone: waited <= 1 ? "ready" : "waiting",
+        tag: "Walk-in",
+      };
     });
-  }, [reservations]);
+
+    const fromRes: UpNextItem[] = reservations.map((b) => {
+      const notes = (b.notes || "").toLowerCase();
+      const vip = notes.includes("vip");
+      const anniversary = notes.includes("anniversary");
+      const tag = vip ? "VIP" : anniversary ? "Anniversary" : undefined;
+      return {
+        key: `b-${b.id}`,
+        kind: "booking",
+        id: b.id,
+        name: b.name,
+        party: b.people,
+        whenLabel: b.time || "—",
+        statusLabel: vip
+          ? "VIP"
+          : anniversary
+            ? "Anniversary"
+            : b.status === "confirmed"
+              ? "Ready to seat"
+              : "Reservation",
+        statusTone: vip
+          ? "vip"
+          : anniversary
+            ? "note"
+            : b.status === "confirmed"
+              ? "ready"
+              : "waiting",
+        tag,
+        notes: b.notes,
+        booking: b,
+      };
+    });
+
+    return [...fromWait, ...fromRes].slice(0, 12);
+  }, [waitlist, reservations]);
 
   const occupiedTableIds = useMemo(() => {
     const set = new Set<string>();
-    for (const b of shiftBookings) {
+    for (const b of todays) {
       if (b.status === "seated" && b.tableNumber) set.add(String(b.tableNumber));
     }
     return set;
-  }, [shiftBookings]);
+  }, [todays]);
 
   const positionedTables = useMemo(
     () =>
@@ -269,6 +294,7 @@ function HostStandPage() {
                   y: t.position_y!,
                   size: t.width ?? 60,
                   label: t.table_number,
+                  party: t.capacity,
                 };
               }
               return {
@@ -279,6 +305,7 @@ function HostStandPage() {
                 w: t.width ?? 80,
                 h: t.height ?? 60,
                 label: t.table_number,
+                party: t.capacity,
               };
             });
 
@@ -292,20 +319,116 @@ function HostStandPage() {
         return {
           ...it,
           status: "seated" as const,
-          guest: seatedHere.name,
+          guestLabel: `${seatedHere.people}`,
           time: seatedHere.time,
         };
       }
-      if (bookedHere?.status === "no_show") {
-        return { ...it, status: "alert" as const, guest: bookedHere.name, time: bookedHere.time };
-      }
       if (bookedHere) {
-        return { ...it, status: "booked" as const, time: bookedHere.time, guest: bookedHere.name };
+        const late =
+          bookedHere.status === "confirmed" &&
+          !!bookedHere.rawTime &&
+          bookedHere.rawTime < now.toTimeString().slice(0, 5);
+        return {
+          ...it,
+          status: late ? ("alert" as const) : ("booked" as const),
+          time: bookedHere.time,
+          guestLabel: late ? "Late" : undefined,
+        };
       }
-      // In forced seating mode, keep free tables obvious
       return { ...it, status: "free" as const };
     });
-  }, [positionedTables, section, seated, reservations]);
+  }, [positionedTables, section, seated, reservations, now]);
+
+  const freeTables = useMemo(() => {
+    return dbTables
+      .filter((t) => !occupiedTableIds.has(String(t.table_number)))
+      .sort((a, b) => a.capacity - b.capacity);
+  }, [dbTables, occupiedTableIds]);
+
+  const recommended = useMemo(() => {
+    if (!seatTarget) {
+      // Suggest best free table for next party
+      const next = upNext[0];
+      if (!next) return null;
+      const fit =
+        freeTables.find((t) => t.capacity >= next.party) ?? freeTables[0] ?? null;
+      if (!fit) return null;
+      return {
+        table: fit.table_number,
+        party: next.party,
+        name: next.name,
+        reasons: [
+          `Seats ${fit.capacity}`,
+          "Server balance",
+          "Open now",
+          "Est. dining time 1h 10m",
+        ],
+        target: {
+          kind: next.kind,
+          id: next.id,
+          name: next.name,
+          party: next.party,
+          tag: next.tag,
+        } as SeatTarget,
+      };
+    }
+    const fit =
+      freeTables.find((t) => t.capacity >= seatTarget.party) ?? freeTables[0] ?? null;
+    if (!fit) return null;
+    return {
+      table: fit.table_number,
+      party: seatTarget.party,
+      name: seatTarget.name,
+      reasons: [
+        `Seats ${fit.capacity}`,
+        "Server balance",
+        "No conflict now",
+        "Est. dining time 1h 10m",
+      ],
+      target: seatTarget,
+    };
+  }, [seatTarget, upNext, freeTables]);
+
+  const servers = useMemo(() => {
+    const hosts = staffUsers.filter(
+      (s) =>
+        s.role.toLowerCase() === "server" ||
+        s.role.toLowerCase() === "hostess" ||
+        s.dept === "Front of House",
+    );
+    const list = (hosts.length ? hosts : staffUsers).slice(0, 3);
+    const seatedTables = seated.map((b) => b.tableNumber).filter(Boolean) as string[];
+    return list.map((s, i) => {
+      const share = seatedTables.filter((_, idx) => idx % Math.max(list.length, 1) === i);
+      const load = Math.min(100, share.length * 28 + 12);
+      return { name: s.name.split(" ")[0] || s.name, tables: share.length, load };
+    });
+  }, [staffUsers, seated]);
+
+  const alerts = useMemo(() => {
+    const items: { text: string; tone: "warn" | "vip" }[] = [];
+    const late = reservations.filter((b) => {
+      if (!b.rawTime) return false;
+      return b.rawTime < now.toTimeString().slice(0, 5);
+    });
+    if (late.length) {
+      items.push({
+        text: `${late.length} reservation${late.length > 1 ? "s" : ""} late`,
+        tone: "warn",
+      });
+    }
+    const vip = upNext.filter((u) => u.statusTone === "vip");
+    if (vip[0]) {
+      items.push({
+        text: `1 VIP waiting (${lastName(vip[0].name)} ${vip[0].whenLabel})`,
+        tone: "vip",
+      });
+    }
+    if (waitlist.length >= 3) {
+      items.push({ text: `${waitlist.length} parties on waitlist`, tone: "warn" });
+    }
+    return items.slice(0, 3);
+  }, [reservations, now, upNext, waitlist.length]);
 
   const startSeat = (target: SeatTarget) => {
     setSeatTarget(target);
@@ -322,8 +445,8 @@ function HostStandPage() {
       .eq("table_number", tableNumber);
   };
 
-  const confirmSeatAt = async (tableId: number | string) => {
-    if (!seatTarget) return;
+  const confirmSeatAt = async (tableId: number | string, target = seatTarget) => {
+    if (!target) return;
     if (occupiedTableIds.has(String(tableId))) {
       toast.error(`Table ${tableId} is occupied`);
       return;
@@ -331,25 +454,24 @@ function HostStandPage() {
     const tableNumber = String(tableId);
     setSeatingBusy(true);
     try {
-      if (seatTarget.kind === "waitlist") {
+      if (target.kind === "waitlist") {
         await updateWaitlistMut.mutateAsync({
-          id: seatTarget.id,
+          id: target.id,
           status: "seated",
           table_number: tableNumber,
         });
         await markTableOccupied(tableNumber, null);
       } else {
         await updateBooking.mutateAsync({
-          id: seatTarget.id,
+          id: target.id,
           status: "seated",
           table_number: tableNumber,
         });
-        await markTableOccupied(tableNumber, seatTarget.id);
+        await markTableOccupied(tableNumber, target.id);
       }
-      toast.success(`${seatTarget.name} seated at ${tableNumber}`);
+      toast.success(`${target.name} seated at ${tableNumber}`);
       setSeatTarget(null);
       setSelectedTable(tableId);
-      setLeftTab("seated");
     } catch (e) {
       toast.error((e as Error).message || "Could not seat");
     } finally {
@@ -368,475 +490,363 @@ function HostStandPage() {
     }
     setSelectedTable(id);
     const match =
-      shiftBookings.find((b) => String(b.tableNumber) === String(id) && b.status !== "cancelled") ??
-      null;
+      todays.find((b) => String(b.tableNumber) === String(id) && b.status !== "cancelled") ?? null;
     if (match) setDetail(match);
   };
 
-  const dateLabel = useMemo(() => {
+  const clockLabel = now.toLocaleString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  const dateShort = useMemo(() => {
     const d = new Date(`${dateISO}T12:00:00`);
-    return d.toLocaleDateString(undefined, {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   }, [dateISO]);
 
-  const clock = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-[#14171b] text-zinc-100">
-        {/* Top bar — date + shift */}
-        <header className="shrink-0 h-12 border-b border-white/10 px-3 sm:px-4 flex items-center gap-3 bg-[#1a1e24]">
-          <Link to="/dashboard" className="text-xs text-zinc-400 hover:text-white shrink-0">
-            ← Back
-          </Link>
-          <div className="font-semibold text-sm sm:text-base truncate max-w-[180px] sm:max-w-xs">
-            {restaurantName}
+    <AppShell>
+      <div className="flex h-[calc(100dvh-3.25rem)] lg:h-[calc(100dvh-3.5rem)] flex-col bg-[#f7f8fa] text-slate-900 -mx-0 lg:-mt-3">
+        {/* Top metrics bar */}
+        <header className="shrink-0 border-b border-slate-200 bg-white px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3 sm:gap-5">
+          <div className="min-w-0">
+            <div className="text-base sm:text-lg font-semibold truncate">{restaurantName}</div>
+            <div className="text-xs text-slate-500">{clockLabel}</div>
           </div>
 
-          <div className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#0f1216] px-2 h-9">
-            <Calendar className="size-3.5 text-zinc-400" />
-            <input
-              type="date"
-              value={dateISO}
-              onChange={(e) => setDateISO(e.target.value)}
-              className="bg-transparent text-sm outline-none [color-scheme:dark] w-[132px]"
-            />
-            <span className="hidden sm:inline text-xs text-zinc-500 border-l border-white/10 pl-2">
-              {dateLabel}
-            </span>
+          <div className="flex items-center gap-4 sm:gap-6 text-sm">
+            <Metric icon={Users} label="Covers Today" value={coversToday} tone="green" />
+            <Metric icon={Utensils} label="Dining" value={diningCount} tone="blue" />
+            <Metric icon={Clock} label="Waiting" value={waitingCount} tone="orange" />
           </div>
 
-          <div className="flex rounded-lg border border-white/10 overflow-hidden h-9">
-            {(["AM", "PM"] as const).map((s) => (
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            <div className="hidden md:flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 h-9">
+              <Calendar className="size-3.5 text-slate-400" />
+              <input
+                type="date"
+                value={dateISO}
+                onChange={(e) => setDateISO(e.target.value)}
+                className="bg-transparent text-xs outline-none w-[118px]"
+              />
               <button
-                key={s}
                 type="button"
-                onClick={() => setShift(s)}
-                className={cn(
-                  "px-3.5 text-xs font-semibold transition",
-                  shift === s
-                    ? "bg-emerald-500 text-zinc-950"
-                    : "bg-[#0f1216] text-zinc-400 hover:text-zinc-200",
-                )}
+                onClick={() => setDateISO(todayISO())}
+                className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 pl-1.5 border-l border-slate-200"
               >
-                {s}
+                Today
               </button>
-            ))}
-          </div>
-
-          <div className="ml-auto flex items-center gap-3 text-xs text-zinc-400">
-            <Link to="/floorplan" className="hover:text-emerald-400 hidden sm:inline">
-              Edit layout
-            </Link>
-            <span className="tabular-nums text-zinc-300">{clock}</span>
+            </div>
+            <button
+              type="button"
+              className="relative inline-flex size-9 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50"
+              aria-label="Notifications"
+            >
+              <Bell className="size-4 text-slate-600" />
+              {alerts.length > 0 && (
+                <span className="absolute -top-1 -right-1 size-4 rounded-full bg-rose-500 text-[10px] font-bold text-white grid place-items-center">
+                  {alerts.length}
+                </span>
+              )}
+            </button>
+            <div className="hidden sm:flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5">
+              <div className="size-7 rounded-full bg-emerald-500/15 text-emerald-700 grid place-items-center text-xs font-bold">
+                {(staff?.full_name || "O").slice(0, 1).toUpperCase()}
+              </div>
+              <div className="leading-tight">
+                <div className="text-xs font-semibold">{staff?.full_name?.split(" ")[0] || "Owner"}</div>
+                <div className="text-[10px] text-slate-500 capitalize">{staff?.role || "owner"}</div>
+              </div>
+            </div>
           </div>
         </header>
 
-        <div className="flex-1 min-h-0 flex">
-          {/* Left panel */}
-          <aside className="w-[240px] md:w-[280px] shrink-0 border-r border-white/10 bg-[#1a1e24] flex flex-col min-h-0">
-            <div className="p-2.5 flex gap-1 border-b border-white/10">
-              {(
-                [
-                  ["reservations", "Reservations", reservations.length],
-                  ["waiting", "Waiting", waitingFiltered.length],
-                  ["seated", "Seated", seated.length],
-                ] as const
-              ).map(([id, label, count]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setLeftTab(id)}
-                  className={cn(
-                    "flex-1 rounded-md px-2 py-1.5 text-[11px] font-semibold transition",
-                    leftTab === id
-                      ? "bg-white/10 text-white"
-                      : "text-zinc-400 hover:text-zinc-200 hover:bg-white/5",
-                  )}
-                >
-                  {label}{" "}
-                  <span className="opacity-70">{count}</span>
-                </button>
-              ))}
+        {seatTarget && (
+          <div className="shrink-0 px-4 py-2.5 bg-emerald-500 text-white flex items-center gap-3">
+            <MapPin className="size-4 shrink-0" />
+            <div className="text-sm font-semibold flex-1">
+              Select a table for {seatTarget.name}
+              <span className="font-normal opacity-90"> · party of {seatTarget.party}</span>
             </div>
+            <button
+              type="button"
+              onClick={() => setSeatTarget(null)}
+              className="inline-flex items-center gap-1 rounded-md bg-black/10 px-2.5 py-1 text-xs font-semibold hover:bg-black/15"
+            >
+              <X className="size-3.5" /> Cancel
+            </button>
+          </div>
+        )}
 
-            <div className="p-2.5 flex gap-1.5 border-b border-white/10">
-              <div className="relative flex-1">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-zinc-500" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search name or phone"
-                  className="h-8 pl-7 bg-[#0f1216] border-white/10 text-sm"
-                />
-              </div>
+        <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_280px]">
+          {/* Up Next */}
+          <aside className="min-h-0 border-r border-slate-200 bg-[#f0f2f5] flex flex-col">
+            <div className="px-4 py-3 flex items-center justify-between border-b border-slate-200/80">
+              <div className="text-sm font-semibold">Up Next</div>
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-800 px-1.5 text-[11px] font-bold text-white">
+                {upNext.length}
+              </span>
+            </div>
+            <ul className="flex-1 overflow-y-auto p-3 space-y-2">
+              {upNext.map((item) => (
+                <li
+                  key={item.key}
+                  className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-semibold truncate">{lastName(item.name)}</div>
+                        <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
+                          {item.whenLabel}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-xs text-slate-500">Party of {item.party}</div>
+                      <div
+                        className={cn(
+                          "mt-1 text-xs font-medium inline-flex items-center gap-1",
+                          item.statusTone === "ready" && "text-emerald-600",
+                          item.statusTone === "waiting" && "text-amber-600",
+                          item.statusTone === "vip" && "text-violet-600",
+                          item.statusTone === "note" && "text-pink-600",
+                        )}
+                      >
+                        {item.statusTone === "vip" && <Crown className="size-3" />}
+                        {item.statusLabel}
+                      </div>
+                      {item.tag && item.statusTone !== "vip" && item.statusTone !== "note" && (
+                        <span className="mt-1 inline-flex rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                          {item.tag}
+                        </span>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      className="h-8 px-3 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+                      disabled={seatingBusy}
+                      onClick={() =>
+                        startSeat({
+                          kind: item.kind,
+                          id: item.id,
+                          name: item.name,
+                          party: item.party,
+                          tag: item.tag,
+                        })
+                      }
+                    >
+                      Seat
+                    </Button>
+                  </div>
+                  {item.booking && (
+                    <button
+                      type="button"
+                      onClick={() => setDetail(item.booking!)}
+                      className="mt-2 text-[11px] text-slate-400 hover:text-emerald-600"
+                    >
+                      View details
+                    </button>
+                  )}
+                </li>
+              ))}
+              {upNext.length === 0 && (
+                <li className="text-center text-xs text-slate-500 py-12">
+                  No parties waiting for {dateShort}.
+                </li>
+              )}
+            </ul>
+            <div className="p-3 border-t border-slate-200">
               <Button
-                size="sm"
-                className="h-8 px-2.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950"
+                variant="outline"
+                className="w-full h-10 border-slate-300 bg-white hover:bg-slate-50"
                 onClick={() => setWalkInOpen(true)}
               >
-                <UserPlus className="size-3.5" />
+                <UserPlus className="size-4 mr-1.5" /> Add Walk-in
               </Button>
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              {leftTab === "reservations" && (
-                <div className="pb-4">
-                  {isLoading && (
-                    <p className="text-xs text-zinc-500 text-center py-8">Loading…</p>
-                  )}
-                  {!isLoading && byTime.length === 0 && (
-                    <p className="text-xs text-zinc-500 text-center py-10">
-                      No {shift} reservations for this date
-                    </p>
-                  )}
-                  {byTime.map(([time, rows]) => {
-                    const covers = rows.reduce((s, r) => s + r.people, 0);
-                    return (
-                      <div key={time} className="mt-3">
-                        <div className="px-3 mb-1.5 flex items-center justify-between">
-                          <div className="text-[11px] font-bold tracking-wide text-zinc-400">
-                            {time}
-                          </div>
-                          <div className="text-[10px] text-zinc-500 inline-flex items-center gap-1">
-                            <Users className="size-3" />
-                            {covers}
-                          </div>
-                        </div>
-                        <ul className="px-2 space-y-1">
-                          {rows.map((b) => (
-                            <li key={b.id}>
-                              <button
-                                type="button"
-                                onClick={() => setDetail(b)}
-                                className={cn(
-                                  "w-full text-left rounded-lg border px-2.5 py-2 transition",
-                                  detail?.id === b.id
-                                    ? "border-emerald-500/50 bg-emerald-500/10"
-                                    : "border-transparent bg-white/[0.03] hover:bg-white/[0.06]",
-                                )}
-                              >
-                                <div className="flex items-center gap-2.5">
-                                  <div className="size-8 rounded-md bg-white/10 grid place-items-center text-xs font-bold shrink-0">
-                                    {b.people}
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="text-sm font-medium truncate">{b.name}</div>
-                                    <div className="text-[11px] text-zinc-500 truncate">
-                                      {b.phone || b.source || "—"}
-                                      {b.notes ? " · note" : ""}
-                                    </div>
-                                  </div>
-                                  <div className="shrink-0 text-right">
-                                    <div className="text-xs font-semibold tabular-nums text-zinc-300">
-                                      {b.tableNumber ?? "—"}
-                                    </div>
-                                    <div className="text-[10px] text-zinc-500 capitalize">
-                                      {b.status === "confirmed" ? "arrived" : b.status}
-                                    </div>
-                                  </div>
-                                </div>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {leftTab === "waiting" && (
-                <ul className="p-2 space-y-1">
-                  {waitingFiltered.map((w) => (
-                    <li
-                      key={w.id}
-                      className="rounded-lg bg-white/[0.03] px-2.5 py-2 flex items-center gap-2.5"
-                    >
-                      <div className="size-8 rounded-md bg-amber-500/20 text-amber-200 grid place-items-center text-xs font-bold">
-                        {w.party_size}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium truncate">{w.guest_name}</div>
-                        <div className="text-[11px] text-zinc-500">
-                          waited {minutesSince(w.created_at)}m
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
-                        onClick={() =>
-                          startSeat({
-                            kind: "waitlist",
-                            id: w.id,
-                            name: w.guest_name,
-                            party: w.party_size,
-                          })
-                        }
-                      >
-                        Seat
-                      </Button>
-                    </li>
-                  ))}
-                  {waitingFiltered.length === 0 && (
-                    <li className="text-xs text-zinc-500 text-center py-10">Waitlist empty</li>
-                  )}
-                </ul>
-              )}
-
-              {leftTab === "seated" && (
-                <ul className="p-2 space-y-1">
-                  {seated.map((b) => (
-                    <li key={b.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDetail(b);
-                          if (b.tableNumber) setSelectedTable(b.tableNumber);
-                        }}
-                        className="w-full text-left rounded-lg border border-violet-500/20 bg-violet-500/10 px-2.5 py-2 flex items-center gap-2.5 hover:bg-violet-500/15"
-                      >
-                        <div className="size-8 rounded-md bg-violet-600 grid place-items-center text-xs font-bold">
-                          {b.people}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-medium truncate">{b.name}</div>
-                          <div className="text-[11px] text-violet-200/70">{b.time}</div>
-                        </div>
-                        <div className="text-xs font-bold tabular-nums">{b.tableNumber ?? "—"}</div>
-                      </button>
-                    </li>
-                  ))}
-                  {seated.length === 0 && (
-                    <li className="text-xs text-zinc-500 text-center py-10">No one seated yet</li>
-                  )}
-                </ul>
-              )}
             </div>
           </aside>
 
-          {/* Floor plan — full remaining viewport */}
-          <section className="flex-1 min-w-0 relative flex flex-col bg-[#1e2329]">
-            {seatTarget && (
-              <div className="shrink-0 z-20 px-4 py-2.5 bg-emerald-500 text-zinc-950 flex items-center gap-3">
-                <MapPin className="size-4 shrink-0" />
-                <div className="text-sm font-semibold flex-1">
-                  Select a table for {seatTarget.name}
-                  <span className="font-normal opacity-80"> · party of {seatTarget.party}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSeatTarget(null)}
-                  className="inline-flex items-center gap-1 rounded-md bg-black/10 px-2.5 py-1 text-xs font-semibold hover:bg-black/15"
-                >
-                  <X className="size-3.5" /> Cancel
-                </button>
-              </div>
-            )}
-
-            <div className="shrink-0 z-10 px-2 py-1.5 flex flex-wrap items-center gap-1 bg-[#1a1e24]/90 border-b border-white/5">
+          {/* Floor plan */}
+          <section className="min-h-0 min-w-0 flex flex-col bg-white">
+            <div className="shrink-0 px-3 sm:px-4 py-2.5 flex flex-wrap items-center gap-1.5 border-b border-slate-200">
               {SECTIONS.map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => setSection(s)}
                   className={cn(
-                    "rounded-full px-3 py-1 text-[11px] font-semibold border transition",
+                    "rounded-full px-3 py-1 text-xs font-semibold transition",
                     section === s
-                      ? "border-emerald-400 bg-emerald-500/15 text-emerald-300"
-                      : "border-white/10 text-zinc-400 hover:text-zinc-200",
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200",
                   )}
                 >
-                  {s === "All" ? "All floors" : s}
+                  {s === "All" ? "All Areas" : s === "Main" ? "Main Floor" : s}
                 </button>
               ))}
-              <div className="ml-auto hidden md:flex items-center gap-3 text-[10px] text-zinc-500">
-                <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-zinc-300" /> Free</span>
-                <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-violet-300" /> Booked</span>
-                <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-violet-600" /> Seated</span>
-                <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-rose-400" /> Late</span>
+              <div className="ml-auto hidden lg:flex items-center gap-3 text-[11px] text-slate-500">
+                <LegendDot className="bg-emerald-500" label="Available" />
+                <LegendDot className="bg-sky-500" label="Occupied" />
+                <LegendDot className="bg-white ring-2 ring-slate-300" label="Reserved" />
+                <LegendDot className="bg-rose-400" label="Late" />
               </div>
             </div>
-
             <div
               className={cn(
                 "flex-1 min-h-0 relative",
-                seatTarget && "ring-inset ring-2 ring-emerald-500/50",
+                seatTarget && "ring-inset ring-2 ring-emerald-400",
               )}
             >
               <FloorPlan
                 fill
+                light
                 items={floorItems}
                 selectedId={selectedTable}
-                zoom={zoom}
+                zoom={1}
                 onSelect={onTableClick}
                 className="absolute inset-0 h-full w-full"
               />
               {positionedTables.length === 0 && (
-                <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] text-zinc-400 bg-black/50 px-3 py-1 rounded-full pointer-events-none">
+                <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] text-slate-500 bg-white/90 border border-slate-200 px-3 py-1 rounded-full pointer-events-none">
                   Demo layout ·{" "}
-                  <Link to="/floorplan" className="text-emerald-400 underline pointer-events-auto">
+                  <Link to="/floorplan" className="text-emerald-600 underline pointer-events-auto">
                     place your tables
                   </Link>
                 </p>
               )}
             </div>
-
-            <div className="absolute bottom-4 right-4 z-20 flex items-center gap-2">
-              <div className="flex items-center rounded-lg border border-white/10 bg-[#1a1e24]/95 backdrop-blur overflow-hidden shadow-lg">
-                <button
-                  type="button"
-                  className="size-8 grid place-items-center hover:bg-white/5"
-                  onClick={() => setZoom((z) => Math.max(0.7, Number((z - 0.1).toFixed(1))))}
-                >
-                  <Minus className="size-3.5" />
-                </button>
-                <span className="w-10 text-center text-[11px] tabular-nums">
-                  {Math.round(zoom * 100)}%
-                </span>
-                <button
-                  type="button"
-                  className="size-8 grid place-items-center hover:bg-white/5"
-                  onClick={() => setZoom((z) => Math.min(1.4, Number((z + 0.1).toFixed(1))))}
-                >
-                  <Plus className="size-3.5" />
-                </button>
-              </div>
-            </div>
           </section>
+
+          {/* Right rail */}
+          <aside className="min-h-0 border-l border-slate-200 bg-[#f0f2f5] flex flex-col overflow-y-auto">
+            <div className="p-3 space-y-3">
+              {/* AI recommendation */}
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  <Sparkles className="size-3.5 text-emerald-500" />
+                  AI Assistant
+                </div>
+                {recommended ? (
+                  <>
+                    <div className="mt-2 text-sm text-slate-600">Recommended Table:</div>
+                    <div className="text-3xl font-bold text-emerald-600 tracking-tight">
+                      {recommended.table}
+                    </div>
+                    <ul className="mt-3 space-y-1.5">
+                      {recommended.reasons.map((r) => (
+                        <li key={r} className="flex items-start gap-2 text-xs text-slate-600">
+                          <Check className="size-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                          {r}
+                        </li>
+                      ))}
+                    </ul>
+                    <Button
+                      className="mt-4 w-full h-10 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+                      disabled={seatingBusy}
+                      onClick={() => {
+                        if (seatTarget) {
+                          void confirmSeatAt(recommended.table, seatTarget);
+                        } else {
+                          startSeat(recommended.target);
+                          void confirmSeatAt(recommended.table, recommended.target);
+                        }
+                      }}
+                    >
+                      Seat Here →
+                    </Button>
+                  </>
+                ) : (
+                  <p className="mt-3 text-sm text-slate-500">
+                    No free tables match the next party yet.
+                  </p>
+                )}
+              </div>
+
+              {/* Server load */}
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+                  Server Load
+                </div>
+                {servers.length === 0 && (
+                  <p className="text-xs text-slate-500">Add staff to see server balance.</p>
+                )}
+                <ul className="space-y-3">
+                  {servers.map((s) => (
+                    <li key={s.name}>
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="font-semibold text-slate-800">{s.name}</span>
+                        <span className="text-slate-500">{s.tables} tables</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all",
+                            s.load > 70 ? "bg-amber-400" : "bg-emerald-500",
+                          )}
+                          style={{ width: `${s.load}%` }}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Alerts */}
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    Alerts
+                  </div>
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[11px] font-bold text-white">
+                    {alerts.length}
+                  </span>
+                </div>
+                {alerts.length === 0 ? (
+                  <p className="text-xs text-slate-500">All clear for this service.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {alerts.map((a) => (
+                      <li key={a.text} className="flex items-start gap-2 text-xs text-slate-700">
+                        <AlertTriangle
+                          className={cn(
+                            "size-3.5 shrink-0 mt-0.5",
+                            a.tone === "vip" ? "text-violet-500" : "text-amber-500",
+                          )}
+                        />
+                        {a.text}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <Button
+                variant="outline"
+                className="w-full h-10 border-slate-300 bg-white"
+                onClick={() => toast.message("Staff messaging coming soon")}
+              >
+                <MessageSquare className="size-4 mr-1.5" /> Message Staff
+              </Button>
+            </div>
+          </aside>
         </div>
       </div>
 
-      {/* Customer / booking detail */}
-      <Sheet open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
-        <SheetContent className="sm:max-w-md bg-[#1a1e24] border-white/10 text-zinc-100">
-          {detail && (
-            <>
-              <SheetHeader>
-                <SheetTitle className="text-zinc-50">{detail.name}</SheetTitle>
-                <SheetDescription className="text-zinc-400">
-                  {detail.time} · party of {detail.people}
-                </SheetDescription>
-              </SheetHeader>
-
-              <div className="mt-6 space-y-4">
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="rounded-lg bg-white/5 p-3">
-                    <div className="text-[10px] uppercase text-zinc-500">Table</div>
-                    <div className="font-semibold mt-0.5">{detail.tableNumber ?? "Unassigned"}</div>
-                  </div>
-                  <div className="rounded-lg bg-white/5 p-3">
-                    <div className="text-[10px] uppercase text-zinc-500">Status</div>
-                    <div className="font-semibold mt-0.5 capitalize">{detail.status}</div>
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-white/10 p-3 space-y-2.5 text-sm">
-                  <div className="flex items-center gap-2">
-                    <Phone className="size-3.5 text-zinc-500" />
-                    <span>{detail.phone || "No phone"}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Mail className="size-3.5 text-zinc-500" />
-                    <span className="truncate">{detail.email || "No email"}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="size-3.5 text-zinc-500" />
-                    <span>
-                      {detail.date} · {detail.time}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Users className="size-3.5 text-zinc-500" />
-                    <span>
-                      {detail.people} guests · {detail.source}
-                    </span>
-                  </div>
-                  {detail.notes && (
-                    <div className="flex items-start gap-2 text-zinc-300">
-                      <StickyNote className="size-3.5 text-zinc-500 mt-0.5" />
-                      <span>{detail.notes}</span>
-                    </div>
-                  )}
-                </div>
-
-                {detail.customerId && (
-                  <Link
-                    to="/customers/$id"
-                    params={{ id: detail.customerId }}
-                    search={{ tab: "overview" }}
-                    className="inline-flex items-center gap-1.5 text-sm text-emerald-400 hover:underline"
-                  >
-                    View customer profile <ExternalLink className="size-3.5" />
-                  </Link>
-                )}
-
-                <div className="flex flex-col gap-2 pt-2">
-                  {detail.status !== "seated" && detail.status !== "cancelled" && (
-                    <>
-                      {detail.status !== "confirmed" && (
-                        <Button
-                          variant="outline"
-                          className="border-white/15"
-                          disabled={updateBooking.isPending}
-                          onClick={() =>
-                            updateBooking.mutate(
-                              { id: detail.id, status: "confirmed" },
-                              {
-                                onSuccess: () => {
-                                  toast.success("Marked arrived");
-                                  setDetail({ ...detail, status: "confirmed" });
-                                },
-                              },
-                            )
-                          }
-                        >
-                          Mark arrived
-                        </Button>
-                      )}
-                      <Button
-                        className="bg-emerald-500 hover:bg-emerald-400 text-zinc-950"
-                        onClick={() =>
-                          startSeat({
-                            kind: "booking",
-                            id: detail.id,
-                            name: detail.name,
-                            party: detail.people,
-                          })
-                        }
-                      >
-                        <CheckCircle2 className="size-4 mr-1.5" />
-                        Seat — pick a table
-                      </Button>
-                    </>
-                  )}
-                  {detail.status === "seated" && (
-                    <p className="text-xs text-zinc-400 text-center">
-                      Seated at table {detail.tableNumber ?? "—"}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
-
-      {/* Walk-in / waitlist */}
+      {/* Walk-in dialog */}
       <Dialog open={walkInOpen} onOpenChange={setWalkInOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add walk-in</DialogTitle>
-            <DialogDescription>They’ll appear under Waiting until you seat them.</DialogDescription>
+            <DialogDescription>Add a party to the waitlist, then seat them from Up Next.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-3 py-2">
             <Input
-              placeholder="Guest name"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
+              placeholder="Guest name"
               autoFocus
             />
             <div className="flex gap-2">
@@ -845,7 +855,7 @@ function HostStandPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 10, 12].map((n) => (
                     <SelectItem key={n} value={String(n)}>
                       {n} guests
                     </SelectItem>
@@ -853,9 +863,9 @@ function HostStandPage() {
                 </SelectContent>
               </Select>
               <Input
-                placeholder="Phone (optional)"
                 value={newPhone}
                 onChange={(e) => setNewPhone(e.target.value)}
+                placeholder="Phone (optional)"
                 className="flex-1"
               />
             </div>
@@ -865,6 +875,7 @@ function HostStandPage() {
               Cancel
             </Button>
             <Button
+              className="bg-emerald-500 hover:bg-emerald-600 text-white"
               disabled={!newName.trim() || addWaitlistMut.isPending}
               onClick={() =>
                 addWaitlistMut.mutate({
@@ -874,19 +885,122 @@ function HostStandPage() {
                 })
               }
             >
-              Add to waitlist
+              Add to Up Next
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {seatingBusy && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 pointer-events-none">
-          <div className="rounded-lg bg-[#1a1e24] border border-white/10 px-4 py-2 text-sm">
-            Seating…
-          </div>
-        </div>
-      )}
+      {/* Booking detail */}
+      <Sheet open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
+        <SheetContent className="sm:max-w-md">
+          {detail && (
+            <>
+              <SheetHeader>
+                <SheetTitle>{detail.name}</SheetTitle>
+                <SheetDescription>
+                  {detail.time} · party of {detail.people}
+                </SheetDescription>
+              </SheetHeader>
+              <div className="mt-6 space-y-4">
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
+                    <div className="text-[10px] uppercase text-slate-500">Table</div>
+                    <div className="font-semibold mt-0.5">{detail.tableNumber ?? "Unassigned"}</div>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
+                    <div className="text-[10px] uppercase text-slate-500">Status</div>
+                    <div className="font-semibold mt-0.5 capitalize">{detail.status}</div>
+                  </div>
+                </div>
+                {detail.phone && (
+                  <a href={`tel:${detail.phone}`} className="flex items-center gap-2 text-sm hover:text-emerald-600">
+                    <Phone className="size-4 text-slate-400" /> {detail.phone}
+                  </a>
+                )}
+                {detail.email && (
+                  <a href={`mailto:${detail.email}`} className="flex items-center gap-2 text-sm hover:text-emerald-600">
+                    <Mail className="size-4 text-slate-400" /> {detail.email}
+                  </a>
+                )}
+                {detail.notes && (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                    <div className="flex items-center gap-1.5 text-[10px] uppercase text-slate-500 mb-1">
+                      <StickyNote className="size-3" /> Notes
+                    </div>
+                    {detail.notes}
+                  </div>
+                )}
+                {detail.customerId && (
+                  <Link
+                    to="/customers/$id"
+                    params={{ id: detail.customerId }}
+                    search={{ tab: "overview" }}
+                    className="inline-flex items-center gap-1 text-sm text-emerald-600 hover:underline"
+                  >
+                    Open customer profile <ExternalLink className="size-3.5" />
+                  </Link>
+                )}
+                {detail.status !== "seated" && (
+                  <Button
+                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
+                    onClick={() =>
+                      startSeat({
+                        kind: "booking",
+                        id: detail.id,
+                        name: detail.name,
+                        party: detail.people,
+                      })
+                    }
+                  >
+                    Seat this party
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+    </AppShell>
+  );
+}
+
+function Metric({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: typeof Users;
+  label: string;
+  value: number;
+  tone: "green" | "blue" | "orange";
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        className={cn(
+          "size-8 rounded-lg grid place-items-center",
+          tone === "green" && "bg-emerald-500/15 text-emerald-600",
+          tone === "blue" && "bg-sky-500/15 text-sky-600",
+          tone === "orange" && "bg-amber-500/15 text-amber-600",
+        )}
+      >
+        <Icon className="size-4" />
+      </div>
+      <div className="leading-tight">
+        <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
+        <div className="text-sm font-bold tabular-nums">{value}</div>
+      </div>
     </div>
+  );
+}
+
+function LegendDot({ className, label }: { className: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={cn("size-2.5 rounded-full", className)} />
+      {label}
+    </span>
   );
 }
