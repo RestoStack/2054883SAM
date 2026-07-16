@@ -202,6 +202,8 @@ export function FloorPlan({
 
           const hasId = it.id != null;
           if (!hasId) {
+            const rw = it.kind === "rect" ? it.w : 60;
+            const rh = it.kind === "rect" ? it.h : 60;
             return (
               <div
                 key={i}
@@ -209,8 +211,8 @@ export function FloorPlan({
                 style={{
                   left: pct(it.x, width),
                   top: pct(it.y, height),
-                  width: pct(it.w, width),
-                  height: pct(it.h, height),
+                  width: pct(rw, width),
+                  height: pct(rh, height),
                 }}
               />
             );
