@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { useBookings, useStaffUsers, useUpdateBooking, type BookingRow } from "@/lib/v2-data";
@@ -107,6 +107,7 @@ function HostStandPage() {
   const [newParty, setNewParty] = useState("2");
   const [newPhone, setNewPhone] = useState("");
   const [now, setNow] = useState(() => new Date());
+  const dateInputRef = useRef<HTMLInputElement>(null);
 
   const { data: todays = [] } = useBookings(dateISO);
   const updateBooking = useUpdateBooking();
@@ -339,53 +340,66 @@ function HostStandPage() {
     });
   }, [positionedTables, section, seated, reservations, now]);
 
-  const freeTables = useMemo(() => {
-    return dbTables
-      .filter((t) => !occupiedTableIds.has(String(t.table_number)))
+  type FreeTable = { table_number: string; capacity: number };
+
+  const freeTables = useMemo<FreeTable[]>(() => {
+    // Match what's actually on the floor map (placed tables, or demo layout)
+    if (positionedTables.length > 0) {
+      return positionedTables
+        .filter((t) => !occupiedTableIds.has(String(t.table_number)))
+        .map((t) => ({ table_number: t.table_number, capacity: t.capacity || 2 }))
+        .sort((a, b) => a.capacity - b.capacity);
+    }
+    return floorItems
+      .filter((it): it is Extract<FloorItem, { kind: "round" | "rect" }> =>
+        (it.kind === "round" || it.kind === "rect") &&
+        it.id != null &&
+        (it.status ?? "free") === "free",
+      )
+      .map((it) => ({
+        table_number: String(it.label ?? it.id),
+        capacity: it.party ?? (it.kind === "round" ? 2 : 4),
+      }))
       .sort((a, b) => a.capacity - b.capacity);
-  }, [dbTables, occupiedTableIds]);
+  }, [positionedTables, occupiedTableIds, floorItems]);
 
   const recommended = useMemo(() => {
-    if (!seatTarget) {
-      // Suggest best free table for next party
-      const next = upNext[0];
-      if (!next) return null;
-      const fit =
-        freeTables.find((t) => t.capacity >= next.party) ?? freeTables[0] ?? null;
-      if (!fit) return null;
-      return {
-        table: fit.table_number,
-        party: next.party,
-        name: next.name,
-        reasons: [
-          `Seats ${fit.capacity}`,
-          "Server balance",
-          "Open now",
-          "Est. dining time 1h 10m",
-        ],
-        target: {
-          kind: next.kind,
-          id: next.id,
-          name: next.name,
-          party: next.party,
-          tag: next.tag,
-        } as SeatTarget,
-      };
+    const nextParty = seatTarget
+      ? { party: seatTarget.party, name: seatTarget.name, target: seatTarget }
+      : upNext[0]
+        ? {
+            party: upNext[0].party,
+            name: upNext[0].name,
+            target: {
+              kind: upNext[0].kind,
+              id: upNext[0].id,
+              name: upNext[0].name,
+              party: upNext[0].party,
+              tag: upNext[0].tag,
+            } as SeatTarget,
+          }
+        : null;
+
+    if (!nextParty) {
+      return { kind: "idle" as const, freeCount: freeTables.length };
     }
     const fit =
-      freeTables.find((t) => t.capacity >= seatTarget.party) ?? freeTables[0] ?? null;
-    if (!fit) return null;
+      freeTables.find((t) => t.capacity >= nextParty.party) ?? freeTables[0] ?? null;
+    if (!fit) {
+      return { kind: "no_fit" as const, name: nextParty.name, party: nextParty.party };
+    }
     return {
+      kind: "match" as const,
       table: fit.table_number,
-      party: seatTarget.party,
-      name: seatTarget.name,
+      party: nextParty.party,
+      name: nextParty.name,
       reasons: [
         `Seats ${fit.capacity}`,
         "Server balance",
-        "No conflict now",
+        seatTarget ? "No conflict now" : "Open now",
         "Est. dining time 1h 10m",
       ],
-      target: seatTarget,
+      target: nextParty.target,
     };
   }, [seatTarget, upNext, freeTables]);
 
@@ -508,42 +522,74 @@ function HostStandPage() {
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   }, [dateISO]);
 
+  const openDatePicker = () => {
+    const el = dateInputRef.current;
+    if (!el) return;
+    try {
+      el.showPicker?.();
+    } catch {
+      el.focus();
+      el.click();
+    }
+  };
+
   return (
-    <AppShell>
-      <div className="flex h-[calc(100dvh-3.25rem)] lg:h-[calc(100dvh-3.5rem)] flex-col bg-[#f7f8fa] text-slate-900 -mx-0 lg:-mt-3">
+    <AppShell immersive>
+      <div className="flex flex-1 min-h-0 flex-col bg-[#f7f8fa] text-slate-900 w-full">
         {/* Top metrics bar */}
-        <header className="shrink-0 border-b border-slate-200 bg-white px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3 sm:gap-5">
+        <header className="shrink-0 border-b border-slate-200 bg-white px-5 lg:px-8 py-3.5 flex flex-wrap items-center gap-4 lg:gap-8">
           <div className="min-w-0">
             <div className="text-base sm:text-lg font-semibold truncate">{restaurantName}</div>
             <div className="text-xs text-slate-500">{clockLabel}</div>
           </div>
 
-          <div className="flex items-center gap-4 sm:gap-6 text-sm">
+          <div className="flex items-center gap-5 sm:gap-8 text-sm">
             <Metric icon={Users} label="Covers Today" value={coversToday} tone="green" />
             <Metric icon={Utensils} label="Dining" value={diningCount} tone="blue" />
             <Metric icon={Clock} label="Waiting" value={waitingCount} tone="orange" />
           </div>
 
-          <div className="ml-auto flex items-center gap-2 sm:gap-3">
-            <div className="hidden md:flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 h-9">
-              <Calendar className="size-3.5 text-slate-400" />
+          <div className="ml-auto flex items-center gap-2.5 sm:gap-3">
+            <button
+              type="button"
+              onClick={openDatePicker}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-white hover:border-emerald-300 px-3 h-10 cursor-pointer transition"
+            >
+              <Calendar className="size-4 text-emerald-600 shrink-0" />
+              <span className="text-xs font-semibold text-slate-800 tabular-nums min-w-[5.5rem] text-left">
+                {dateShort}
+              </span>
               <input
+                ref={dateInputRef}
                 type="date"
                 value={dateISO}
                 onChange={(e) => setDateISO(e.target.value)}
-                className="bg-transparent text-xs outline-none w-[118px]"
+                onClick={(e) => e.stopPropagation()}
+                className="sr-only"
+                aria-label="Service date"
               />
-              <button
-                type="button"
-                onClick={() => setDateISO(todayISO())}
-                className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 pl-1.5 border-l border-slate-200"
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDateISO(todayISO());
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDateISO(todayISO());
+                  }
+                }}
+                className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 pl-2 border-l border-slate-200"
               >
                 Today
-              </button>
-            </div>
+              </span>
+            </button>
             <button
               type="button"
-              className="relative inline-flex size-9 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50"
+              className="relative inline-flex size-10 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50"
               aria-label="Notifications"
             >
               <Bell className="size-4 text-slate-600" />
@@ -582,16 +628,16 @@ function HostStandPage() {
           </div>
         )}
 
-        <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_280px]">
+        <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)_300px] gap-0 xl:gap-0">
           {/* Up Next */}
-          <aside className="min-h-0 border-r border-slate-200 bg-[#f0f2f5] flex flex-col">
-            <div className="px-4 py-3 flex items-center justify-between border-b border-slate-200/80">
+          <aside className="min-h-0 xl:border-r border-slate-200 bg-[#eef1f4] flex flex-col">
+            <div className="px-5 py-4 flex items-center justify-between border-b border-slate-200/80">
               <div className="text-sm font-semibold">Up Next</div>
               <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-800 px-1.5 text-[11px] font-bold text-white">
                 {upNext.length}
               </span>
             </div>
-            <ul className="flex-1 overflow-y-auto p-3 space-y-2">
+            <ul className="flex-1 overflow-y-auto p-4 space-y-3">
               {upNext.map((item) => (
                 <li
                   key={item.key}
@@ -658,10 +704,10 @@ function HostStandPage() {
                 </li>
               )}
             </ul>
-            <div className="p-3 border-t border-slate-200">
+            <div className="p-4 border-t border-slate-200">
               <Button
                 variant="outline"
-                className="w-full h-10 border-slate-300 bg-white hover:bg-slate-50"
+                className="w-full h-11 border-slate-300 bg-white hover:bg-slate-50"
                 onClick={() => setWalkInOpen(true)}
               >
                 <UserPlus className="size-4 mr-1.5" /> Add Walk-in
@@ -670,8 +716,8 @@ function HostStandPage() {
           </aside>
 
           {/* Floor plan */}
-          <section className="min-h-0 min-w-0 flex flex-col bg-white">
-            <div className="shrink-0 px-3 sm:px-4 py-2.5 flex flex-wrap items-center gap-1.5 border-b border-slate-200">
+          <section className="min-h-0 min-w-0 flex flex-col bg-white xl:border-x border-slate-200">
+            <div className="shrink-0 px-5 py-3.5 flex flex-wrap items-center gap-2 border-b border-slate-200">
               {SECTIONS.map((s) => (
                 <button
                   key={s}
@@ -721,20 +767,23 @@ function HostStandPage() {
           </section>
 
           {/* Right rail */}
-          <aside className="min-h-0 border-l border-slate-200 bg-[#f0f2f5] flex flex-col overflow-y-auto">
-            <div className="p-3 space-y-3">
+          <aside className="min-h-0 xl:border-l border-slate-200 bg-[#eef1f4] flex flex-col overflow-y-auto">
+            <div className="p-4 space-y-4">
               {/* AI recommendation */}
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   <Sparkles className="size-3.5 text-emerald-500" />
                   AI Assistant
                 </div>
-                {recommended ? (
+                {recommended.kind === "match" ? (
                   <>
                     <div className="mt-2 text-sm text-slate-600">Recommended Table:</div>
                     <div className="text-3xl font-bold text-emerald-600 tracking-tight">
                       {recommended.table}
                     </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      for {recommended.name} · party of {recommended.party}
+                    </p>
                     <ul className="mt-3 space-y-1.5">
                       {recommended.reasons.map((r) => (
                         <li key={r} className="flex items-start gap-2 text-xs text-slate-600">
@@ -758,29 +807,45 @@ function HostStandPage() {
                       Seat Here →
                     </Button>
                   </>
-                ) : (
+                ) : recommended.kind === "no_fit" ? (
                   <p className="mt-3 text-sm text-slate-500">
-                    No free tables match the next party yet.
+                    No free table fits {recommended.name} (party of {recommended.party}).
                   </p>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-sm text-slate-600">
+                      {recommended.freeCount} tables available.
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Add a walk-in or pick a party from Up Next to get a seat recommendation.
+                    </p>
+                    <Button
+                      variant="outline"
+                      className="w-full h-9 mt-1"
+                      onClick={() => setWalkInOpen(true)}
+                    >
+                      <UserPlus className="size-3.5 mr-1.5" /> Add Walk-in
+                    </Button>
+                  </div>
                 )}
               </div>
 
               {/* Server load */}
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
                   Server Load
                 </div>
                 {servers.length === 0 && (
                   <p className="text-xs text-slate-500">Add staff to see server balance.</p>
                 )}
-                <ul className="space-y-3">
+                <ul className="space-y-3.5">
                   {servers.map((s) => (
                     <li key={s.name}>
-                      <div className="flex items-center justify-between text-xs mb-1">
+                      <div className="flex items-center justify-between text-xs mb-1.5">
                         <span className="font-semibold text-slate-800">{s.name}</span>
                         <span className="text-slate-500">{s.tables} tables</span>
                       </div>
-                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
                         <div
                           className={cn(
                             "h-full rounded-full transition-all",
@@ -795,7 +860,7 @@ function HostStandPage() {
               </div>
 
               {/* Alerts */}
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                     Alerts
@@ -807,7 +872,7 @@ function HostStandPage() {
                 {alerts.length === 0 ? (
                   <p className="text-xs text-slate-500">All clear for this service.</p>
                 ) : (
-                  <ul className="space-y-2">
+                  <ul className="space-y-2.5">
                     {alerts.map((a) => (
                       <li key={a.text} className="flex items-start gap-2 text-xs text-slate-700">
                         <AlertTriangle
@@ -825,7 +890,7 @@ function HostStandPage() {
 
               <Button
                 variant="outline"
-                className="w-full h-10 border-slate-300 bg-white"
+                className="w-full h-11 border-slate-300 bg-white"
                 onClick={() => toast.message("Staff messaging coming soon")}
               >
                 <MessageSquare className="size-4 mr-1.5" /> Message Staff

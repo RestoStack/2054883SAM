@@ -197,18 +197,22 @@ export function Sidebar() {
 export function AppShell({
   children,
   fullBleed = false,
+  /** Keep full sidebar but drop search chrome — Host Stand fills the workspace */
+  immersive = false,
 }: {
   children: ReactNode;
   /** Hide chrome padding for immersive pages like Host Stand */
   fullBleed?: boolean;
+  immersive?: boolean;
 }) {
   const { role } = useRole();
   const [open, setOpen] = useState(false);
+  const fillViewport = fullBleed || immersive;
   return (
-    <div className={cn("flex bg-background", fullBleed ? "h-screen overflow-hidden" : "min-h-screen")}>
+    <div className={cn("flex bg-background", fillViewport ? "h-dvh overflow-hidden" : "min-h-screen")}>
       {!fullBleed && <Sidebar />}
       {fullBleed && (
-        <aside className="hidden lg:flex w-14 shrink-0 flex-col border-r border-sidebar-border bg-sidebar sticky top-0 h-screen items-center py-3 gap-2">
+        <aside className="hidden lg:flex w-14 shrink-0 flex-col border-r border-sidebar-border bg-sidebar sticky top-0 h-dvh items-center py-3 gap-2">
           <Link to="/dashboard" className="mb-2" title="Dashboard">
             <img src={logo} alt="RestoStack" className="h-8 w-8 object-contain" />
           </Link>
@@ -224,8 +228,8 @@ export function AppShell({
           ))}
         </aside>
       )}
-      <main className={cn("flex-1 min-w-0", fullBleed ? "overflow-hidden flex flex-col" : "overflow-x-hidden")}>
-        {!fullBleed && (
+      <main className={cn("flex-1 min-w-0", fillViewport ? "overflow-hidden flex flex-col" : "overflow-x-hidden")}>
+        {!fullBleed && !immersive && (
           <>
             <div className="lg:hidden sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-background/95 backdrop-blur px-3 py-2">
               <Sheet open={open} onOpenChange={setOpen}>
@@ -257,7 +261,7 @@ export function AppShell({
             </div>
           </>
         )}
-        {fullBleed && (
+        {(fullBleed || immersive) && (
           <div className="lg:hidden shrink-0 flex items-center gap-2 border-b border-border bg-background px-3 py-2">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
