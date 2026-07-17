@@ -105,14 +105,30 @@ export function DemoRequestDialog({ trigger, open, onOpenChange }: DemoRequestDi
                 if (submitting) return;
                 setError(null);
                 setSubmitting(true);
-                const { error: insertError } = await supabase.from("waitlist_signups").insert({
+
+                const payload = {
                   name: form.name.trim(),
                   email: form.email.trim(),
                   phone: form.phone.trim(),
                   restaurant: form.restaurant.trim(),
                   best_time: form.best_time.trim(),
                   source: "demo_request",
-                });
+                };
+
+                let insertError = (await supabase.from("waitlist_signups").insert(payload)).error;
+
+                // Fallback if best_time/source columns are not migrated yet
+                if (insertError) {
+                  insertError = (
+                    await supabase.from("waitlist_signups").insert({
+                      name: payload.name,
+                      email: payload.email,
+                      phone: payload.phone,
+                      restaurant: `${payload.restaurant} (Best time: ${payload.best_time})`,
+                    })
+                  ).error;
+                }
+
                 setSubmitting(false);
                 if (insertError) {
                   setError("Something went wrong. Please check your details and try again.");
