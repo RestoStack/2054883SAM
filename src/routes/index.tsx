@@ -291,27 +291,20 @@ function ComingSoon() {
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <Link
-            to="/start"
-            className="hidden sm:inline-flex rounded-full px-4 py-2 text-sm font-semibold text-black transition hover:opacity-90"
-            style={{ background: GREEN }}
-          >
-            Create your restaurant
-          </Link>
           <DemoRequestDialog
             trigger={
               <button
                 type="button"
-                className="hidden sm:inline-flex rounded-full border-2 px-4 py-2 text-sm font-semibold transition hover:bg-[#39D400] hover:text-black"
-                style={{ borderColor: GREEN, color: "#1a1a1a" }}
+                className="hidden sm:inline-flex rounded-full px-4 py-2 text-sm font-semibold text-black transition hover:opacity-90"
+                style={{ background: GREEN }}
               >
-                Try the demo
+                Request a demo
               </button>
             }
           />
           <a
             href="#early-access"
-            className="rounded-full border-2 px-3 py-1.5 text-xs font-medium transition hover:bg-[#39D400] hover:text-black sm:px-5 sm:py-2 sm:text-sm sm:hidden"
+            className="rounded-full border-2 px-3 py-1.5 text-xs font-medium transition hover:bg-[#39D400] hover:text-black sm:px-5 sm:py-2 sm:text-sm"
             style={{ borderColor: GREEN, color: "#1a1a1a" }}
           >
             Get Early Access
@@ -336,24 +329,24 @@ function ComingSoon() {
         </p>
         {/* Mobile primary CTA */}
         <div className="mt-7 flex flex-col items-center gap-2 sm:hidden">
-          <Link
-            to="/start"
-            className="inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-black transition hover:opacity-90"
-            style={{ background: GREEN }}
-          >
-            Create your restaurant <ArrowRight className="h-4 w-4" />
-          </Link>
           <DemoRequestDialog
             trigger={
               <button
                 type="button"
-                className="inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-full border-2 px-6 py-3 text-sm font-semibold transition"
-                style={{ borderColor: GREEN, color: "#1a1a1a" }}
+                className="inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-black transition hover:opacity-90"
+                style={{ background: GREEN }}
               >
-                Try the Italian Bistro demo
+                Request a demo <ArrowRight className="h-4 w-4" />
               </button>
             }
           />
+          <a
+            href="#early-access"
+            className="inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-full border-2 px-6 py-3 text-sm font-semibold transition"
+            style={{ borderColor: GREEN, color: "#1a1a1a" }}
+          >
+            Join the Waiting List
+          </a>
         </div>
       </section>
 
@@ -415,7 +408,7 @@ function ComingSoon() {
                 className="inline-flex items-center gap-2 rounded-full px-8 py-3 text-sm font-semibold text-black transition hover:opacity-90"
                 style={{ background: GREEN }}
               >
-                Try the Italian Bistro demo <ArrowRight className="h-4 w-4" />
+                Request a demo <ArrowRight className="h-4 w-4" />
               </button>
             }
           />
