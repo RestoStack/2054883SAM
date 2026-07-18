@@ -927,28 +927,34 @@ export type Database = {
       }
       waitlist_signups: {
         Row: {
+          best_time: string | null
           created_at: string
           email: string
           id: string
           name: string
           phone: string
           restaurant: string
+          source: string | null
         }
         Insert: {
+          best_time?: string | null
           created_at?: string
           email: string
           id?: string
           name: string
           phone: string
           restaurant: string
+          source?: string | null
         }
         Update: {
+          best_time?: string | null
           created_at?: string
           email?: string
           id?: string
           name?: string
           phone?: string
           restaurant?: string
+          source?: string | null
         }
         Relationships: []
       }

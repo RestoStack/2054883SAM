@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   Sparkles, Bell, ChevronDown, LayoutDashboard, CalendarDays, Users, Gift,
@@ -11,6 +11,7 @@ import {
 import { Area, AreaChart, ResponsiveContainer, PieChart, Pie, Cell, Line, LineChart as RLineChart } from "recharts";
 import logoUrl from "@/assets/restostack-logo.png";
 import { supabase } from "@/integrations/supabase/client";
+import { DemoRequestDialog } from "@/components/DemoRequestDialog";
 import jukeboxLogo from "@/assets/logos/jukebox.png";
 import industriaLogo from "@/assets/logos/industria.webp";
 import bistroNoirLogo from "@/assets/logos/bistronoir.png";
@@ -280,7 +281,6 @@ function ComingSoon() {
       <header className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 sm:py-6">
         <Logo className="h-12 sm:h-20" />
         <nav className="hidden items-center gap-10 text-sm text-zinc-700 md:flex">
-        <nav className="hidden items-center gap-10 text-sm text-zinc-700 md:flex">
           {[
             { to: "#product", l: "Product" },
             { to: "#use-cases", l: "Use Cases" },
@@ -289,26 +289,22 @@ function ComingSoon() {
             <a key={n.to} href={n.to} className="transition hover:text-black">{n.l}</a>
           ))}
         </nav>
-        </nav>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <Link
-            to="/start"
-            className="hidden sm:inline-flex rounded-full px-4 py-2 text-sm font-semibold text-black transition hover:opacity-90"
-            style={{ background: GREEN }}
-          >
-            Create your restaurant
-          </Link>
-          <Link
-            to="/admin-login"
-            className="hidden sm:inline-flex rounded-full border-2 px-4 py-2 text-sm font-semibold transition hover:bg-[#39D400] hover:text-black"
-            style={{ borderColor: GREEN, color: "#1a1a1a" }}
-          >
-            Try the demo
-          </Link>
+          <DemoRequestDialog
+            trigger={
+              <button
+                type="button"
+                className="hidden sm:inline-flex rounded-full px-4 py-2 text-sm font-semibold text-black transition hover:opacity-90"
+                style={{ background: GREEN }}
+              >
+                Request a demo
+              </button>
+            }
+          />
           <a
             href="#early-access"
-            className="rounded-full border-2 px-3 py-1.5 text-xs font-medium transition hover:bg-[#39D400] hover:text-black sm:px-5 sm:py-2 sm:text-sm sm:hidden"
+            className="rounded-full border-2 px-3 py-1.5 text-xs font-medium transition hover:bg-[#39D400] hover:text-black sm:px-5 sm:py-2 sm:text-sm"
             style={{ borderColor: GREEN, color: "#1a1a1a" }}
           >
             Get Early Access
@@ -333,20 +329,24 @@ function ComingSoon() {
         </p>
         {/* Mobile primary CTA */}
         <div className="mt-7 flex flex-col items-center gap-2 sm:hidden">
-          <Link
-            to="/start"
-            className="inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-black transition hover:opacity-90"
-            style={{ background: GREEN }}
-          >
-            Create your restaurant <ArrowRight className="h-4 w-4" />
-          </Link>
-          <Link
-            to="/admin-login"
+          <DemoRequestDialog
+            trigger={
+              <button
+                type="button"
+                className="inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-black transition hover:opacity-90"
+                style={{ background: GREEN }}
+              >
+                Request a demo <ArrowRight className="h-4 w-4" />
+              </button>
+            }
+          />
+          <a
+            href="#early-access"
             className="inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-full border-2 px-6 py-3 text-sm font-semibold transition"
             style={{ borderColor: GREEN, color: "#1a1a1a" }}
           >
-            Try the Italian Bistro demo
-          </Link>
+            Join the Waiting List
+          </a>
         </div>
       </section>
 
@@ -401,13 +401,17 @@ function ComingSoon() {
           Get early access and be among the first to experience the operating system built specifically for restaurants.
         </p>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-          <Link
-            to="/admin-login"
-            className="inline-flex items-center gap-2 rounded-full px-8 py-3 text-sm font-semibold text-black transition hover:opacity-90"
-            style={{ background: GREEN }}
-          >
-            Try the Italian Bistro demo <ArrowRight className="h-4 w-4" />
-          </Link>
+          <DemoRequestDialog
+            trigger={
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 rounded-full px-8 py-3 text-sm font-semibold text-black transition hover:opacity-90"
+                style={{ background: GREEN }}
+              >
+                Request a demo <ArrowRight className="h-4 w-4" />
+              </button>
+            }
+          />
           <a
             href="#early-access"
             className="inline-flex items-center gap-2 rounded-full border-2 px-8 py-3 text-sm font-semibold transition hover:bg-[#39D400] hover:text-black"
@@ -745,7 +749,6 @@ function ComingSoon() {
           <a href="#"><Linkedin className="h-4 w-4" /></a>
           <a href="#"><Instagram className="h-4 w-4" /></a>
           <a href="#"><Mail className="h-4 w-4" /></a>
-          <Link to="/server-app" className="ml-2 text-xs text-zinc-400 hover:text-black">Staff login</Link>
         </div>
       </footer>
 
