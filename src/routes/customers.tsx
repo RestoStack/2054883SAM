@@ -123,6 +123,7 @@ function CustomersList() {
                       <Link
                         to="/customers/$id"
                         params={{ id: c.id }}
+                        search={{ tab: "overview" }}
                         className="flex items-center gap-3 font-medium hover:underline"
                       >
                         <div className="size-9 rounded-full bg-gradient-to-br from-accent to-primary/30" />
