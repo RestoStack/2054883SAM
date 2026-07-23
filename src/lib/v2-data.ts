@@ -707,7 +707,357 @@ export function useLoyaltyStats() {
         date: new Date(t.created_at).toLocaleString(),
         positive: (t.points_earned ?? 0) > 0,
       }));
-      return { members, totalVisits, creditEarned, creditRedeemed, topMembers, recentTx };
+      return { members, totalVisits, creditEarned, creditRedeemed, topMembers, recentTx, allCustomers: customers };
+    },
+  });
+}
+
+// ============ CUSTOMER MUTATIONS ============
+export function useCreateCustomer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { full_name: string; email?: string; phone?: string; notes?: string }) => {
+      const restaurant_id = await getCurrentRestaurantId();
+      const { data, error } = await supabase
+        .from("v2_customers")
+        .insert({
+          restaurant_id,
+          full_name: input.full_name.trim(),
+          email: input.email?.trim() || null,
+          phone: input.phone?.trim() || null,
+          notes: input.notes?.trim() || null,
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["v2_customers"] });
+      qc.invalidateQueries({ queryKey: ["v2_loyalty_stats"] });
+      qc.invalidateQueries({ queryKey: ["v2_dashboard_stats"] });
+    },
+  });
+}
+
+export function useUpdateCustomer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      id: string;
+      full_name?: string;
+      email?: string | null;
+      phone?: string | null;
+      notes?: string | null;
+    }) => {
+      const patch: Record<string, string | null> = {};
+      if (input.full_name !== undefined) patch.full_name = input.full_name.trim();
+      if (input.email !== undefined) patch.email = input.email?.trim() || null;
+      if (input.phone !== undefined) patch.phone = input.phone?.trim() || null;
+      if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
+      const { error } = await supabase.from("v2_customers").update(patch).eq("id", input.id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["v2_customers"] });
+      qc.invalidateQueries({ queryKey: ["v2_customer", vars.id] });
+      qc.invalidateQueries({ queryKey: ["v2_loyalty_stats"] });
+    },
+  });
+}
+
+// ============ STAFF MUTATIONS ============
+export function useCreateStaffUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      full_name: string;
+      role: "admin" | "hostess" | "server";
+      email?: string;
+      hourly_wage?: number;
+      pin?: string;
+    }) => {
+      const restaurant_id = await getCurrentRestaurantId();
+      const { error } = await supabase.from("v2_users").insert({
+        restaurant_id,
+        full_name: input.full_name.trim(),
+        role: input.role,
+        email: input.email?.trim() || null,
+        hourly_wage: input.hourly_wage ?? null,
+        pin: input.pin?.trim() || null,
+        is_active: true,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["v2_users"] });
+    },
+  });
+}
+
+export function useUpdateStaffUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      id: string;
+      is_active?: boolean;
+      role?: "admin" | "hostess" | "server";
+      full_name?: string;
+      email?: string | null;
+      hourly_wage?: number | null;
+    }) => {
+      const patch: Record<string, unknown> = {};
+      if (input.is_active !== undefined) patch.is_active = input.is_active;
+      if (input.role !== undefined) patch.role = input.role;
+      if (input.full_name !== undefined) patch.full_name = input.full_name.trim();
+      if (input.email !== undefined) patch.email = input.email?.trim() || null;
+      if (input.hourly_wage !== undefined) patch.hourly_wage = input.hourly_wage;
+      const { error } = await supabase.from("v2_users").update(patch).eq("id", input.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["v2_users"] });
+    },
+  });
+}
+
+// ============ LOYALTY MUTATIONS ============
+export function useAdjustLoyaltyPoints() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      customer_id: string;
+      points: number;
+      mode: "earn" | "redeem";
+      description?: string;
+    }) => {
+      const restaurant_id = await getCurrentRestaurantId();
+      const { data: cust, error: cerr } = await supabase
+        .from("v2_customers")
+        .select("loyalty_points")
+        .eq("id", input.customer_id)
+        .single();
+      if (cerr) throw cerr;
+      const current = Number(cust?.loyalty_points ?? 0);
+      const delta = Math.abs(Math.floor(input.points));
+      if (delta <= 0) throw new Error("Points must be greater than zero");
+      if (input.mode === "redeem" && delta > current) throw new Error("Not enough points to redeem");
+      const balance_after = input.mode === "earn" ? current + delta : current - delta;
+      const { error: uerr } = await supabase
+        .from("v2_customers")
+        .update({ loyalty_points: balance_after })
+        .eq("id", input.customer_id);
+      if (uerr) throw uerr;
+      const { error: terr } = await supabase.from("v2_loyalty_transactions").insert({
+        restaurant_id,
+        customer_id: input.customer_id,
+        points_earned: input.mode === "earn" ? delta : 0,
+        points_redeemed: input.mode === "redeem" ? delta : 0,
+        balance_after,
+        description:
+          input.description?.trim() ||
+          (input.mode === "earn" ? `Earned ${delta} points` : `Redeemed ${delta} points`),
+      });
+      if (terr) throw terr;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["v2_loyalty_stats"] });
+      qc.invalidateQueries({ queryKey: ["v2_customers"] });
+    },
+  });
+}
+
+// ============ SHIFTS / PAYROLL ============
+export type ShiftRow = {
+  id: string;
+  user_id: string;
+  staff_name: string;
+  clock_in_at: string;
+  clock_out_at: string | null;
+  sales_total: number;
+  tips_total: number;
+  hourly_wage: number;
+  hours: number;
+  pay: number;
+};
+
+export function useShifts(days = 14) {
+  return useQuery({
+    queryKey: ["v2_shifts", days],
+    queryFn: async (): Promise<ShiftRow[]> => {
+      const since = new Date();
+      since.setDate(since.getDate() - days);
+      const [shiftRes, staffRes] = await Promise.all([
+        supabase
+          .from("v2_shifts")
+          .select("id, user_id, clock_in_at, clock_out_at, sales_total, tips_total")
+          .gte("clock_in_at", since.toISOString())
+          .order("clock_in_at", { ascending: false }),
+        supabase.from("v2_users").select("id, full_name, hourly_wage"),
+      ]);
+      if (shiftRes.error) throw shiftRes.error;
+      if (staffRes.error) throw staffRes.error;
+      const wageById = Object.fromEntries(
+        (staffRes.data ?? []).map((u: any) => [u.id, { name: u.full_name ?? "Staff", wage: Number(u.hourly_wage ?? 0) }]),
+      );
+      return (shiftRes.data ?? []).map((s: any) => {
+        const start = new Date(s.clock_in_at).getTime();
+        const end = s.clock_out_at ? new Date(s.clock_out_at).getTime() : Date.now();
+        const hours = Math.max(0, (end - start) / 3_600_000);
+        const wage = wageById[s.user_id]?.wage ?? 0;
+        return {
+          id: s.id,
+          user_id: s.user_id,
+          staff_name: wageById[s.user_id]?.name ?? "Staff",
+          clock_in_at: s.clock_in_at,
+          clock_out_at: s.clock_out_at,
+          sales_total: Number(s.sales_total ?? 0),
+          tips_total: Number(s.tips_total ?? 0),
+          hourly_wage: wage,
+          hours,
+          pay: hours * wage,
+        };
+      });
+    },
+  });
+}
+
+export function useClockShift() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { user_id: string; action: "in" | "out" }) => {
+      const restaurant_id = await getCurrentRestaurantId();
+      if (input.action === "in") {
+        const { error } = await supabase.from("v2_shifts").insert({
+          restaurant_id,
+          user_id: input.user_id,
+          clock_in_at: new Date().toISOString(),
+        });
+        if (error) throw error;
+        return;
+      }
+      const { data: open, error: ferr } = await supabase
+        .from("v2_shifts")
+        .select("id")
+        .eq("user_id", input.user_id)
+        .is("clock_out_at", null)
+        .order("clock_in_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (ferr) throw ferr;
+      if (!open?.id) throw new Error("No open shift to clock out");
+      const { error } = await supabase
+        .from("v2_shifts")
+        .update({ clock_out_at: new Date().toISOString() })
+        .eq("id", open.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["v2_shifts"] });
+    },
+  });
+}
+
+// ============ PRODUCT ANALYTICS ============
+export function useProductAnalytics() {
+  return useQuery({
+    queryKey: ["v2_product_analytics"],
+    queryFn: async () => {
+      const since = new Date();
+      since.setDate(since.getDate() - 30);
+      const [ordersRes, itemsRes] = await Promise.all([
+        supabase
+          .from("v2_orders")
+          .select("id, total, created_at")
+          .gte("created_at", since.toISOString()),
+        supabase
+          .from("v2_order_items")
+          .select("order_id, item_name, qty, price, was_upsell"),
+      ]);
+      if (ordersRes.error) throw ordersRes.error;
+      if (itemsRes.error) throw itemsRes.error;
+      const orderIds = new Set((ordersRes.data ?? []).map((o) => o.id));
+      const items = (itemsRes.data ?? []).filter((i: any) => orderIds.has(i.order_id));
+      const byItem: Record<string, { name: string; qty: number; revenue: number; upsells: number }> = {};
+      let upsellCount = 0;
+      let lineCount = 0;
+      for (const it of items) {
+        const name = it.item_name || "Item";
+        const qty = Number(it.qty ?? 1);
+        const price = Number(it.price ?? 0);
+        if (!byItem[name]) byItem[name] = { name, qty: 0, revenue: 0, upsells: 0 };
+        byItem[name].qty += qty;
+        byItem[name].revenue += qty * price;
+        lineCount += 1;
+        if (it.was_upsell) {
+          byItem[name].upsells += qty;
+          upsellCount += 1;
+        }
+      }
+      const topItems = Object.values(byItem)
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 10);
+      const revenue = (ordersRes.data ?? []).reduce((s, o) => s + Number(o.total ?? 0), 0);
+      const orderCount = (ordersRes.data ?? []).length;
+      return {
+        orderCount,
+        revenue,
+        avgTicket: orderCount ? revenue / orderCount : 0,
+        upsellRate: lineCount ? upsellCount / lineCount : 0,
+        topItems,
+      };
+    },
+  });
+}
+
+/** Date-range metrics for dashboard / reports */
+export function useMetricsInRange(from: string, to: string) {
+  return useQuery({
+    queryKey: ["v2_metrics_range", from, to],
+    enabled: Boolean(from && to),
+    queryFn: async (): Promise<DayMetric[]> => {
+      const start = new Date(`${from}T00:00:00`);
+      const end = new Date(`${to}T00:00:00`);
+      const days: DayMetric[] = [];
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const iso = d.toISOString().slice(0, 10);
+        days.push({
+          day: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+          date: iso,
+          bookings: 0,
+          cancellations: 0,
+          noshows: 0,
+          covers: 0,
+          revenue: 0,
+        });
+      }
+      if (!days.length) return days;
+      const [bkRes, odRes] = await Promise.all([
+        supabase.from("v2_bookings").select("date, party_size, status").gte("date", from).lte("date", to),
+        supabase
+          .from("v2_orders")
+          .select("total, created_at")
+          .gte("created_at", `${from}T00:00:00`)
+          .lte("created_at", `${to}T23:59:59`),
+      ]);
+      if (bkRes.error) throw bkRes.error;
+      if (odRes.error) throw odRes.error;
+      const byDate = Object.fromEntries(days.map((d) => [d.date, d]));
+      for (const b of bkRes.data ?? []) {
+        const row = byDate[b.date as string];
+        if (!row) continue;
+        row.bookings += 1;
+        row.covers += b.party_size ?? 0;
+        if (b.status === "cancelled") row.cancellations += 1;
+        if (b.status === "no_show") row.noshows += 1;
+      }
+      for (const o of odRes.data ?? []) {
+        const iso = String(o.created_at).slice(0, 10);
+        const row = byDate[iso];
+        if (!row) continue;
+        row.revenue += Number(o.total ?? 0);
+      }
+      return days;
     },
   });
 }

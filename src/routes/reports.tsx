@@ -9,7 +9,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { exportCsv, exportPdf } from "@/lib/export";
-import { useBookings, useCustomers, useLast7DayMetrics, useOrders } from "@/lib/v2-data";
+import { useBookings, useMetricsInRange, useOrders } from "@/lib/v2-data";
 
 export const Route = createFileRoute("/reports")({
   head: () => ({ meta: [{ title: "Reports — RestoStack" }] }),
@@ -25,30 +25,52 @@ function ReportsPage() {
     ? `${format(range.from, "MMM d")} – ${format(range.to ?? range.from, "MMM d, yyyy")}`
     : "Pick a date range";
 
-  const { data: trend = [] } = useLast7DayMetrics();
+  const fromISO = range?.from ? format(range.from, "yyyy-MM-dd") : format(new Date(Date.now() - 6 * 86400000), "yyyy-MM-dd");
+  const toISO = range?.to ? format(range.to, "yyyy-MM-dd") : format(range?.from ?? new Date(), "yyyy-MM-dd");
+
+  const { data: trend = [] } = useMetricsInRange(fromISO, toISO);
   const { data: orders = [] } = useOrders();
-  const { data: customers = [] } = useCustomers();
   const { data: bookings = [] } = useBookings();
 
-  const revenue = orders.reduce((s, o) => s + o.totalRaw, 0);
-  const avgTicket = orders.length ? revenue / orders.length : 0;
+  const filteredOrders = useMemo(
+    () => orders.filter((o) => {
+      const d = o.createdAt.slice(0, 10);
+      return d >= fromISO && d <= toISO;
+    }),
+    [orders, fromISO, toISO],
+  );
+
+  const filteredBookings = useMemo(
+    () => bookings.filter((b) => b.date >= fromISO && b.date <= toISO),
+    [bookings, fromISO, toISO],
+  );
+
+  const uniqueGuests = useMemo(() => {
+    const ids = new Set<string>();
+    for (const o of filteredOrders) if (o.customerId) ids.add(o.customerId);
+    for (const b of filteredBookings) if (b.customerId) ids.add(b.customerId);
+    return ids.size || new Set(filteredBookings.map((b) => b.name)).size;
+  }, [filteredOrders, filteredBookings]);
+
+  const revenue = filteredOrders.reduce((s, o) => s + o.totalRaw, 0);
+  const avgTicket = filteredOrders.length ? revenue / filteredOrders.length : 0;
   const kpis = [
     { l: "Total Revenue", v: `$${revenue.toFixed(0)}`, i: DollarSign, c: "bg-success/15 text-success" },
-    { l: "Total Orders", v: String(orders.length), i: ShoppingBag, c: "bg-info/15 text-info" },
+    { l: "Total Orders", v: String(filteredOrders.length), i: ShoppingBag, c: "bg-info/15 text-info" },
     { l: "Avg Ticket", v: `$${avgTicket.toFixed(0)}`, i: TrendingUp, c: "bg-accent text-primary" },
-    { l: "Unique Guests", v: String(customers.length), i: Users, c: "bg-warning/15 text-warning" },
+    { l: "Unique Guests", v: String(uniqueGuests), i: Users, c: "bg-warning/15 text-warning" },
   ];
 
   const revenueData = trend.map((d) => ({ day: d.day, actual: d.revenue }));
   const hourly = useMemo(() => {
     const buckets = Array.from({ length: 12 }, (_, i) => ({ h: `${i + 11}:00`, covers: 0 }));
-    for (const b of bookings) {
+    for (const b of filteredBookings) {
       const hour = parseInt(b.rawTime?.slice(0, 2) ?? "", 10);
       if (!Number.isFinite(hour) || hour < 11 || hour > 22) continue;
       buckets[hour - 11].covers += b.people;
     }
     return buckets;
-  }, [bookings]);
+  }, [filteredBookings]);
 
   const buildRows = () => [
     ...kpis.map((k) => ({ Section: "KPI", Metric: k.l, Value: k.v, Change: "" })),
@@ -66,7 +88,7 @@ function ReportsPage() {
       rows: buildRows(),
     });
 
-  const empty = orders.length === 0 && bookings.length === 0;
+  const empty = filteredOrders.length === 0 && filteredBookings.length === 0;
 
   return (
     <AppShell>
@@ -128,7 +150,7 @@ function ReportsPage() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="rounded-xl border border-border bg-card p-5">
-              <h3 className="font-semibold mb-3">Revenue (last 7 days)</h3>
+              <h3 className="font-semibold mb-3">Revenue ({rangeLabel})</h3>
               <div className="h-64">
                 <ResponsiveContainer>
                   <AreaChart data={revenueData}>
@@ -142,7 +164,7 @@ function ReportsPage() {
               </div>
             </div>
             <div className="rounded-xl border border-border bg-card p-5">
-              <h3 className="font-semibold mb-3">Covers by hour (all bookings)</h3>
+              <h3 className="font-semibold mb-3">Covers by hour ({rangeLabel})</h3>
               <div className="h-64">
                 <ResponsiveContainer>
                   <BarChart data={hourly}>

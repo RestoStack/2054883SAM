@@ -8,10 +8,12 @@ import { TableHeatmap } from "@/components/TableHeatmap";
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import type { DateRange } from "react-day-picker";
+import { format, isSameDay } from "date-fns";
 import {
   useBookings,
   useDashboardStats,
   useLast7DayMetrics,
+  useMetricsInRange,
   useStaffUsers,
   useTableBusyCounts,
 } from "@/lib/v2-data";
@@ -34,7 +36,25 @@ function Dashboard() {
   const [activeMetric, setActiveMetric] = useState<StatKey>("bookings");
   const { data: dash } = useDashboardStats();
   const { data: bookings = [] } = useBookings(new Date().toISOString().slice(0, 10));
-  const { data: trend = [] } = useLast7DayMetrics();
+
+  const isTodayRange =
+    !!range?.from &&
+    !!range?.to &&
+    isSameDay(range.from, range.to) &&
+    isSameDay(range.from, new Date());
+
+  const fromISO = range?.from ? format(range.from, "yyyy-MM-dd") : "";
+  const toISO = range?.to ? format(range.to, "yyyy-MM-dd") : fromISO;
+
+  const { data: rangeTrend = [] } = useMetricsInRange(fromISO, toISO);
+  const { data: last7Trend = [] } = useLast7DayMetrics();
+  const trend = isTodayRange ? last7Trend : rangeTrend;
+
+  const chartRangeLabel = isTodayRange
+    ? "last 7 days"
+    : range?.from
+      ? `${format(range.from, "MMM d")} – ${format(range.to ?? range.from, "MMM d, yyyy")}`
+      : "selected range";
   const { data: staffUsers = [] } = useStaffUsers();
   const { data: busyCounts = {} } = useTableBusyCounts();
   const { staff } = useAuth();
@@ -150,7 +170,7 @@ function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 rounded-md border border-border bg-card p-5">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">{activeStat.l} — last 7 days</h3>
+              <h3 className="font-semibold">{activeStat.l} — {chartRangeLabel}</h3>
             </div>
             <div className="h-72">
               {chartData.every((d) => d.actual === 0) ? (
