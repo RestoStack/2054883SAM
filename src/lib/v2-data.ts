@@ -750,7 +750,12 @@ export function useUpdateCustomer() {
       phone?: string | null;
       notes?: string | null;
     }) => {
-      const patch: Record<string, string | null> = {};
+      const patch: {
+        full_name?: string;
+        email?: string | null;
+        phone?: string | null;
+        notes?: string | null;
+      } = {};
       if (input.full_name !== undefined) patch.full_name = input.full_name.trim();
       if (input.email !== undefined) patch.email = input.email?.trim() || null;
       if (input.phone !== undefined) patch.phone = input.phone?.trim() || null;
@@ -806,7 +811,13 @@ export function useUpdateStaffUser() {
       email?: string | null;
       hourly_wage?: number | null;
     }) => {
-      const patch: Record<string, unknown> = {};
+      const patch: {
+        is_active?: boolean;
+        role?: "admin" | "hostess" | "server";
+        full_name?: string;
+        email?: string | null;
+        hourly_wage?: number | null;
+      } = {};
       if (input.is_active !== undefined) patch.is_active = input.is_active;
       if (input.role !== undefined) patch.role = input.role;
       if (input.full_name !== undefined) patch.full_name = input.full_name.trim();
