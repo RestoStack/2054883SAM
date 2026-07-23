@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMenu } from "@/lib/v2-data";
+import { useMenu, type MenuItemRow } from "@/lib/v2-data";
+import { useUpdateMenuItem } from "@/hooks/use-menu";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/menu")({
@@ -22,8 +23,10 @@ function MenuPage() {
   const [cat, setCat] = useState(0);
   const [q, setQ] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [editItem, setEditItem] = useState<MenuItemRow | null>(null);
   const [cats, setCats] = useState<Category[]>([]);
   const { data, isLoading } = useMenu();
+  const updateItem = useUpdateMenuItem();
   const categories = data?.categories ?? ["All"];
   const items = data?.items ?? [];
   const filtered = items
@@ -34,7 +37,7 @@ function MenuPage() {
     if (!staff) return;
     supabase.from("v2_menu_categories").select("id,name").eq("restaurant_id", staff.restaurant_id).order("sort_order")
       .then(({ data }) => setCats((data ?? []) as Category[]));
-  }, [staff, addOpen]);
+  }, [staff, addOpen, editItem]);
 
   return (
     <AppShell>
@@ -102,7 +105,19 @@ function MenuPage() {
                       <div className="font-semibold truncate">{it.name}</div>
                       <div className="text-xs text-muted-foreground">{it.cat}</div>
                     </div>
-                    <button className="size-7 rounded-md hover:bg-muted flex items-center justify-center shrink-0">
+                    <button
+                      type="button"
+                      title={it.available ? "Mark unavailable" : "Mark available"}
+                      onClick={async () => {
+                        try {
+                          await updateItem.mutateAsync({ id: it.id, is_available: !it.available });
+                          toast.success(it.available ? "Item marked unavailable" : "Item marked available");
+                        } catch (e: unknown) {
+                          toast.error(e instanceof Error ? e.message : "Failed to update availability");
+                        }
+                      }}
+                      className="size-7 rounded-md hover:bg-muted flex items-center justify-center shrink-0"
+                    >
                       <MoreHorizontal className="size-4" />
                     </button>
                   </div>
@@ -116,7 +131,14 @@ function MenuPage() {
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${it.available ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
                         {it.available ? "Available" : "86'd"}
                       </span>
-                      <button className="size-6 rounded hover:bg-muted flex items-center justify-center"><Pencil className="size-3.5" /></button>
+                      <button
+                        type="button"
+                        title="Edit item"
+                        onClick={() => setEditItem(it)}
+                        className="size-6 rounded hover:bg-muted flex items-center justify-center"
+                      >
+                        <Pencil className="size-3.5" />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -126,23 +148,41 @@ function MenuPage() {
         )}
       </div>
 
-      {addOpen && staff && (
-        <AddItemDialog
+      {(addOpen || editItem) && staff && (
+        <ItemDialog
           restaurantId={staff.restaurant_id}
           cats={cats}
-          onClose={() => setAddOpen(false)}
-          onAdded={() => { qc.invalidateQueries({ queryKey: ["v2_menu"] }); setAddOpen(false); }}
+          item={editItem}
+          onClose={() => { setAddOpen(false); setEditItem(null); }}
+          onSaved={() => { qc.invalidateQueries({ queryKey: ["v2_menu"] }); setAddOpen(false); setEditItem(null); }}
         />
       )}
     </AppShell>
   );
 }
 
-function AddItemDialog({ restaurantId, cats, onClose, onAdded }: { restaurantId: string; cats: Category[]; onClose: () => void; onAdded: () => void }) {
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState("");
-  const [description, setDescription] = useState("");
-  const [categoryId, setCategoryId] = useState<string>(cats[0]?.id ?? "");
+function ItemDialog({
+  restaurantId,
+  cats,
+  item,
+  onClose,
+  onSaved,
+}: {
+  restaurantId: string;
+  cats: Category[];
+  item: MenuItemRow | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isEdit = !!item;
+  const updateItem = useUpdateMenuItem();
+  const [name, setName] = useState(item?.name ?? "");
+  const [price, setPrice] = useState(item ? String(item.priceRaw) : "");
+  const [description, setDescription] = useState(item?.desc ?? "");
+  const [categoryId, setCategoryId] = useState<string>(
+    item ? (cats.find((c) => c.name === item.cat)?.id ?? "") : (cats[0]?.id ?? ""),
+  );
+  const [isAvailable, setIsAvailable] = useState(item?.available ?? true);
   const [newCat, setNewCat] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -152,11 +192,30 @@ function AddItemDialog({ restaurantId, cats, onClose, onAdded }: { restaurantId:
     if (isNaN(p) || p < 0) { toast.error("Enter a valid price"); return; }
     setBusy(true);
     let catId: string | null = categoryId || null;
-    if (!catId && newCat.trim()) {
+    if (!isEdit && !catId && newCat.trim()) {
       const { data } = await supabase.from("v2_menu_categories")
         .insert({ restaurant_id: restaurantId, name: newCat.trim(), sort_order: cats.length })
         .select("id").single();
       catId = data?.id ?? null;
+    }
+    if (isEdit && item) {
+      try {
+        await updateItem.mutateAsync({
+          id: item.id,
+          name: name.trim(),
+          description: description.trim(),
+          price: p,
+          category_id: catId ?? undefined,
+          is_available: isAvailable,
+        });
+        toast.success("Item updated");
+        onSaved();
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : "Failed to update item");
+      } finally {
+        setBusy(false);
+      }
+      return;
     }
     const { error } = await supabase.from("v2_menu_items").insert({
       restaurant_id: restaurantId,
@@ -164,19 +223,20 @@ function AddItemDialog({ restaurantId, cats, onClose, onAdded }: { restaurantId:
       description: description.trim() || null,
       price: p,
       category_id: catId,
+      is_available: isAvailable,
     });
     setBusy(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Item added");
-    onAdded();
+    onSaved();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-background border border-border shadow-xl">
         <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="font-semibold">Add menu item</h2>
-          <button onClick={onClose} className="size-8 rounded-md hover:bg-muted flex items-center justify-center"><X className="size-4" /></button>
+          <h2 className="font-semibold">{isEdit ? "Edit menu item" : "Add menu item"}</h2>
+          <button type="button" onClick={onClose} className="size-8 rounded-md hover:bg-muted flex items-center justify-center"><X className="size-4" /></button>
         </div>
         <div className="p-4 space-y-3">
           <Field label="Name *"><input value={name} onChange={(e) => setName(e.target.value)} className="input" /></Field>
@@ -189,16 +249,25 @@ function AddItemDialog({ restaurantId, cats, onClose, onAdded }: { restaurantId:
                   {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               ) : (
-                <input value={newCat} onChange={(e) => setNewCat(e.target.value)} className="input" placeholder="e.g. Mains" />
+                <input value={newCat} onChange={(e) => setNewCat(e.target.value)} className="input" placeholder="e.g. Mains" disabled={isEdit} />
               )}
             </Field>
           </div>
           <Field label="Description"><textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className="input resize-none" /></Field>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isAvailable}
+              onChange={(e) => setIsAvailable(e.target.checked)}
+              className="rounded border-border"
+            />
+            <span>Available on menu</span>
+          </label>
         </div>
         <div className="flex justify-end gap-2 p-4 border-t border-border">
-          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm">Cancel</button>
-          <button onClick={submit} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-semibold text-success-foreground disabled:opacity-60">
-            {busy && <Loader2 className="size-4 animate-spin" />} Add item
+          <button type="button" onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm">Cancel</button>
+          <button type="button" onClick={submit} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-semibold text-success-foreground disabled:opacity-60">
+            {busy && <Loader2 className="size-4 animate-spin" />} {isEdit ? "Save changes" : "Add item"}
           </button>
         </div>
         <style>{`.input{width:100%;border:1px solid hsl(var(--border));border-radius:0.5rem;background:hsl(var(--background));padding:0.5rem 0.75rem;font-size:0.875rem}`}</style>
