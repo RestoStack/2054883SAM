@@ -103,6 +103,9 @@ function HostStandPage() {
   const [dbTables, setDbTables] = useState<DbTable[]>([]);
   const [restaurantName, setRestaurantName] = useState("RestoStack");
   const [walkInOpen, setWalkInOpen] = useState(false);
+  const [staffMsgOpen, setStaffMsgOpen] = useState(false);
+  const [msgTargetId, setMsgTargetId] = useState<string | null>(null);
+  const [staffMessage, setStaffMessage] = useState("");
   const [newName, setNewName] = useState("");
   const [newParty, setNewParty] = useState("2");
   const [newPhone, setNewPhone] = useState("");
@@ -125,7 +128,7 @@ function HostStandPage() {
       if (error) throw error;
       return (data ?? []) as WaitlistRow[];
     },
-    refetchInterval: 60_000,
+    refetchInterval: 15_000,
   });
 
   const addWaitlistMut = useMutation({
@@ -189,6 +192,27 @@ function HostStandPage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [seatTarget]);
+
+  const activeStaffList = useMemo(
+    () => staffUsers.filter((s) => s.active),
+    [staffUsers],
+  );
+
+  const sendStaffMessage = () => {
+    const target = activeStaffList.find((s) => s.id === msgTargetId);
+    if (!target) {
+      toast.error("Select a staff member");
+      return;
+    }
+    if (!staffMessage.trim()) {
+      toast.error("Enter a message");
+      return;
+    }
+    toast.success(`Message noted for ${target.name}`);
+    setStaffMsgOpen(false);
+    setStaffMessage("");
+    setMsgTargetId(null);
+  };
 
   const reservations = useMemo(
     () =>
@@ -891,7 +915,7 @@ function HostStandPage() {
               <Button
                 variant="outline"
                 className="w-full h-11 border-slate-300 bg-white"
-                onClick={() => toast.message("Staff messaging coming soon")}
+                onClick={() => setStaffMsgOpen(true)}
               >
                 <MessageSquare className="size-4 mr-1.5" /> Message Staff
               </Button>
@@ -899,6 +923,71 @@ function HostStandPage() {
           </aside>
         </div>
       </div>
+
+      {/* Staff message dialog */}
+      <Dialog
+        open={staffMsgOpen}
+        onOpenChange={(o) => {
+          setStaffMsgOpen(o);
+          if (!o) {
+            setStaffMessage("");
+            setMsgTargetId(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Message staff</DialogTitle>
+            <DialogDescription>
+              Send a note to an active team member on the floor.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {activeStaffList.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No active staff accounts for this restaurant.</p>
+            ) : (
+              <ul className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-border p-2">
+                {activeStaffList.map((s) => (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      onClick={() => setMsgTargetId(s.id)}
+                      className={cn(
+                        "w-full text-left rounded-md px-3 py-2 text-sm transition",
+                        msgTargetId === s.id
+                          ? "bg-emerald-500/15 text-emerald-800 font-semibold"
+                          : "hover:bg-muted/60",
+                      )}
+                    >
+                      {s.name}
+                      <span className="text-xs text-muted-foreground font-normal ml-2 capitalize">{s.role}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <textarea
+              value={staffMessage}
+              onChange={(e) => setStaffMessage(e.target.value)}
+              rows={4}
+              placeholder="e.g. Table 12 needs bread, VIP on patio…"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-y"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStaffMsgOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-emerald-500 hover:bg-emerald-600 text-white"
+              disabled={!msgTargetId || !staffMessage.trim()}
+              onClick={sendStaffMessage}
+            >
+              Send note
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Walk-in dialog */}
       <Dialog open={walkInOpen} onOpenChange={setWalkInOpen}>

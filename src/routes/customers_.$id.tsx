@@ -8,10 +8,22 @@ import {
   useCustomer,
   useCustomerBookings,
   useCustomerOrders,
+  useUpdateCustomer,
   type BookingRow,
   type CustomerRow,
   type OrderRow,
 } from "@/lib/v2-data";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/customers_/$id")({
   validateSearch: (s: Record<string, unknown>) => ({ tab: (s.tab as string) || "overview" }),
@@ -53,10 +65,24 @@ function CustomerDetail() {
   const { data: c, isLoading } = useCustomer(id);
   const { data: customerBookings = [] } = useCustomerBookings(c?.id);
   const { data: customerOrders = [] } = useCustomerOrders(c?.id);
+  const updateCustomer = useUpdateCustomer();
   const [tab, setTab] = useState(urlTab);
+  const [editOpen, setEditOpen] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [notes, setNotes] = useState("");
   useEffect(() => {
     setTab(urlTab);
   }, [urlTab]);
+
+  useEffect(() => {
+    if (!c) return;
+    setFullName(c.name);
+    setEmail(c.email);
+    setPhone(c.phone);
+    setNotes(c.notes);
+  }, [c]);
 
   if (isLoading) {
     return (
@@ -82,6 +108,26 @@ function CustomerDetail() {
     );
   }
 
+  const handleUpdate = async () => {
+    if (!fullName.trim()) {
+      toast.error("Full name is required");
+      return;
+    }
+    try {
+      await updateCustomer.mutateAsync({
+        id: c.id,
+        full_name: fullName,
+        email: email || null,
+        phone: phone || null,
+        notes: notes || null,
+      });
+      toast.success("Customer updated");
+      setEditOpen(false);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to update customer");
+    }
+  };
+
   return (
     <AppShell>
       <div className="px-5 pt-3 pb-3 border-b border-border bg-card/40 flex items-center justify-between">
@@ -96,7 +142,11 @@ function CustomerDetail() {
           </nav>
         </div>
         <div className="flex items-center gap-2">
-          <button className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+          <button
+            type="button"
+            onClick={() => setEditOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm"
+          >
             <Pencil className="size-4" /> Edit Customer
           </button>
           <button className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium">
@@ -184,6 +234,55 @@ function CustomerDetail() {
           )}
         </div>
       </div>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="size-5 text-success" /> Edit Customer
+            </DialogTitle>
+            <DialogDescription>Update this customer&apos;s profile information.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-name" className="text-xs font-medium text-muted-foreground">Full name *</Label>
+              <Input id="edit-name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-email" className="text-xs font-medium text-muted-foreground">Email</Label>
+              <Input id="edit-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-phone" className="text-xs font-medium text-muted-foreground">Phone</Label>
+              <Input id="edit-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-notes" className="text-xs font-medium text-muted-foreground">Notes</Label>
+              <textarea
+                id="edit-notes"
+                rows={3}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <button type="button" onClick={() => setEditOpen(false)} className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleUpdate}
+              disabled={updateCustomer.isPending || !fullName.trim()}
+              className="inline-flex items-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-semibold text-success-foreground hover:bg-success/90 disabled:opacity-50"
+            >
+              {updateCustomer.isPending && <Loader2 className="size-4 animate-spin" />}
+              Save Changes
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
