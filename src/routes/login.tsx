@@ -10,6 +10,12 @@ const RESTAURANT_SLUG = "italian-bistro";
 const STAFF_EMAIL_DOMAIN = "jukebox.local";
 
 export const Route = createFileRoute("/login")({
+  head: () => ({
+    meta: [
+      { title: "Sign in — RestoStack" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+    ],
+  }),
   component: LoginPage,
 });
 
@@ -46,9 +52,17 @@ function LoginPage() {
       } catch {
         /* ignore */
       }
-      const home =
-        staff.role === "admin" ? "/dashboard" :
-        staff.role === "hostess" ? "/host-stand" : "/server-app";
+      const isMobile =
+        typeof window !== "undefined" &&
+        (window.matchMedia("(max-width: 768px)").matches ||
+          /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+      const home = isMobile
+        ? "/app"
+        : staff.role === "admin"
+          ? "/dashboard"
+          : staff.role === "hostess"
+            ? "/host-stand"
+            : "/server-app";
       navigate({ to: home, replace: true });
     }
   }, [loading, session, staff, needsOnboarding, navigate]);
@@ -253,9 +267,14 @@ function LoginPage() {
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          Platform operators:{" "}
+          On your phone?{" "}
+          <a href="/app" className="underline underline-offset-2 hover:text-foreground">
+            Open the mobile app
+          </a>
+          {" · "}
+          Platform:{" "}
           <a href="/super-admin-login" className="underline underline-offset-2 hover:text-foreground">
-            Super Admin login
+            Super Admin
           </a>
         </p>
 

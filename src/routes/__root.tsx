@@ -16,9 +16,11 @@ import { RoleProvider } from "@/lib/role";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { Toaster } from "@/components/ui/sonner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { usePwaRegister } from "@/hooks/use-pwa";
 
 const PUBLIC_PATHS = [
   "/",
+  "/app",
   "/book",
   "/login",
   "/admin-login",
@@ -142,7 +144,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      {
+        name: "viewport",
+        content: "width=device-width, initial-scale=1, viewport-fit=cover",
+      },
       { title: "RestoStack — Restaurant Operations OS" },
       {
         name: "description",
@@ -150,6 +155,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "All-in-one restaurant management: reservations, guests, floor, menu, and marketing.",
       },
       { name: "author", content: "RestoStack" },
+      { name: "theme-color", content: "#39D400" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "RestoStack" },
       { property: "og:title", content: "RestoStack — Restaurant Operations OS" },
       {
         property: "og:description",
@@ -166,6 +176,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
     ],
     links: [
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", href: "/icons/icon-192.png" },
+      { rel: "icon", href: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
@@ -200,6 +213,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  usePwaRegister();
 
   return (
     <QueryClientProvider client={queryClient}>
