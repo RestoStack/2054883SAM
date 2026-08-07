@@ -30,6 +30,7 @@ import { Route as LeaderboardRouteImport } from './routes/leaderboard'
 import { Route as IntegrationsRouteImport } from './routes/integrations'
 import { Route as HostStandRouteImport } from './routes/host-stand'
 import { Route as FloorplanRouteImport } from './routes/floorplan'
+import { Route as DemoRouteImport } from './routes/demo'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as CalendarRouteImport } from './routes/calendar'
@@ -157,6 +158,11 @@ const FloorplanRoute = FloorplanRouteImport.update({
   path: '/floorplan',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DemoRoute = DemoRouteImport.update({
+  id: '/demo',
+  path: '/demo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -272,6 +278,7 @@ export interface FileRoutesByFullPath {
   '/calendar': typeof CalendarRoute
   '/customers': typeof CustomersRoute
   '/dashboard': typeof DashboardRoute
+  '/demo': typeof DemoRoute
   '/floorplan': typeof FloorplanRoute
   '/host-stand': typeof HostStandRoute
   '/integrations': typeof IntegrationsRoute
@@ -316,6 +323,7 @@ export interface FileRoutesByTo {
   '/calendar': typeof CalendarRoute
   '/customers': typeof CustomersRoute
   '/dashboard': typeof DashboardRoute
+  '/demo': typeof DemoRoute
   '/floorplan': typeof FloorplanRoute
   '/host-stand': typeof HostStandRoute
   '/integrations': typeof IntegrationsRoute
@@ -361,6 +369,7 @@ export interface FileRoutesById {
   '/calendar': typeof CalendarRoute
   '/customers': typeof CustomersRoute
   '/dashboard': typeof DashboardRoute
+  '/demo': typeof DemoRoute
   '/floorplan': typeof FloorplanRoute
   '/host-stand': typeof HostStandRoute
   '/integrations': typeof IntegrationsRoute
@@ -407,6 +416,7 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/customers'
     | '/dashboard'
+    | '/demo'
     | '/floorplan'
     | '/host-stand'
     | '/integrations'
@@ -451,6 +461,7 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/customers'
     | '/dashboard'
+    | '/demo'
     | '/floorplan'
     | '/host-stand'
     | '/integrations'
@@ -495,6 +506,7 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/customers'
     | '/dashboard'
+    | '/demo'
     | '/floorplan'
     | '/host-stand'
     | '/integrations'
@@ -540,6 +552,7 @@ export interface RootRouteChildren {
   CalendarRoute: typeof CalendarRoute
   CustomersRoute: typeof CustomersRoute
   DashboardRoute: typeof DashboardRoute
+  DemoRoute: typeof DemoRoute
   FloorplanRoute: typeof FloorplanRoute
   HostStandRoute: typeof HostStandRoute
   IntegrationsRoute: typeof IntegrationsRoute
@@ -715,6 +728,13 @@ declare module '@tanstack/react-router' {
       path: '/floorplan'
       fullPath: '/floorplan'
       preLoaderRoute: typeof FloorplanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/demo': {
+      id: '/demo'
+      path: '/demo'
+      fullPath: '/demo'
+      preLoaderRoute: typeof DemoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -902,6 +922,7 @@ const rootRouteChildren: RootRouteChildren = {
   CalendarRoute: CalendarRoute,
   CustomersRoute: CustomersRoute,
   DashboardRoute: DashboardRoute,
+  DemoRoute: DemoRoute,
   FloorplanRoute: FloorplanRoute,
   HostStandRoute: HostStandRoute,
   IntegrationsRoute: IntegrationsRoute,

@@ -70,12 +70,19 @@ function AdminLoginPage() {
             <Sparkles className="size-3" /> Italian Bistro demo
           </div>
           <CardTitle>Enter the demo</CardTitle>
-          <CardDescription>Explore the full Italian Bistro workspace. No sign-up.</CardDescription>
+          <CardDescription>
+            Explore Italian Bistro with live sample bookings, guests, menu, and orders. No sign-up.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Button onClick={goToDemo} disabled={busy} className="w-full">
-            {busy ? <><Loader2 className="size-4 mr-2 animate-spin" /> Starting demo…</> : "Try the Italian Bistro demo"}
+            {busy ? <><Loader2 className="size-4 mr-2 animate-spin" /> Starting demo…</> : "Open Italian Bistro sample"}
           </Button>
+          <p className="text-center text-[11px] text-muted-foreground">
+            Or sign in at <a href="/login" className="underline underline-offset-2">/login</a> with{" "}
+            <code className="rounded bg-muted px-1">admin@jukebox.com</code> /{" "}
+            <code className="rounded bg-muted px-1">admin1234</code>
+          </p>
           <div className="relative">
             <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border" /></div>
             <div className="relative flex justify-center text-[11px] uppercase tracking-wider"><span className="bg-card px-2 text-muted-foreground">or admin passcode</span></div>

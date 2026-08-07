@@ -746,6 +746,7 @@ function ComingSoon() {
         </div>
         <div>© 2026 RestoStack. All rights reserved.</div>
         <div className="flex items-center gap-4">
+          <a href="/demo" className="text-xs text-zinc-400 hover:text-black">Explore sample restaurant</a>
           <a href="#"><Linkedin className="h-4 w-4" /></a>
           <a href="#"><Instagram className="h-4 w-4" /></a>
           <a href="#"><Mail className="h-4 w-4" /></a>
