@@ -34,7 +34,7 @@ function LoginPage() {
   const [selectedTile, setSelectedTile] = useState<Tile | null>(null);
   const [pin, setPin] = useState("");
   const [email, setEmail] = useState("admin@jukebox.com");
-  const [password, setPassword] = useState("");
+  const [password, setPassword] = useState("admin1234");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [bootstrapResult, setBootstrapResult] = useState<string | null>(null);

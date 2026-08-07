@@ -21,6 +21,7 @@ import { usePwaRegister } from "@/hooks/use-pwa";
 const PUBLIC_PATHS = [
   "/",
   "/app",
+  "/demo",
   "/book",
   "/login",
   "/admin-login",
