@@ -224,7 +224,7 @@ export function AppShell({
           <Link to="/dashboard" className="mb-2" title="Dashboard">
             <img src={logo} alt="RestoStack" className="h-8 w-8 object-contain" />
           </Link>
-          {(NAV_BY_ROLE[role] ?? ADMIN_NAV).slice(0, 6).map((item) => (
+          {navForRole(role).slice(0, 6).map((item) => (
             <Link
               key={item.to}
               to={item.to}

@@ -56,11 +56,19 @@ export type FloorPlanProps = {
   light?: boolean;
 };
 
-const statusFill: Record<FloorStatus, string> = {
+const statusFillLight: Record<FloorStatus, string> = {
   free: "bg-emerald-500 text-white",
   booked: "bg-white text-slate-700 ring-2 ring-slate-300",
   seated: "bg-sky-500 text-white",
   alert: "bg-rose-400 text-white",
+};
+
+/** Hostess / FoH dark canvas — grey tables with white labels (mockup) */
+const statusFillDark: Record<FloorStatus, string> = {
+  free: "bg-[#5a6068] text-white",
+  booked: "bg-[#5a6068] text-white ring-1 ring-white/20",
+  seated: "bg-[#3d8b5a] text-white",
+  alert: "bg-[#8b4545] text-white",
 };
 
 /**
@@ -227,6 +235,7 @@ export function FloorPlan({
           const h = it.kind === "round" ? size : it.h;
           const guest = it.guestLabel ?? it.guest;
           const canDrop = !!onDropParty && status !== "seated";
+          const fillCls = (light ? statusFillLight : statusFillDark)[status];
 
           return (
             <button
@@ -259,7 +268,7 @@ export function FloorPlan({
               className={cn(
                 "absolute z-10 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center font-semibold shadow-md transition-all border border-black/10",
                 shape,
-                statusFill[status],
+                fillCls,
                 isSelected &&
                   (light
                     ? "ring-2 ring-emerald-500 ring-offset-2 ring-offset-[#f4f6f8] scale-105"
