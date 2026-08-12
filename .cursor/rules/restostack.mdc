@@ -1,0 +1,36 @@
+---
+description: RestoStack project context for any Cursor session
+alwaysApply: true
+---
+
+# RestoStack
+
+Multi-tenant restaurant SaaS. Repo `RestoStack/2054883SAM` is source of truth.
+
+## Before coding
+
+- Read `AGENTS.md` and `docs/ACCESS.md`.
+- `main` is nearly empty — work from the latest full-app feature branch (see `docs/DEVELOPER.md`).
+- Do not commit `SUPABASE_SERVICE_ROLE_KEY`.
+
+## Product locks
+
+- Landing homepage: demo-request gated (no Staff login / Create restaurant CTAs).
+- Demo tenant: Italian Bistro (`italian-bistro`); entry `/demo`.
+- Tenant column: `restaurant_id` on `v2_*` tables.
+- Prefer `src/lib/v2-data.ts` for data access.
+- Keep existing green-accent admin UI; no drive-by redesigns.
+
+## Key paths
+
+- `src/routes/` — app routes
+- `src/lib/v2-data.ts` — data hooks
+- `src/integrations/supabase/config.ts` — public Supabase defaults
+- `supabase/migrations/` — schema
+- `docs/` — developer handbook
+
+## Live refs
+
+- App: https://restostacks.lovable.app / https://restostacks.com
+- Lovable project: `282aa365-2256-4d7f-ac7b-f277286d2960`
+- Supabase: `taenbelgzntolqzzjsee`
