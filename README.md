@@ -1,48 +1,45 @@
 # RestoStack
 
-Multi-tenant restaurant SaaS: self-serve signup, restaurant setup, public booking pages, and an ops admin backend.
+Multi-tenant restaurant SaaS: gated demo requests, public booking pages, ops dashboard, and a mobile PWA.
 
-This repository is the **owned source of truth**. You can run and deploy it without Lovable.
+**This GitHub repository is the source of truth.** Open it in Cursor on any computer — project context loads from `AGENTS.md` and `.cursor/rules/`.
 
-## Stack
+## Start here (developers)
 
-- TanStack Start / Router + React 19 + Vite
-- Tailwind CSS + shadcn/ui
-- Supabase (Auth, Postgres, Storage, RLS)
-- Optional Cloudflare deploy via Wrangler (`wrangler.jsonc`)
+| Doc | What you get |
+|-----|----------------|
+| **[AGENTS.md](AGENTS.md)** | Cursor agent brief (read first in any Cursor session) |
+| **[docs/ACCESS.md](docs/ACCESS.md)** | Live URLs + demo logins |
+| **[docs/DEVELOPER.md](docs/DEVELOPER.md)** | Clone, branches, env, run, deploy |
+| **[docs/FEATURES.md](docs/FEATURES.md)** | What’s built vs missing |
+| **[docs/READINESS.md](docs/READINESS.md)** | Invite-demo vs mass-public blockers |
+| **[docs/SUPABASE.md](docs/SUPABASE.md)** | Database project + data gaps |
+| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | App structure |
+| **[PRODUCT.md](PRODUCT.md)** | Product surface map |
 
 ## Quick start
 
-1. Create a [Supabase](https://supabase.com) project (your account).
-2. Copy env files:
-
 ```bash
-cp .env.example .env
-```
-
-3. Fill in your Supabase URL and anon/publishable key in `.env`.
-4. Apply SQL migrations from `supabase/migrations/` in order (Supabase SQL editor or CLI).
-5. Install and run:
-
-```bash
+git clone git@github.com:RestoStack/2054883SAM.git
+cd 2054883SAM
+# IMPORTANT: main is nearly empty — check out the latest full-app feature branch
+# (see docs/DEVELOPER.md)
 npm install
 npm run dev
 ```
 
-## Independence from Lovable
+Optional: copy `.env.example` → `.env`. Client Supabase defaults already match the live project.
 
-| Piece | Where it lives now |
-|-------|--------------------|
-| Code | This GitHub repo |
-| Database / Auth / Storage | Your Supabase project (migrate off Lovable Cloud) |
-| Hosting | Your choice (Cloudflare, Vercel, Netlify, etc.) |
+## Live
 
-See **[INDEPENDENCE.md](./INDEPENDENCE.md)** for the cutover checklist (GitHub sync, Supabase export, hosting).
+- App: https://restostacks.lovable.app · https://restostacks.com  
+- Sample restaurant: https://restostacks.lovable.app/demo  
+- Demo admin: `admin@jukebox.com` / `admin1234` (details in `docs/ACCESS.md`)
 
-## Product map
+## Stack
 
-See **[PRODUCT.md](./PRODUCT.md)** for routes, roles, and the `v2_*` data model.
+React · Vite · TanStack Router · Supabase · shadcn/ui · Tailwind · PWA (`/app`)
 
-## Demo notes
+## Warning
 
-If you still point `.env` at an existing shared Supabase project, demo logins and seeded restaurants may work. For production, use **your own** Supabase project and never commit `.env`.
+Demo credentials are shared and public by design for sales demos. Do not treat them as production secrets. See `docs/READINESS.md` before any mass-public launch.
