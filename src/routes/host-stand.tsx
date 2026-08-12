@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { useBookings, useStaffUsers, useUpdateBooking, type BookingRow } from "@/lib/v2-data";
+import { useBookings, useCreateBooking, useStaffUsers, useUpdateBooking, type BookingRow } from "@/lib/v2-data";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/Sidebar";
 import { Button } from "@/components/ui/button";
@@ -21,8 +21,9 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   Users, StickyNote, UserPlus, Phone, Mail, MapPin, X, ExternalLink,
-  Calendar, Bell, Sparkles, MessageSquare, Check, AlertTriangle, Utensils,
-  Clock, Crown,
+  Calendar, Bell, MessageSquare, Check, AlertTriangle, Utensils,
+  Clock, Crown, ChevronLeft, ChevronRight, Search, Cake, LayoutGrid,
+  Settings, HelpCircle, Globe, Armchair, Grid3X3,
 } from "lucide-react";
 
 export const Route = createFileRoute("/host-stand")({
@@ -95,7 +96,7 @@ function HostStandPage() {
   const qc = useQueryClient();
 
   const [dateISO, setDateISO] = useState(todayISO);
-  const [section, setSection] = useState<(typeof SECTIONS)[number]>("All");
+  const [section, setSection] = useState<string>("All");
   const [selectedTable, setSelectedTable] = useState<number | string | null>(null);
   const [detail, setDetail] = useState<BookingRow | null>(null);
   const [seatTarget, setSeatTarget] = useState<SeatTarget | null>(null);
@@ -103,6 +104,17 @@ function HostStandPage() {
   const [dbTables, setDbTables] = useState<DbTable[]>([]);
   const [restaurantName, setRestaurantName] = useState("RestoStack");
   const [walkInOpen, setWalkInOpen] = useState(false);
+  const [reservationOpen, setReservationOpen] = useState(false);
+  const [leftTab, setLeftTab] = useState<"reservations" | "waiting" | "history">("reservations");
+  const [mainView, setMainView] = useState<"floor" | "list" | "servers">("floor");
+  const [period, setPeriod] = useState<"AM" | "PM">("PM");
+  const [listQuery, setListQuery] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [resName, setResName] = useState("");
+  const [resParty, setResParty] = useState("2");
+  const [resPhone, setResPhone] = useState("");
+  const [resTime, setResTime] = useState("18:00");
+  const [resNotes, setResNotes] = useState("");
   const [staffMsgOpen, setStaffMsgOpen] = useState(false);
   const [msgTargetId, setMsgTargetId] = useState<string | null>(null);
   const [staffMessage, setStaffMessage] = useState("");
@@ -114,22 +126,27 @@ function HostStandPage() {
 
   const { data: todays = [] } = useBookings(dateISO);
   const updateBooking = useUpdateBooking();
+  const createBooking = useCreateBooking();
   const { data: staffUsers = [] } = useStaffUsers();
 
-  const { data: waitlist = [] } = useQuery({
-    queryKey: ["v2_waitlist", staff?.restaurant_id],
+  const { data: waitlistAll = [] } = useQuery({
+    queryKey: ["v2_waitlist", staff?.restaurant_id, "all"],
     enabled: !!staff?.restaurant_id,
     queryFn: async (): Promise<WaitlistRow[]> => {
       const { data, error } = await (supabase as any)
         .from("v2_waitlist")
         .select("id, guest_name, party_size, phone, quoted_wait_minutes, status, created_at")
-        .eq("status", "waiting")
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false })
+        .limit(80);
       if (error) throw error;
       return (data ?? []) as WaitlistRow[];
     },
     refetchInterval: 15_000,
   });
+  const waitlist = useMemo(
+    () => waitlistAll.filter((w) => w.status === "waiting"),
+    [waitlistAll],
+  );
 
   const addWaitlistMut = useMutation({
     mutationFn: async (input: { name: string; party: number; phone: string }) => {
@@ -535,16 +552,94 @@ function HostStandPage() {
   const clockLabel = now.toLocaleString(undefined, {
     hour: "numeric",
     minute: "2-digit",
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
   });
 
-  const dateShort = useMemo(() => {
+  const dateLong = useMemo(() => {
     const d = new Date(`${dateISO}T12:00:00`);
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    return d.toLocaleDateString(undefined, {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
   }, [dateISO]);
+
+  const shiftDate = (delta: number) => {
+    const d = new Date(`${dateISO}T12:00:00`);
+    d.setDate(d.getDate() + delta);
+    setDateISO(d.toISOString().slice(0, 10));
+  };
+
+  const inPeriod = (rawTime: string) => {
+    const h = Number((rawTime || "12:00").slice(0, 2));
+    if (Number.isNaN(h)) return true;
+    return period === "PM" ? h >= 12 : h < 12;
+  };
+
+  const capacityTotal = useMemo(() => {
+    if (dbTables.length) return dbTables.reduce((s, t) => s + (t.capacity || 0), 0);
+    return 227;
+  }, [dbTables]);
+
+  const seatedCovers = useMemo(
+    () => seated.reduce((s, b) => s + (b.people || 0), 0),
+    [seated],
+  );
+
+  const historyBookings = useMemo(
+    () =>
+      todays.filter((b) =>
+        ["seated", "completed", "cancelled", "no_show"].includes(b.status),
+      ),
+    [todays],
+  );
+
+  const reservationCards = useMemo(() => {
+    const q = listQuery.trim().toLowerCase();
+    return reservations
+      .filter((b) => inPeriod(b.rawTime))
+      .filter((b) => {
+        if (!q) return true;
+        return (
+          b.name.toLowerCase().includes(q) ||
+          b.phone.includes(q) ||
+          (b.tableNumber || "").includes(q) ||
+          (b.notes || "").toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => (a.rawTime || "").localeCompare(b.rawTime || ""));
+  }, [reservations, listQuery, period]);
+
+  const timelineSlots = useMemo(() => {
+    const slots: string[] = [];
+    for (let h = 11; h <= 23; h++) {
+      for (const m of [0, 15, 30, 45]) {
+        const hh = ((h + 11) % 12) + 1;
+        const ap = h >= 12 ? "P" : "A";
+        slots.push(`${hh}:${m.toString().padStart(2, "0")}${ap}`);
+      }
+    }
+    return slots;
+  }, []);
+
+  const bookingBySlot = useMemo(() => {
+    const map = new Map<string, BookingRow[]>();
+    for (const b of todays) {
+      if (b.status === "cancelled") continue;
+      const key = (b.time || "").replace(/\s/g, "").replace("M", "").replace(":", ":");
+      // Match loosely on displayed time like "5:15 PM" -> look for hour:minute
+      const raw = b.rawTime || "";
+      const [hh, mm] = raw.split(":").map(Number);
+      if (Number.isNaN(hh)) continue;
+      const h12 = ((hh + 11) % 12) + 1;
+      const ap = hh >= 12 ? "P" : "A";
+      const slot = `${h12}:${(mm || 0).toString().padStart(2, "0")}${ap}`;
+      const list = map.get(slot) ?? [];
+      list.push(b);
+      map.set(slot, list);
+    }
+    return map;
+  }, [todays]);
 
   const openDatePicker = () => {
     const el = dateInputRef.current;
@@ -557,374 +652,592 @@ function HostStandPage() {
     }
   };
 
+  const noteFlags = (notes: string) => {
+    const n = (notes || "").toLowerCase();
+    return {
+      vip: n.includes("vip"),
+      birthday: n.includes("birthday") || n.includes("anniversaire") || n.includes("cake"),
+      allergy: n.includes("allerg") || n.includes("gluten") || n.includes("nut"),
+    };
+  };
+
+  const areaTabs = useMemo(() => {
+    const fromDb = Array.from(
+      new Set(dbTables.map((t) => t.section || "Main").filter(Boolean)),
+    );
+    const base = fromDb.length ? fromDb : ["Main", "Patio", "Bar", "Private"];
+    return ["All", ...base];
+  }, [dbTables]);
+
   return (
     <AppShell immersive>
-      <div className="flex flex-1 min-h-0 flex-col bg-[#f7f8fa] text-slate-900 w-full">
-        {/* Top metrics bar */}
-        <header className="shrink-0 border-b border-slate-200 bg-white px-5 lg:px-8 py-3.5 flex flex-wrap items-center gap-4 lg:gap-8">
-          <div className="min-w-0">
-            <div className="text-base sm:text-lg font-semibold truncate">{restaurantName}</div>
-            <div className="text-xs text-slate-500">{clockLabel}</div>
+      <div className="flex flex-1 min-h-0 flex-col bg-[#121212] text-zinc-100 w-full">
+        {/* Top bar — mockup */}
+        <header className="shrink-0 border-b border-white/10 bg-[#161616] px-3 sm:px-5 py-2.5 flex flex-wrap items-center gap-3">
+          <div className="min-w-0 text-sm sm:text-base font-semibold tracking-tight truncate max-w-[220px] sm:max-w-xs">
+            {restaurantName}
           </div>
 
-          <div className="flex items-center gap-5 sm:gap-8 text-sm">
-            <Metric icon={Users} label="Covers Today" value={coversToday} tone="green" />
-            <Metric icon={Utensils} label="Dining" value={diningCount} tone="blue" />
-            <Metric icon={Clock} label="Waiting" value={waitingCount} tone="orange" />
-          </div>
-
-          <div className="ml-auto flex items-center gap-2.5 sm:gap-3">
+          <div className="flex items-center gap-1.5 rounded-lg bg-[#1e1e1e] border border-white/10 px-1.5 py-1">
+            <button
+              type="button"
+              onClick={() => shiftDate(-1)}
+              className="size-8 grid place-items-center rounded-md hover:bg-white/5 text-zinc-400"
+              aria-label="Previous day"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
             <button
               type="button"
               onClick={openDatePicker}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-white hover:border-emerald-300 px-3 h-10 cursor-pointer transition"
+              className="inline-flex items-center gap-2 px-2 h-8 text-xs sm:text-sm font-medium hover:text-white"
             >
-              <Calendar className="size-4 text-emerald-600 shrink-0" />
-              <span className="text-xs font-semibold text-slate-800 tabular-nums min-w-[5.5rem] text-left">
-                {dateShort}
-              </span>
+              <Calendar className="size-3.5 text-emerald-400" />
+              <span className="tabular-nums whitespace-nowrap">{dateLong}</span>
               <input
                 ref={dateInputRef}
                 type="date"
                 value={dateISO}
                 onChange={(e) => setDateISO(e.target.value)}
-                onClick={(e) => e.stopPropagation()}
                 className="sr-only"
                 aria-label="Service date"
               />
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDateISO(todayISO());
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDateISO(todayISO());
-                  }
-                }}
-                className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 pl-2 border-l border-slate-200"
-              >
-                Today
-              </span>
             </button>
             <button
               type="button"
-              className="relative inline-flex size-10 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50"
-              aria-label="Notifications"
+              onClick={() => shiftDate(1)}
+              className="size-8 grid place-items-center rounded-md hover:bg-white/5 text-zinc-400"
+              aria-label="Next day"
             >
-              <Bell className="size-4 text-slate-600" />
-              {alerts.length > 0 && (
-                <span className="absolute -top-1 -right-1 size-4 rounded-full bg-rose-500 text-[10px] font-bold text-white grid place-items-center">
-                  {alerts.length}
-                </span>
-              )}
+              <ChevronRight className="size-4" />
             </button>
-            <div className="hidden sm:flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5">
-              <div className="size-7 rounded-full bg-emerald-500/15 text-emerald-700 grid place-items-center text-xs font-bold">
-                {(staff?.full_name || "O").slice(0, 1).toUpperCase()}
-              </div>
-              <div className="leading-tight">
-                <div className="text-xs font-semibold">{staff?.full_name?.split(" ")[0] || "Owner"}</div>
-                <div className="text-[10px] text-slate-500 capitalize">{staff?.role || "owner"}</div>
-              </div>
+          </div>
+
+          <div className="inline-flex rounded-lg border border-white/10 bg-[#1e1e1e] p-0.5">
+            {(["AM", "PM"] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPeriod(p)}
+                className={cn(
+                  "px-3 h-8 text-xs font-bold rounded-md transition",
+                  period === p
+                    ? "bg-[#39D400] text-black"
+                    : "text-zinc-400 hover:text-white",
+                )}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+
+          <div className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-[#1e1e1e] px-3 h-9 text-sm font-semibold tabular-nums">
+            <Users className="size-3.5 text-emerald-400" />
+            <span>
+              {seatedCovers} <span className="text-zinc-500 font-normal">/</span> {capacityTotal}
+            </span>
+          </div>
+
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+            <IconBtn label="Floor grid" onClick={() => setMainView("floor")}>
+              <Grid3X3 className="size-4" />
+            </IconBtn>
+            <IconBtn label="Message staff" onClick={() => setStaffMsgOpen(true)}>
+              <MessageSquare className="size-4" />
+            </IconBtn>
+            <IconBtn label="Alerts">
+              <span className="relative">
+                <Bell className="size-4" />
+                {alerts.length > 0 && (
+                  <span className="absolute -top-1 -right-1 size-3.5 rounded-full bg-rose-500 text-[9px] font-bold text-white grid place-items-center">
+                    {alerts.length}
+                  </span>
+                )}
+              </span>
+            </IconBtn>
+            <IconBtn label="Settings" href="/settings">
+              <Settings className="size-4" />
+            </IconBtn>
+            <div className="hidden sm:block text-sm font-semibold tabular-nums text-zinc-300 pl-2 border-l border-white/10">
+              {clockLabel}
             </div>
           </div>
         </header>
 
         {seatTarget && (
-          <div className="shrink-0 px-4 py-2.5 bg-emerald-500 text-white flex items-center gap-3">
+          <div className="shrink-0 px-4 py-2 bg-[#39D400] text-black flex items-center gap-3">
             <MapPin className="size-4 shrink-0" />
             <div className="text-sm font-semibold flex-1">
               Select a table for {seatTarget.name}
-              <span className="font-normal opacity-90"> · party of {seatTarget.party}</span>
+              <span className="font-normal opacity-80"> · party of {seatTarget.party}</span>
             </div>
             <button
               type="button"
               onClick={() => setSeatTarget(null)}
-              className="inline-flex items-center gap-1 rounded-md bg-black/10 px-2.5 py-1 text-xs font-semibold hover:bg-black/15"
+              className="inline-flex items-center gap-1 rounded-md bg-black/10 px-2.5 py-1 text-xs font-semibold"
             >
               <X className="size-3.5" /> Cancel
             </button>
           </div>
         )}
 
-        <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)_300px] gap-0 xl:gap-0">
-          {/* Up Next */}
-          <aside className="min-h-0 xl:border-r border-slate-200 bg-[#eef1f4] flex flex-col">
-            <div className="px-5 py-4 flex items-center justify-between border-b border-slate-200/80">
-              <div className="text-sm font-semibold">Up Next</div>
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-800 px-1.5 text-[11px] font-bold text-white">
-                {upNext.length}
-              </span>
-            </div>
-            <ul className="flex-1 overflow-y-auto p-4 space-y-3">
-              {upNext.map((item) => (
-                <li
-                  key={item.key}
-                  className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
-                >
-                  <div className="flex items-start gap-2.5">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <div className="text-sm font-semibold truncate">{lastName(item.name)}</div>
-                        <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
-                          {item.whenLabel}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 text-xs text-slate-500">Party of {item.party}</div>
-                      <div
-                        className={cn(
-                          "mt-1 text-xs font-medium inline-flex items-center gap-1",
-                          item.statusTone === "ready" && "text-emerald-600",
-                          item.statusTone === "waiting" && "text-amber-600",
-                          item.statusTone === "vip" && "text-violet-600",
-                          item.statusTone === "note" && "text-pink-600",
-                        )}
-                      >
-                        {item.statusTone === "vip" && <Crown className="size-3" />}
-                        {item.statusLabel}
-                      </div>
-                      {item.tag && item.statusTone !== "vip" && item.statusTone !== "note" && (
-                        <span className="mt-1 inline-flex rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                          {item.tag}
-                        </span>
-                      )}
-                    </div>
-                    <Button
-                      size="sm"
-                      className="h-8 px-3 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
-                      disabled={seatingBusy}
-                      onClick={() =>
-                        startSeat({
-                          kind: item.kind,
-                          id: item.id,
-                          name: item.name,
-                          party: item.party,
-                          tag: item.tag,
-                        })
-                      }
-                    >
-                      Seat
-                    </Button>
-                  </div>
-                  {item.booking && (
-                    <button
-                      type="button"
-                      onClick={() => setDetail(item.booking!)}
-                      className="mt-2 text-[11px] text-slate-400 hover:text-emerald-600"
-                    >
-                      View details
-                    </button>
-                  )}
-                </li>
-              ))}
-              {upNext.length === 0 && (
-                <li className="text-center text-xs text-slate-500 py-12">
-                  No parties waiting for {dateShort}.
-                </li>
-              )}
-            </ul>
-            <div className="p-4 border-t border-slate-200">
-              <Button
-                variant="outline"
-                className="w-full h-11 border-slate-300 bg-white hover:bg-slate-50"
-                onClick={() => setWalkInOpen(true)}
-              >
-                <UserPlus className="size-4 mr-1.5" /> Add Walk-in
-              </Button>
-            </div>
-          </aside>
-
-          {/* Floor plan */}
-          <section className="min-h-0 min-w-0 flex flex-col bg-white xl:border-x border-slate-200">
-            <div className="shrink-0 px-5 py-3.5 flex flex-wrap items-center gap-2 border-b border-slate-200">
-              {SECTIONS.map((s) => (
+        <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)_72px]">
+          {/* Left — all reservations */}
+          <aside className="min-h-0 border-r border-white/10 bg-[#161616] flex flex-col">
+            <div className="shrink-0 flex border-b border-white/10">
+              {(
+                [
+                  ["reservations", "Reservations", reservationCards.length],
+                  ["waiting", "Waiting", waitlist.length],
+                  ["history", "History", historyBookings.length],
+                ] as const
+              ).map(([id, label, count]) => (
                 <button
-                  key={s}
+                  key={id}
                   type="button"
-                  onClick={() => setSection(s)}
+                  onClick={() => setLeftTab(id)}
                   className={cn(
-                    "rounded-full px-3 py-1 text-xs font-semibold transition",
-                    section === s
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                    "flex-1 py-3 text-xs font-semibold border-b-2 transition",
+                    leftTab === id
+                      ? "border-[#39D400] text-white"
+                      : "border-transparent text-zinc-500 hover:text-zinc-300",
                   )}
                 >
-                  {s === "All" ? "All Areas" : s === "Main" ? "Main Floor" : s}
+                  {label}{" "}
+                  <span className={cn(leftTab === id ? "text-[#39D400]" : "text-zinc-600")}>
+                    ({count})
+                  </span>
                 </button>
               ))}
-              <div className="ml-auto hidden lg:flex items-center gap-3 text-[11px] text-slate-500">
-                <LegendDot className="bg-emerald-500" label="Available" />
-                <LegendDot className="bg-sky-500" label="Occupied" />
-                <LegendDot className="bg-white ring-2 ring-slate-300" label="Reserved" />
-                <LegendDot className="bg-rose-400" label="Late" />
+            </div>
+
+            <div className="shrink-0 p-3 flex items-center gap-2 border-b border-white/10">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-zinc-500" />
+                <input
+                  value={listQuery}
+                  onChange={(e) => setListQuery(e.target.value)}
+                  placeholder="Search guests…"
+                  className="w-full h-9 rounded-lg bg-[#1e1e1e] border border-white/10 pl-8 pr-3 text-xs text-white placeholder:text-zinc-600 outline-none focus:border-[#39D400]/50"
+                />
               </div>
             </div>
-            <div
-              className={cn(
-                "flex-1 min-h-0 relative",
-                seatTarget && "ring-inset ring-2 ring-emerald-400",
-              )}
-            >
-              <FloorPlan
-                fill
-                light
-                items={floorItems}
-                selectedId={selectedTable}
-                zoom={1}
-                onSelect={onTableClick}
-                className="absolute inset-0 h-full w-full"
-              />
-              {positionedTables.length === 0 && (
-                <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] text-slate-500 bg-white/90 border border-slate-200 px-3 py-1 rounded-full pointer-events-none">
-                  Demo layout ·{" "}
-                  <Link to="/floorplan" className="text-emerald-600 underline pointer-events-auto">
-                    place your tables
-                  </Link>
-                </p>
-              )}
+
+            <div className="shrink-0 px-3 pb-3 pt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setReservationOpen(true)}
+                className="flex-1 h-9 rounded-lg bg-[#39D400] text-black text-xs font-bold hover:brightness-110"
+              >
+                + Reservation
+              </button>
+              <button
+                type="button"
+                onClick={() => setWalkInOpen(true)}
+                className="flex-1 h-9 rounded-lg border border-white/15 bg-[#1e1e1e] text-xs font-semibold hover:bg-white/5"
+              >
+                + Walk-in
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLeftTab("waiting");
+                  setWalkInOpen(true);
+                }}
+                className="flex-1 h-9 rounded-lg border border-white/15 bg-[#1e1e1e] text-xs font-semibold hover:bg-white/5"
+              >
+                + Waitlist
+              </button>
             </div>
-          </section>
 
-          {/* Right rail */}
-          <aside className="min-h-0 xl:border-l border-slate-200 bg-[#eef1f4] flex flex-col overflow-y-auto">
-            <div className="p-4 space-y-4">
-              {/* AI recommendation */}
-              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  <Sparkles className="size-3.5 text-emerald-500" />
-                  AI Assistant
-                </div>
-                {recommended.kind === "match" ? (
-                  <>
-                    <div className="mt-2 text-sm text-slate-600">Recommended Table:</div>
-                    <div className="text-3xl font-bold text-emerald-600 tracking-tight">
-                      {recommended.table}
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">
-                      for {recommended.name} · party of {recommended.party}
-                    </p>
-                    <ul className="mt-3 space-y-1.5">
-                      {recommended.reasons.map((r) => (
-                        <li key={r} className="flex items-start gap-2 text-xs text-slate-600">
-                          <Check className="size-3.5 text-emerald-500 shrink-0 mt-0.5" />
-                          {r}
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      className="mt-4 w-full h-10 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
-                      disabled={seatingBusy}
-                      onClick={() => {
-                        if (seatTarget) {
-                          void confirmSeatAt(recommended.table, seatTarget);
-                        } else {
-                          startSeat(recommended.target);
-                          void confirmSeatAt(recommended.table, recommended.target);
-                        }
-                      }}
+            <ul className="flex-1 overflow-y-auto px-3 pb-4 space-y-2">
+              {leftTab === "reservations" &&
+                reservationCards.map((b) => {
+                  const flags = noteFlags(b.notes);
+                  const open = expandedId === b.id;
+                  return (
+                    <li
+                      key={b.id}
+                      className={cn(
+                        "rounded-xl border bg-[#1e1e1e] overflow-hidden transition",
+                        open ? "border-[#39D400]/40" : "border-white/10",
+                      )}
                     >
-                      Seat Here →
-                    </Button>
-                  </>
-                ) : recommended.kind === "no_fit" ? (
-                  <p className="mt-3 text-sm text-slate-500">
-                    No free table fits {recommended.name} (party of {recommended.party}).
-                  </p>
-                ) : (
-                  <div className="mt-3 space-y-2">
-                    <p className="text-sm text-slate-600">
-                      {recommended.freeCount} tables available.
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      Add a walk-in or pick a party from Up Next to get a seat recommendation.
-                    </p>
-                    <Button
-                      variant="outline"
-                      className="w-full h-9 mt-1"
-                      onClick={() => setWalkInOpen(true)}
-                    >
-                      <UserPlus className="size-3.5 mr-1.5" /> Add Walk-in
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              {/* Server load */}
-              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
-                  Server Load
-                </div>
-                {servers.length === 0 && (
-                  <p className="text-xs text-slate-500">Add staff to see server balance.</p>
-                )}
-                <ul className="space-y-3.5">
-                  {servers.map((s) => (
-                    <li key={s.name}>
-                      <div className="flex items-center justify-between text-xs mb-1.5">
-                        <span className="font-semibold text-slate-800">{s.name}</span>
-                        <span className="text-slate-500">{s.tables} tables</span>
+                      <button
+                        type="button"
+                        className="w-full text-left p-3"
+                        onClick={() => {
+                          setExpandedId(open ? null : b.id);
+                          setDetail(b);
+                        }}
+                      >
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-semibold text-emerald-300 tabular-nums">
+                                {b.time}
+                              </span>
+                              <span className="text-sm font-semibold text-white truncate">
+                                {b.name}
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-[11px] text-zinc-400">
+                                <Users className="size-3" /> {b.people}
+                              </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-500">
+                              {b.phone && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Phone className="size-3" /> {b.phone}
+                                </span>
+                              )}
+                              <span>{b.area !== "—" ? b.area : "Dining Room"}</span>
+                              {b.source === "online" || b.source === "app" ? (
+                                <span className="inline-flex items-center gap-1 text-sky-400">
+                                  <Globe className="size-3" /> Online
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-2 flex items-center gap-1.5">
+                              {flags.vip && (
+                                <span className="inline-flex items-center gap-1 rounded bg-violet-500/20 text-violet-300 px-1.5 py-0.5 text-[10px] font-semibold">
+                                  <Crown className="size-3" /> VIP
+                                </span>
+                              )}
+                              {flags.birthday && (
+                                <span className="inline-flex size-6 items-center justify-center rounded bg-pink-500/20 text-pink-300">
+                                  <Cake className="size-3.5" />
+                                </span>
+                              )}
+                              {flags.allergy && (
+                                <span className="inline-flex size-6 items-center justify-center rounded bg-amber-500/20 text-amber-300">
+                                  <AlertTriangle className="size-3.5" />
+                                </span>
+                              )}
+                              {b.tableNumber && (
+                                <span className="ml-auto inline-flex items-center gap-1 rounded-md bg-black/40 border border-white/10 px-2 py-0.5 text-[11px] font-semibold text-white">
+                                  <Armchair className="size-3 text-emerald-400" />
+                                  {b.tableNumber}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                      {(open || (b.notes && flags.allergy) || flags.birthday) && b.notes && (
+                        <div className="px-3 pb-3 text-[11px] text-zinc-400 border-t border-white/5 pt-2">
+                          {b.notes}
+                        </div>
+                      )}
+                      <div className="px-3 pb-3 flex gap-2">
+                        <button
+                          type="button"
+                          disabled={seatingBusy}
+                          onClick={() =>
+                            startSeat({
+                              kind: "booking",
+                              id: b.id,
+                              name: b.name,
+                              party: b.people,
+                            })
+                          }
+                          className="flex-1 h-8 rounded-lg bg-[#39D400] text-black text-xs font-bold hover:brightness-110 disabled:opacity-50"
+                        >
+                          Seat
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDetail(b)}
+                          className="h-8 px-3 rounded-lg border border-white/15 text-xs font-semibold text-zinc-300 hover:bg-white/5"
+                        >
+                          Details
+                        </button>
                       </div>
-                      <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                    </li>
+                  );
+                })}
+
+              {leftTab === "reservations" && reservationCards.length === 0 && (
+                <li className="text-center text-xs text-zinc-500 py-16 px-4">
+                  No reservations for this {period} service. Add one or switch AM/PM.
+                </li>
+              )}
+
+              {leftTab === "waiting" &&
+                waitlist.map((w) => {
+                  const waited = minutesSince(w.created_at);
+                  return (
+                    <li key={w.id} className="rounded-xl border border-white/10 bg-[#1e1e1e] p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-semibold text-white">{w.guest_name}</div>
+                          <div className="text-[11px] text-zinc-500 mt-0.5">
+                            Party of {w.party_size}
+                            {w.phone ? ` · ${w.phone}` : ""}
+                          </div>
+                          <div className="text-[11px] text-amber-400 mt-1 font-medium">
+                            Waiting {waited} min
+                            {w.quoted_wait_minutes != null
+                              ? ` · quoted ${w.quoted_wait_minutes}m`
+                              : ""}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="h-8 px-3 rounded-lg bg-[#39D400] text-black text-xs font-bold"
+                          onClick={() =>
+                            startSeat({
+                              kind: "waitlist",
+                              id: w.id,
+                              name: w.guest_name,
+                              party: w.party_size,
+                              tag: "Walk-in",
+                            })
+                          }
+                        >
+                          Seat
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+
+              {leftTab === "waiting" && waitlist.length === 0 && (
+                <li className="text-center text-xs text-zinc-500 py-16">No one waiting.</li>
+              )}
+
+              {leftTab === "history" &&
+                historyBookings.map((b) => (
+                  <li
+                    key={b.id}
+                    className="rounded-xl border border-white/10 bg-[#1e1e1e] p-3 opacity-80"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-semibold">
+                          <span className="text-zinc-400 tabular-nums mr-2">{b.time}</span>
+                          {b.name}
+                        </div>
+                        <div className="text-[11px] text-zinc-500 mt-0.5 capitalize">
+                          {b.status}
+                          {b.tableNumber ? ` · Table ${b.tableNumber}` : ""} · {b.people} pax
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDetail(b)}
+                        className="text-[11px] text-emerald-400 hover:underline"
+                      >
+                        View
+                      </button>
+                    </div>
+                  </li>
+                ))}
+
+              {leftTab === "history" && historyBookings.length === 0 && (
+                <li className="text-center text-xs text-zinc-500 py-16">No history yet today.</li>
+              )}
+            </ul>
+          </aside>
+
+          {/* Center */}
+          <section className="min-h-0 min-w-0 flex flex-col bg-[#121212] relative">
+            {mainView === "floor" && (
+              <>
+                <div className="shrink-0 px-3 py-2.5 flex gap-2 overflow-x-auto border-b border-white/10">
+                  {areaTabs.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSection(s)}
+                      className={cn(
+                        "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold border transition",
+                        (section === s || (s === "All" && section === "All"))
+                          ? "bg-white/10 border-white/20 text-white"
+                          : "border-transparent text-zinc-500 hover:text-zinc-300",
+                      )}
+                    >
+                      {s === "All"
+                        ? "All areas"
+                        : s === "Main"
+                          ? "Salle à manger"
+                          : s}
+                    </button>
+                  ))}
+                </div>
+                <div
+                  className={cn(
+                    "flex-1 min-h-0 relative",
+                    seatTarget && "ring-inset ring-2 ring-[#39D400]",
+                  )}
+                >
+                  <FloorPlan
+                    fill
+                    items={floorItems}
+                    selectedId={selectedTable}
+                    zoom={1}
+                    onSelect={onTableClick}
+                    className="absolute inset-0 h-full w-full !bg-[#1a1d22] !border-0 !rounded-none"
+                  />
+                  {positionedTables.length === 0 && (
+                    <p className="absolute bottom-14 left-1/2 -translate-x-1/2 text-[11px] text-zinc-400 bg-black/70 border border-white/10 px-3 py-1 rounded-full pointer-events-none">
+                      Demo layout ·{" "}
+                      <Link to="/floorplan" className="text-[#39D400] underline pointer-events-auto">
+                        place your tables
+                      </Link>
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+
+            {mainView === "list" && (
+              <div className="flex-1 overflow-y-auto p-4">
+                <h2 className="text-lg font-semibold mb-3">Reservation list · {dateLong}</h2>
+                <div className="overflow-x-auto rounded-xl border border-white/10">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[#1e1e1e] text-zinc-400 text-xs uppercase">
+                      <tr>
+                        <th className="text-left px-3 py-2.5 font-semibold">Time</th>
+                        <th className="text-left px-3 py-2.5 font-semibold">Guest</th>
+                        <th className="text-left px-3 py-2.5 font-semibold">Party</th>
+                        <th className="text-left px-3 py-2.5 font-semibold">Table</th>
+                        <th className="text-left px-3 py-2.5 font-semibold">Status</th>
+                        <th className="text-left px-3 py-2.5 font-semibold">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {todays.map((b) => (
+                        <tr
+                          key={b.id}
+                          className="border-t border-white/5 hover:bg-white/[0.03] cursor-pointer"
+                          onClick={() => setDetail(b)}
+                        >
+                          <td className="px-3 py-2.5 tabular-nums text-emerald-300">{b.time}</td>
+                          <td className="px-3 py-2.5 font-medium">{b.name}</td>
+                          <td className="px-3 py-2.5">{b.people}</td>
+                          <td className="px-3 py-2.5">{b.tableNumber ?? "—"}</td>
+                          <td className="px-3 py-2.5 capitalize text-zinc-400">{b.status}</td>
+                          <td className="px-3 py-2.5 text-zinc-500 truncate max-w-[200px]">
+                            {b.notes || "—"}
+                          </td>
+                        </tr>
+                      ))}
+                      {todays.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-3 py-12 text-center text-zinc-500 text-xs">
+                            No bookings for this date.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {mainView === "servers" && (
+              <div className="flex-1 overflow-y-auto p-6">
+                <h2 className="text-lg font-semibold mb-4">Servers on floor</h2>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {servers.map((s) => (
+                    <div
+                      key={s.name}
+                      className="rounded-xl border border-white/10 bg-[#1e1e1e] p-4"
+                    >
+                      <div className="text-base font-semibold">{s.name}</div>
+                      <div className="text-xs text-zinc-500 mt-1">{s.tables} tables assigned</div>
+                      <div className="mt-3 h-2 rounded-full bg-white/10 overflow-hidden">
                         <div
                           className={cn(
-                            "h-full rounded-full transition-all",
-                            s.load > 70 ? "bg-amber-400" : "bg-emerald-500",
+                            "h-full rounded-full",
+                            s.load > 70 ? "bg-amber-400" : "bg-[#39D400]",
                           )}
                           style={{ width: `${s.load}%` }}
                         />
                       </div>
-                    </li>
+                    </div>
                   ))}
-                </ul>
-              </div>
-
-              {/* Alerts */}
-              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    Alerts
-                  </div>
-                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[11px] font-bold text-white">
-                    {alerts.length}
-                  </span>
+                  {servers.length === 0 && (
+                    <p className="text-sm text-zinc-500">Add staff to see server load.</p>
+                  )}
                 </div>
-                {alerts.length === 0 ? (
-                  <p className="text-xs text-slate-500">All clear for this service.</p>
-                ) : (
-                  <ul className="space-y-2.5">
-                    {alerts.map((a) => (
-                      <li key={a.text} className="flex items-start gap-2 text-xs text-slate-700">
-                        <AlertTriangle
-                          className={cn(
-                            "size-3.5 shrink-0 mt-0.5",
-                            a.tone === "vip" ? "text-violet-500" : "text-amber-500",
-                          )}
-                        />
-                        {a.text}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <Button
+                  className="mt-6 bg-[#39D400] text-black hover:brightness-110"
+                  onClick={() => setStaffMsgOpen(true)}
+                >
+                  <MessageSquare className="size-4 mr-1.5" /> Message staff
+                </Button>
               </div>
+            )}
 
-              <Button
-                variant="outline"
-                className="w-full h-11 border-slate-300 bg-white"
-                onClick={() => setStaffMsgOpen(true)}
+            {/* Bottom view toggles */}
+            <div className="shrink-0 border-t border-white/10 bg-[#161616]/95 backdrop-blur px-3 py-2 flex items-center justify-center gap-1">
+              {(
+                [
+                  ["floor", "Floor Plan", LayoutGrid],
+                  ["list", "Reservation List", Calendar],
+                  ["servers", "Servers", Utensils],
+                ] as const
+              ).map(([id, label, Icon]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setMainView(id)}
+                  className={cn(
+                    "inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg border-b-2 transition",
+                    mainView === id
+                      ? "border-[#39D400] text-white"
+                      : "border-transparent text-zinc-500 hover:text-zinc-300",
+                  )}
+                >
+                  <Icon className="size-3.5" />
+                  {label}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="absolute right-4 bottom-3 size-10 rounded-full bg-[#39D400] text-black grid place-items-center shadow-lg hover:brightness-110"
+                aria-label="Help"
+                onClick={() =>
+                  toast.message("Host Stand tip", {
+                    description: "Pick a reservation, then Seat, then tap a free table on the floor.",
+                  })
+                }
               >
-                <MessageSquare className="size-4 mr-1.5" /> Message Staff
-              </Button>
+                <HelpCircle className="size-5" />
+              </button>
             </div>
+          </section>
+
+          {/* Right timeline */}
+          <aside className="hidden xl:flex min-h-0 border-l border-white/10 bg-[#161616] flex-col overflow-y-auto py-2">
+            {timelineSlots.map((slot) => {
+              const hits = bookingBySlot.get(slot) ?? [];
+              const isNowish =
+                clockLabel.replace(/\s/g, "").toLowerCase().startsWith(
+                  slot.replace("P", "").replace("A", "").toLowerCase().slice(0, 3),
+                );
+              return (
+                <div
+                  key={slot}
+                  className={cn(
+                    "relative px-1.5 py-1 text-[9px] text-center tabular-nums",
+                    hits.length ? "text-emerald-300 font-semibold" : "text-zinc-600",
+                  )}
+                  title={hits.map((b) => b.name).join(", ")}
+                >
+                  {hits.length > 0 && (
+                    <span className="absolute left-0.5 top-1/2 -translate-y-1/2 size-1.5 rounded-full bg-amber-400" />
+                  )}
+                  {slot}
+                </div>
+              );
+            })}
           </aside>
         </div>
       </div>
 
-      {/* Staff message dialog */}
+      {/* Staff message */}
       <Dialog
         open={staffMsgOpen}
         onOpenChange={(o) => {
@@ -935,18 +1248,18 @@ function HostStandPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md bg-[#1e1e1e] border-white/10 text-white">
           <DialogHeader>
             <DialogTitle>Message staff</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-zinc-400">
               Send a note to an active team member on the floor.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             {activeStaffList.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No active staff accounts for this restaurant.</p>
+              <p className="text-sm text-zinc-500">No active staff accounts for this restaurant.</p>
             ) : (
-              <ul className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-border p-2">
+              <ul className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-white/10 p-2">
                 {activeStaffList.map((s) => (
                   <li key={s.id}>
                     <button
@@ -955,12 +1268,14 @@ function HostStandPage() {
                       className={cn(
                         "w-full text-left rounded-md px-3 py-2 text-sm transition",
                         msgTargetId === s.id
-                          ? "bg-emerald-500/15 text-emerald-800 font-semibold"
-                          : "hover:bg-muted/60",
+                          ? "bg-[#39D400]/20 text-[#39D400] font-semibold"
+                          : "hover:bg-white/5",
                       )}
                     >
                       {s.name}
-                      <span className="text-xs text-muted-foreground font-normal ml-2 capitalize">{s.role}</span>
+                      <span className="text-xs text-zinc-500 font-normal ml-2 capitalize">
+                        {s.role}
+                      </span>
                     </button>
                   </li>
                 ))}
@@ -971,15 +1286,15 @@ function HostStandPage() {
               onChange={(e) => setStaffMessage(e.target.value)}
               rows={4}
               placeholder="e.g. Table 12 needs bread, VIP on patio…"
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-y"
+              className="w-full rounded-lg border border-white/10 bg-[#121212] px-3 py-2 text-sm resize-y"
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setStaffMsgOpen(false)}>
+            <Button variant="outline" className="border-white/15" onClick={() => setStaffMsgOpen(false)}>
               Cancel
             </Button>
             <Button
-              className="bg-emerald-500 hover:bg-emerald-600 text-white"
+              className="bg-[#39D400] text-black hover:brightness-110"
               disabled={!msgTargetId || !staffMessage.trim()}
               onClick={sendStaffMessage}
             >
@@ -989,12 +1304,14 @@ function HostStandPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Walk-in dialog */}
+      {/* Walk-in */}
       <Dialog open={walkInOpen} onOpenChange={setWalkInOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md bg-[#1e1e1e] border-white/10 text-white">
           <DialogHeader>
             <DialogTitle>Add walk-in</DialogTitle>
-            <DialogDescription>Add a party to the waitlist, then seat them from Up Next.</DialogDescription>
+            <DialogDescription className="text-zinc-400">
+              Add a party to the waitlist, then seat them from Waiting.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <Input
@@ -1002,10 +1319,11 @@ function HostStandPage() {
               onChange={(e) => setNewName(e.target.value)}
               placeholder="Guest name"
               autoFocus
+              className="bg-[#121212] border-white/10"
             />
             <div className="flex gap-2">
               <Select value={newParty} onValueChange={setNewParty}>
-                <SelectTrigger className="w-28">
+                <SelectTrigger className="w-28 bg-[#121212] border-white/10">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1020,16 +1338,16 @@ function HostStandPage() {
                 value={newPhone}
                 onChange={(e) => setNewPhone(e.target.value)}
                 placeholder="Phone (optional)"
-                className="flex-1"
+                className="flex-1 bg-[#121212] border-white/10"
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setWalkInOpen(false)}>
+            <Button variant="outline" className="border-white/15" onClick={() => setWalkInOpen(false)}>
               Cancel
             </Button>
             <Button
-              className="bg-emerald-500 hover:bg-emerald-600 text-white"
+              className="bg-[#39D400] text-black hover:brightness-110"
               disabled={!newName.trim() || addWaitlistMut.isPending}
               onClick={() =>
                 addWaitlistMut.mutate({
@@ -1039,7 +1357,95 @@ function HostStandPage() {
                 })
               }
             >
-              Add to Up Next
+              Add to Waiting
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* New reservation */}
+      <Dialog open={reservationOpen} onOpenChange={setReservationOpen}>
+        <DialogContent className="sm:max-w-md bg-[#1e1e1e] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle>New reservation</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Creates a booking for {dateLong}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Input
+              value={resName}
+              onChange={(e) => setResName(e.target.value)}
+              placeholder="Guest name"
+              className="bg-[#121212] border-white/10"
+            />
+            <div className="flex gap-2">
+              <Input
+                type="time"
+                value={resTime}
+                onChange={(e) => setResTime(e.target.value)}
+                className="w-32 bg-[#121212] border-white/10"
+              />
+              <Select value={resParty} onValueChange={setResParty}>
+                <SelectTrigger className="w-28 bg-[#121212] border-white/10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 10, 12].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n} guests
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                value={resPhone}
+                onChange={(e) => setResPhone(e.target.value)}
+                placeholder="Phone"
+                className="flex-1 bg-[#121212] border-white/10"
+              />
+            </div>
+            <Input
+              value={resNotes}
+              onChange={(e) => setResNotes(e.target.value)}
+              placeholder="Notes (VIP, allergy, birthday…)"
+              className="bg-[#121212] border-white/10"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="border-white/15"
+              onClick={() => setReservationOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#39D400] text-black hover:brightness-110"
+              disabled={!resName.trim() || createBooking.isPending}
+              onClick={async () => {
+                try {
+                  await createBooking.mutateAsync({
+                    guest_name: resName.trim(),
+                    guest_phone: resPhone.trim() || undefined,
+                    party_size: parseInt(resParty, 10) || 2,
+                    date: dateISO,
+                    time: resTime,
+                    notes: resNotes.trim() || undefined,
+                    source: "phone",
+                  });
+                  toast.success("Reservation added");
+                  setReservationOpen(false);
+                  setResName("");
+                  setResPhone("");
+                  setResNotes("");
+                  setLeftTab("reservations");
+                } catch (e) {
+                  toast.error((e as Error).message || "Could not create reservation");
+                }
+              }}
+            >
+              Save reservation
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1047,39 +1453,45 @@ function HostStandPage() {
 
       {/* Booking detail */}
       <Sheet open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
-        <SheetContent className="sm:max-w-md">
+        <SheetContent className="sm:max-w-md bg-[#1e1e1e] border-white/10 text-white">
           {detail && (
             <>
               <SheetHeader>
-                <SheetTitle>{detail.name}</SheetTitle>
-                <SheetDescription>
+                <SheetTitle className="text-white">{detail.name}</SheetTitle>
+                <SheetDescription className="text-zinc-400">
                   {detail.time} · party of {detail.people}
                 </SheetDescription>
               </SheetHeader>
               <div className="mt-6 space-y-4">
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
-                    <div className="text-[10px] uppercase text-slate-500">Table</div>
+                  <div className="rounded-lg bg-[#121212] border border-white/10 p-3">
+                    <div className="text-[10px] uppercase text-zinc-500">Table</div>
                     <div className="font-semibold mt-0.5">{detail.tableNumber ?? "Unassigned"}</div>
                   </div>
-                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
-                    <div className="text-[10px] uppercase text-slate-500">Status</div>
+                  <div className="rounded-lg bg-[#121212] border border-white/10 p-3">
+                    <div className="text-[10px] uppercase text-zinc-500">Status</div>
                     <div className="font-semibold mt-0.5 capitalize">{detail.status}</div>
                   </div>
                 </div>
                 {detail.phone && (
-                  <a href={`tel:${detail.phone}`} className="flex items-center gap-2 text-sm hover:text-emerald-600">
-                    <Phone className="size-4 text-slate-400" /> {detail.phone}
+                  <a
+                    href={`tel:${detail.phone}`}
+                    className="flex items-center gap-2 text-sm hover:text-[#39D400]"
+                  >
+                    <Phone className="size-4 text-zinc-500" /> {detail.phone}
                   </a>
                 )}
                 {detail.email && (
-                  <a href={`mailto:${detail.email}`} className="flex items-center gap-2 text-sm hover:text-emerald-600">
-                    <Mail className="size-4 text-slate-400" /> {detail.email}
+                  <a
+                    href={`mailto:${detail.email}`}
+                    className="flex items-center gap-2 text-sm hover:text-[#39D400]"
+                  >
+                    <Mail className="size-4 text-zinc-500" /> {detail.email}
                   </a>
                 )}
                 {detail.notes && (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-                    <div className="flex items-center gap-1.5 text-[10px] uppercase text-slate-500 mb-1">
+                  <div className="rounded-lg border border-white/10 bg-[#121212] p-3 text-sm">
+                    <div className="flex items-center gap-1.5 text-[10px] uppercase text-zinc-500 mb-1">
                       <StickyNote className="size-3" /> Notes
                     </div>
                     {detail.notes}
@@ -1090,14 +1502,14 @@ function HostStandPage() {
                     to="/customers/$id"
                     params={{ id: detail.customerId }}
                     search={{ tab: "overview" }}
-                    className="inline-flex items-center gap-1 text-sm text-emerald-600 hover:underline"
+                    className="inline-flex items-center gap-1 text-sm text-[#39D400] hover:underline"
                   >
                     Open customer profile <ExternalLink className="size-3.5" />
                   </Link>
                 )}
-                {detail.status !== "seated" && (
+                {detail.status !== "seated" && detail.status !== "completed" && (
                   <Button
-                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
+                    className="w-full bg-[#39D400] text-black hover:brightness-110"
                     onClick={() =>
                       startSeat({
                         kind: "booking",
@@ -1119,42 +1531,29 @@ function HostStandPage() {
   );
 }
 
-function Metric({
-  icon: Icon,
+function IconBtn({
+  children,
   label,
-  value,
-  tone,
+  onClick,
+  href,
 }: {
-  icon: typeof Users;
+  children: React.ReactNode;
   label: string;
-  value: number;
-  tone: "green" | "blue" | "orange";
+  onClick?: () => void;
+  href?: string;
 }) {
+  const cls =
+    "inline-flex size-9 items-center justify-center rounded-lg border border-white/10 bg-[#1e1e1e] text-zinc-300 hover:bg-white/5 hover:text-white";
+  if (href) {
+    return (
+      <Link to={href} aria-label={label} className={cls}>
+        {children}
+      </Link>
+    );
+  }
   return (
-    <div className="flex items-center gap-2">
-      <div
-        className={cn(
-          "size-8 rounded-lg grid place-items-center",
-          tone === "green" && "bg-emerald-500/15 text-emerald-600",
-          tone === "blue" && "bg-sky-500/15 text-sky-600",
-          tone === "orange" && "bg-amber-500/15 text-amber-600",
-        )}
-      >
-        <Icon className="size-4" />
-      </div>
-      <div className="leading-tight">
-        <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
-        <div className="text-sm font-bold tabular-nums">{value}</div>
-      </div>
-    </div>
-  );
-}
-
-function LegendDot({ className, label }: { className: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={cn("size-2.5 rounded-full", className)} />
-      {label}
-    </span>
+    <button type="button" aria-label={label} onClick={onClick} className={cls}>
+      {children}
+    </button>
   );
 }
