@@ -110,10 +110,11 @@ AGENTS.md                 ← Cursor agents
 README.md                 ← human entry
 PRODUCT.md                ← product surface
 docs/ACCESS.md            ← URLs + demos
+docs/SHIP.md              ← invite beta vs public ship
 docs/DEVELOPER.md         ← this file
 docs/FEATURES.md          ← built / missing
 docs/READINESS.md         ← public launch blockers
 docs/SUPABASE.md          ← DB + data gaps
 docs/ARCHITECTURE.md      ← structure
-.env.example              ← env template
+.env.example              ← env template + ship mode
 ```

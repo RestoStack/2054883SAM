@@ -20,6 +20,11 @@ export function staffPasswordFor(pin: string) {
  */
 export const bootstrapStaffAuth = createServerFn({ method: "POST" }).handler(
   async () => {
+    const { isDemoAccessEnabled } = await import("@/lib/ship-mode");
+    if (!isDemoAccessEnabled()) {
+      throw new Error("Demo bootstrap is disabled on this deploy.");
+    }
+
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: staff, error: staffErr } = await supabaseAdmin

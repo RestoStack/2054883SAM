@@ -12,6 +12,7 @@ import { Area, AreaChart, ResponsiveContainer, PieChart, Pie, Cell, Line, LineCh
 import logoUrl from "@/assets/restostack-logo.png";
 import { supabase } from "@/integrations/supabase/client";
 import { DemoRequestDialog } from "@/components/DemoRequestDialog";
+import { isDemoAccessEnabled } from "@/lib/ship-mode";
 import jukeboxLogo from "@/assets/logos/jukebox.png";
 import industriaLogo from "@/assets/logos/industria.webp";
 import bistroNoirLogo from "@/assets/logos/bistronoir.png";
@@ -744,9 +745,15 @@ function ComingSoon() {
           <Logo />
           <span className="hidden border-l pl-4 md:inline">The OS for Restaurants.</span>
         </div>
-        <div>© 2026 RestoStack. All rights reserved.</div>
+        <div className="flex flex-wrap items-center justify-center gap-3 text-xs">
+          <span>© 2026 RestoStack. All rights reserved.</span>
+          <a href="/terms" className="hover:text-black">Terms</a>
+          <a href="/privacy" className="hover:text-black">Privacy</a>
+        </div>
         <div className="flex items-center gap-4">
-          <a href="/demo" className="text-xs text-zinc-400 hover:text-black">Explore sample restaurant</a>
+          {isDemoAccessEnabled() ? (
+            <a href="/demo" className="text-xs text-zinc-400 hover:text-black">Explore sample restaurant</a>
+          ) : null}
           <a href="#"><Linkedin className="h-4 w-4" /></a>
           <a href="#"><Instagram className="h-4 w-4" /></a>
           <a href="#"><Mail className="h-4 w-4" /></a>

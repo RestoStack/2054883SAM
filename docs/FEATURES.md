@@ -8,7 +8,9 @@ Status relative to the full-app feature branches (not empty `main`). Update this
 - Marketing landing with **Request a demo** (name, email, phone, restaurant, best time) → `waitlist_signups`
 - Guest booking `/book/{slug}` (demo: `/book/italian-bistro`)
 - Pitch deck route
-- One-click sample `/demo`
+- One-click sample `/demo` (**demo ship mode only**)
+- Terms `/terms` + Privacy `/privacy`
+- Invite-only signup gate (`src/lib/ship-mode.ts`; optional invite code)
 
 ### Auth & roles
 - Admin email/password login (`/admin-login`, `/login`)

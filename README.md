@@ -9,6 +9,7 @@ Multi-tenant restaurant SaaS: gated demo requests, public booking pages, ops das
 | Doc | What you get |
 |-----|----------------|
 | **[AGENTS.md](AGENTS.md)** | Cursor agent brief (read first in any Cursor session) |
+| **[docs/SHIP.md](docs/SHIP.md)** | What’s missing to ship (invite beta vs public) |
 | **[docs/ACCESS.md](docs/ACCESS.md)** | Live URLs + demo logins |
 | **[docs/DEVELOPER.md](docs/DEVELOPER.md)** | Clone, branches, env, run, deploy |
 | **[docs/FEATURES.md](docs/FEATURES.md)** | What’s built vs missing |

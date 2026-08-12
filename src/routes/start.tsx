@@ -3,6 +3,8 @@ import { Check, Loader2, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { PLANS, saveSelectedPlan, type PlanId } from "@/lib/plans";
 import { signInWithGoogle } from "@/lib/oauth";
+import { InviteOnlyPanel } from "@/components/InviteOnlyPanel";
+import { isPublicSignupEnabled } from "@/lib/ship-mode";
 
 export const Route = createFileRoute("/start")({
   head: () => ({
@@ -18,6 +20,10 @@ function StartPaywallPage() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState<PlanId | "google" | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  if (!isPublicSignupEnabled()) {
+    return <InviteOnlyPanel />;
+  }
 
   const choosePlan = (plan: PlanId) => {
     saveSelectedPlan(plan);

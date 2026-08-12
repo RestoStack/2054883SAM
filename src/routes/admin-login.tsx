@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,8 @@ import { Loader2, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { bootstrapStaffAuth } from "@/lib/auth-bootstrap.functions";
+import { InviteOnlyPanel } from "@/components/InviteOnlyPanel";
+import { isDemoAccessEnabled } from "@/lib/ship-mode";
 
 const ADMIN_PASSCODE = "3180";
 const ADMIN_EMAIL = "admin@jukebox.com";
@@ -20,7 +22,11 @@ export const Route = createFileRoute("/admin-login")({
 async function signInAsDemoAdmin(bootstrap: () => Promise<unknown>): Promise<string | null> {
   let { error } = await supabase.auth.signInWithPassword({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
   if (error && error.message.toLowerCase().includes("invalid")) {
-    try { await bootstrap(); } catch { /* ignore */ }
+    try {
+      await bootstrap();
+    } catch {
+      /* ignore */
+    }
     ({ error } = await supabase.auth.signInWithPassword({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }));
   }
   return error ? error.message : null;
@@ -33,12 +39,20 @@ function AdminLoginPage() {
   const [busy, setBusy] = useState(false);
   const bootstrap = useServerFn(bootstrapStaffAuth);
 
-  // If already signed in, jump straight to the dashboard.
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) navigate({ to: "/dashboard", replace: true });
     });
   }, [navigate]);
+
+  if (!isDemoAccessEnabled()) {
+    return (
+      <InviteOnlyPanel
+        title="Sample access is off"
+        description="This deploy is invite-only. Sign in with your restaurant credentials, or request a demo if you need access."
+      />
+    );
+  }
 
   const goToDemo = async () => {
     setBusy(true);
@@ -76,16 +90,29 @@ function AdminLoginPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Button onClick={goToDemo} disabled={busy} className="w-full">
-            {busy ? <><Loader2 className="size-4 mr-2 animate-spin" /> Starting demo…</> : "Open Italian Bistro sample"}
+            {busy ? (
+              <>
+                <Loader2 className="size-4 mr-2 animate-spin" /> Starting demo…
+              </>
+            ) : (
+              "Open Italian Bistro sample"
+            )}
           </Button>
           <p className="text-center text-[11px] text-muted-foreground">
-            Or sign in at <a href="/login" className="underline underline-offset-2">/login</a> with{" "}
-            <code className="rounded bg-muted px-1">admin@jukebox.com</code> /{" "}
+            Or sign in at{" "}
+            <Link to="/login" className="underline underline-offset-2">
+              /login
+            </Link>{" "}
+            with <code className="rounded bg-muted px-1">admin@jukebox.com</code> /{" "}
             <code className="rounded bg-muted px-1">admin1234</code>
           </p>
           <div className="relative">
-            <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border" /></div>
-            <div className="relative flex justify-center text-[11px] uppercase tracking-wider"><span className="bg-card px-2 text-muted-foreground">or admin passcode</span></div>
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-[11px] uppercase tracking-wider">
+              <span className="bg-card px-2 text-muted-foreground">or admin passcode</span>
+            </div>
           </div>
           <form onSubmit={handleSubmit} className="space-y-3">
             <div className="space-y-2">
