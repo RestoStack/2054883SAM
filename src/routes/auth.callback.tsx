@@ -37,7 +37,7 @@ function AuthCallbackPage() {
           data: { session },
         } = await supabase.auth.getSession();
         if (!session?.user) {
-          navigate({ to: "/signup", replace: true });
+          navigate({ to: "/login", replace: true });
           return;
         }
 
@@ -81,8 +81,8 @@ function AuthCallbackPage() {
         {error ? (
           <>
             <p className="text-sm text-rose-600 mb-4">{error}</p>
-            <a href="/signup" className="text-sm font-semibold text-emerald-700 underline">
-              Back to signup
+            <a href="/login" className="text-sm font-semibold text-emerald-700 underline">
+              Back to sign in
             </a>
           </>
         ) : (

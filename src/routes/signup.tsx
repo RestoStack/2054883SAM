@@ -5,6 +5,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { signInWithGoogle } from "@/lib/oauth";
 import { isPlanId, PLANS, readSelectedPlan, saveSelectedPlan, type PlanId } from "@/lib/plans";
+import { InviteOnlyPanel } from "@/components/InviteOnlyPanel";
+import {
+  getInviteCode,
+  inviteCodeMatches,
+  isPublicSignupEnabled,
+} from "@/lib/ship-mode";
 
 type SignupSearch = { plan?: string };
 
@@ -26,6 +32,11 @@ function SignupPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<"google" | "email" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [inviteInput, setInviteInput] = useState("");
+  const [inviteUnlocked, setInviteUnlocked] = useState(false);
+
+  const signupOpen = isPublicSignupEnabled() || inviteUnlocked;
+  const hasInviteGate = !isPublicSignupEnabled() && !!getInviteCode();
 
   useEffect(() => {
     if (isPlanId(planParam)) {
@@ -45,6 +56,55 @@ function SignupPage() {
     }
   }, [loading, session, staff, navigate]);
 
+  if (!signupOpen) {
+    if (hasInviteGate) {
+      return (
+        <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#ecfdf5_0%,_#f8fafc_50%,_#ffffff_100%)] flex items-center justify-center p-6">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h1 className="text-xl font-semibold tracking-tight">Enter invite code</h1>
+            <p className="mt-2 text-sm text-slate-600">
+              Public signup is closed. Use the invite code from your RestoStack contact.
+            </p>
+            <form
+              className="mt-4 space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (inviteCodeMatches(inviteInput)) {
+                  setInviteUnlocked(true);
+                  setError(null);
+                } else {
+                  setError("That invite code is not valid.");
+                }
+              }}
+            >
+              <input
+                value={inviteInput}
+                onChange={(e) => setInviteInput(e.target.value)}
+                placeholder="Invite code"
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                autoComplete="off"
+              />
+              {error && <p className="text-sm text-rose-700">{error}</p>}
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500"
+              >
+                Continue
+              </button>
+            </form>
+            <p className="mt-4 text-center text-sm text-slate-500">
+              No code?{" "}
+              <Link to="/" className="font-medium text-emerald-700 hover:underline">
+                Request a demo
+              </Link>
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return <InviteOnlyPanel />;
+  }
+
   const selected = PLANS.find((p) => p.id === plan) ?? PLANS[0];
 
   const onGoogle = async () => {
@@ -61,7 +121,7 @@ function SignupPage() {
   const onEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (password.length < 6) return setError("Password must be at least 6 characters.");
+    if (password.length < 8) return setError("Password must be at least 8 characters.");
     setBusy("email");
     saveSelectedPlan(plan);
     try {

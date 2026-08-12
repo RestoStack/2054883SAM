@@ -86,7 +86,7 @@ function OnboardingPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!session) { navigate({ to: "/signup", replace: true }); return; }
+    if (!session) { navigate({ to: "/login", replace: true }); return; }
     if (bootstrapped.current) return;
     bootstrapped.current = true;
     (async () => {

@@ -8,6 +8,7 @@ import { Delete, LockKeyhole, ShieldCheck } from "lucide-react";
 import { listServersFn, loginWithPinFn } from "@/lib/pos.functions";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { isDemoAccessEnabled } from "@/lib/ship-mode";
 
 export const Route = createFileRoute("/server-login")({
   head: () => ({
@@ -107,8 +108,13 @@ function ServerLoginPage() {
                 </button>
               ))}
             </div>
-            <p className="mt-5 text-[11px] text-muted-foreground text-center">
-              Demo PINs: staff <span className="font-mono">1234</span> · manager <span className="font-mono">9999</span>
+            {isDemoAccessEnabled() && (
+              <p className="mt-5 text-[11px] text-muted-foreground text-center">
+                Demo PINs: staff <span className="font-mono">1234</span> · manager <span className="font-mono">9999</span>
+              </p>
+            )}
+            <p className="mt-3 text-[11px] text-amber-800 text-center">
+              Shared demo POS — not tenant-isolated. Do not use for live multi-restaurant service.
             </p>
           </Card>
         ) : (

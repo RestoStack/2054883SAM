@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SuperAdminLoginRouteImport } from './routes/super-admin-login'
 import { Route as StartRouteImport } from './routes/start'
 import { Route as StaffRouteImport } from './routes/staff'
@@ -18,6 +19,7 @@ import { Route as ServerLoginRouteImport } from './routes/server-login'
 import { Route as ServerAppRouteImport } from './routes/server-app'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as ProductAnalyticsRouteImport } from './routes/product-analytics'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PitchdeckRouteImport } from './routes/pitchdeck'
 import { Route as PayrollRouteImport } from './routes/payroll'
 import { Route as OrdersRouteImport } from './routes/orders'
@@ -53,6 +55,11 @@ import { Route as CustomersIdRouteImport } from './routes/customers_.$id'
 import { Route as BookSlugRouteImport } from './routes/book_.$slug'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SuperAdminLoginRoute = SuperAdminLoginRouteImport.update({
   id: '/super-admin-login',
   path: '/super-admin-login',
@@ -96,6 +103,11 @@ const ReportsRoute = ReportsRouteImport.update({
 const ProductAnalyticsRoute = ProductAnalyticsRouteImport.update({
   id: '/product-analytics',
   path: '/product-analytics',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PitchdeckRoute = PitchdeckRouteImport.update({
@@ -291,6 +303,7 @@ export interface FileRoutesByFullPath {
   '/orders': typeof OrdersRoute
   '/payroll': typeof PayrollRoute
   '/pitchdeck': typeof PitchdeckRoute
+  '/privacy': typeof PrivacyRoute
   '/product-analytics': typeof ProductAnalyticsRoute
   '/reports': typeof ReportsRoute
   '/server-app': typeof ServerAppRoute
@@ -300,6 +313,7 @@ export interface FileRoutesByFullPath {
   '/staff': typeof StaffRoute
   '/start': typeof StartRoute
   '/super-admin-login': typeof SuperAdminLoginRoute
+  '/terms': typeof TermsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/book/$slug': typeof BookSlugRoute
   '/customers/$id': typeof CustomersIdRoute
@@ -336,6 +350,7 @@ export interface FileRoutesByTo {
   '/orders': typeof OrdersRoute
   '/payroll': typeof PayrollRoute
   '/pitchdeck': typeof PitchdeckRoute
+  '/privacy': typeof PrivacyRoute
   '/product-analytics': typeof ProductAnalyticsRoute
   '/reports': typeof ReportsRoute
   '/server-app': typeof ServerAppRoute
@@ -345,6 +360,7 @@ export interface FileRoutesByTo {
   '/staff': typeof StaffRoute
   '/start': typeof StartRoute
   '/super-admin-login': typeof SuperAdminLoginRoute
+  '/terms': typeof TermsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/book/$slug': typeof BookSlugRoute
   '/customers/$id': typeof CustomersIdRoute
@@ -382,6 +398,7 @@ export interface FileRoutesById {
   '/orders': typeof OrdersRoute
   '/payroll': typeof PayrollRoute
   '/pitchdeck': typeof PitchdeckRoute
+  '/privacy': typeof PrivacyRoute
   '/product-analytics': typeof ProductAnalyticsRoute
   '/reports': typeof ReportsRoute
   '/server-app': typeof ServerAppRoute
@@ -391,6 +408,7 @@ export interface FileRoutesById {
   '/staff': typeof StaffRoute
   '/start': typeof StartRoute
   '/super-admin-login': typeof SuperAdminLoginRoute
+  '/terms': typeof TermsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/book_/$slug': typeof BookSlugRoute
   '/customers_/$id': typeof CustomersIdRoute
@@ -429,6 +447,7 @@ export interface FileRouteTypes {
     | '/orders'
     | '/payroll'
     | '/pitchdeck'
+    | '/privacy'
     | '/product-analytics'
     | '/reports'
     | '/server-app'
@@ -438,6 +457,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/start'
     | '/super-admin-login'
+    | '/terms'
     | '/auth/callback'
     | '/book/$slug'
     | '/customers/$id'
@@ -474,6 +494,7 @@ export interface FileRouteTypes {
     | '/orders'
     | '/payroll'
     | '/pitchdeck'
+    | '/privacy'
     | '/product-analytics'
     | '/reports'
     | '/server-app'
@@ -483,6 +504,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/start'
     | '/super-admin-login'
+    | '/terms'
     | '/auth/callback'
     | '/book/$slug'
     | '/customers/$id'
@@ -519,6 +541,7 @@ export interface FileRouteTypes {
     | '/orders'
     | '/payroll'
     | '/pitchdeck'
+    | '/privacy'
     | '/product-analytics'
     | '/reports'
     | '/server-app'
@@ -528,6 +551,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/start'
     | '/super-admin-login'
+    | '/terms'
     | '/auth/callback'
     | '/book_/$slug'
     | '/customers_/$id'
@@ -565,6 +589,7 @@ export interface RootRouteChildren {
   OrdersRoute: typeof OrdersRoute
   PayrollRoute: typeof PayrollRoute
   PitchdeckRoute: typeof PitchdeckRoute
+  PrivacyRoute: typeof PrivacyRoute
   ProductAnalyticsRoute: typeof ProductAnalyticsRoute
   ReportsRoute: typeof ReportsRoute
   ServerAppRoute: typeof ServerAppRoute
@@ -574,6 +599,7 @@ export interface RootRouteChildren {
   StaffRoute: typeof StaffRoute
   StartRoute: typeof StartRoute
   SuperAdminLoginRoute: typeof SuperAdminLoginRoute
+  TermsRoute: typeof TermsRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   BookSlugRoute: typeof BookSlugRoute
   CustomersIdRoute: typeof CustomersIdRoute
@@ -583,6 +609,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/super-admin-login': {
       id: '/super-admin-login'
       path: '/super-admin-login'
@@ -644,6 +677,13 @@ declare module '@tanstack/react-router' {
       path: '/product-analytics'
       fullPath: '/product-analytics'
       preLoaderRoute: typeof ProductAnalyticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pitchdeck': {
@@ -935,6 +975,7 @@ const rootRouteChildren: RootRouteChildren = {
   OrdersRoute: OrdersRoute,
   PayrollRoute: PayrollRoute,
   PitchdeckRoute: PitchdeckRoute,
+  PrivacyRoute: PrivacyRoute,
   ProductAnalyticsRoute: ProductAnalyticsRoute,
   ReportsRoute: ReportsRoute,
   ServerAppRoute: ServerAppRoute,
@@ -944,6 +985,7 @@ const rootRouteChildren: RootRouteChildren = {
   StaffRoute: StaffRoute,
   StartRoute: StartRoute,
   SuperAdminLoginRoute: SuperAdminLoginRoute,
+  TermsRoute: TermsRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   BookSlugRoute: BookSlugRoute,
   CustomersIdRoute: CustomersIdRoute,

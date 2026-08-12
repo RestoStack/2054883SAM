@@ -29,6 +29,8 @@ const PUBLIC_PATHS = [
   "/pitchdeck",
   "/signup",
   "/start",
+  "/terms",
+  "/privacy",
   "/auth/callback",
 ];
 
@@ -51,7 +53,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (isPublicPath(pathname)) return;
     // /onboarding only requires a session (staff row may be created mid-flow).
     if (pathname === "/onboarding") {
-      if (!session) navigate({ to: "/start", replace: true });
+      if (!session) navigate({ to: "/login", replace: true });
       return;
     }
     // Server pad uses its own PIN session, not Supabase staff auth.

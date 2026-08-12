@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { bootstrapStaffAuth } from "@/lib/auth-bootstrap.functions";
+import { isDemoAccessEnabled } from "@/lib/ship-mode";
 
 const RESTAURANT_SLUG = "italian-bistro";
 const STAFF_EMAIL_DOMAIN = "jukebox.local";
@@ -29,12 +30,13 @@ interface Tile {
 function LoginPage() {
   const navigate = useNavigate();
   const { session, staff, loading, needsOnboarding } = useAuth();
+  const demo = isDemoAccessEnabled();
   const [tab, setTab] = useState<"admin" | "staff">("admin");
   const [tiles, setTiles] = useState<Tile[]>([]);
   const [selectedTile, setSelectedTile] = useState<Tile | null>(null);
   const [pin, setPin] = useState("");
-  const [email, setEmail] = useState("admin@jukebox.com");
-  const [password, setPassword] = useState("admin1234");
+  const [email, setEmail] = useState(demo ? "admin@jukebox.com" : "");
+  const [password, setPassword] = useState(demo ? "admin1234" : "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [bootstrapResult, setBootstrapResult] = useState<string | null>(null);
@@ -67,28 +69,33 @@ function LoginPage() {
     }
   }, [loading, session, staff, needsOnboarding, navigate]);
 
-  // Auto-run bootstrap on first mount (idempotent — creates auth users for unlinked staff).
+  // Demo-only: auto-run bootstrap + load Italian Bistro staff tiles.
   useEffect(() => {
     (async () => {
-      try {
-        await bootstrap();
-      } catch (e) {
-        console.warn("Bootstrap failed (may already be done):", e);
+      if (demo) {
+        try {
+          await bootstrap();
+        } catch (e) {
+          console.warn("Bootstrap failed (may already be done):", e);
+        }
+        const { data } = await supabase.rpc("v2_get_staff_tiles", { _slug: RESTAURANT_SLUG });
+        if (data) setTiles(data as Tile[]);
       }
-      const { data } = await supabase.rpc("v2_get_staff_tiles", { _slug: RESTAURANT_SLUG });
-      if (data) setTiles(data as Tile[]);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [demo]);
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setBusy(true);
     let { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error && error.message.toLowerCase().includes("invalid")) {
-      // Maybe bootstrap hadn't finished; try once more after re-running it.
-      try { await bootstrap(); } catch {}
+    if (demo && error && error.message.toLowerCase().includes("invalid")) {
+      try {
+        await bootstrap();
+      } catch {
+        /* ignore */
+      }
       ({ error } = await supabase.auth.signInWithPassword({ email, password }));
     }
     setBusy(false);
@@ -105,8 +112,12 @@ function LoginPage() {
       password: `pin-${pin}`,
     };
     let { error } = await supabase.auth.signInWithPassword(creds);
-    if (error && error.message.toLowerCase().includes("invalid")) {
-      try { await bootstrap(); } catch {}
+    if (demo && error && error.message.toLowerCase().includes("invalid")) {
+      try {
+        await bootstrap();
+      } catch {
+        /* ignore */
+      }
       ({ error } = await supabase.auth.signInWithPassword(creds));
     }
     setBusy(false);
@@ -119,11 +130,11 @@ function LoginPage() {
     try {
       const res = await bootstrap();
       setBootstrapResult(res.message);
-      // Reload tiles
       const { data } = await supabase.rpc("v2_get_staff_tiles", { _slug: RESTAURANT_SLUG });
       if (data) setTiles(data as Tile[]);
-    } catch (err: any) {
-      setBootstrapResult("Error: " + (err?.message ?? String(err)));
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      setBootstrapResult("Error: " + (e?.message ?? String(err)));
     } finally {
       setBusy(false);
     }
@@ -141,14 +152,19 @@ function LoginPage() {
     <div className="min-h-screen bg-background flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold tracking-tight">Italian Bistro</h1>
-          <p className="text-sm text-muted-foreground mt-1">Sign in to the RestoStack demo</p>
+          <h1 className="text-3xl font-bold tracking-tight">{demo ? "Italian Bistro" : "RestoStack"}</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {demo ? "Sign in to the RestoStack demo" : "Sign in to your restaurant"}
+          </p>
         </div>
 
         <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
           <div className="grid grid-cols-2 border-b border-border">
             <button
-              onClick={() => { setTab("admin"); setError(null); }}
+              onClick={() => {
+                setTab("admin");
+                setError(null);
+              }}
               className={`py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
                 tab === "admin" ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
@@ -156,7 +172,10 @@ function LoginPage() {
               <Shield className="size-4" /> Admin
             </button>
             <button
-              onClick={() => { setTab("staff"); setError(null); }}
+              onClick={() => {
+                setTab("staff");
+                setError(null);
+              }}
               className={`py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
                 tab === "staff" ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
@@ -196,9 +215,11 @@ function LoginPage() {
                 >
                   {busy ? "Signing in…" : "Sign in"}
                 </button>
-                <p className="text-[11px] text-muted-foreground text-center">
-                  Default admin: <code>admin@jukebox.com</code> / <code>admin1234</code>
-                </p>
+                {demo && (
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    Default admin: <code>admin@jukebox.com</code> / <code>admin1234</code>
+                  </p>
+                )}
               </form>
             ) : selectedTile ? (
               <form onSubmit={handlePinSubmit} className="space-y-4">
@@ -224,7 +245,11 @@ function LoginPage() {
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => { setSelectedTile(null); setPin(""); setError(null); }}
+                    onClick={() => {
+                      setSelectedTile(null);
+                      setPin("");
+                      setError(null);
+                    }}
                     className="flex-1 rounded-lg border border-input py-2 text-sm font-medium hover:bg-accent"
                   >
                     Back
@@ -240,7 +265,12 @@ function LoginPage() {
               </form>
             ) : (
               <div className="space-y-3">
-                {tiles.length === 0 ? (
+                {!demo ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Staff PIN sign-in for the sample restaurant is available on demo deploys. Use your admin email
+                    instead, or open Host Stand from the mobile app after signing in.
+                  </p>
+                ) : tiles.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">
                     No staff found. Run first-time setup below.
                   </p>
@@ -278,23 +308,25 @@ function LoginPage() {
           </a>
         </p>
 
-        <details className="mt-4 text-xs text-muted-foreground">
-          <summary className="cursor-pointer hover:text-foreground">First-time setup</summary>
-          <div className="mt-3 rounded-lg border border-border bg-card p-4 space-y-2">
-            <p>
-              Run this once to create login accounts for all seeded staff
-              (admin@jukebox.com / admin1234, plus PINs 1234/1111/2222).
-            </p>
-            <button
-              onClick={handleBootstrap}
-              disabled={busy}
-              className="w-full rounded-md bg-secondary py-1.5 text-xs font-medium hover:bg-secondary/80 disabled:opacity-50"
-            >
-              {busy ? "Working…" : "Run bootstrap"}
-            </button>
-            {bootstrapResult && <p className="text-[11px]">{bootstrapResult}</p>}
-          </div>
-        </details>
+        {demo && (
+          <details className="mt-4 text-xs text-muted-foreground">
+            <summary className="cursor-pointer hover:text-foreground">First-time setup</summary>
+            <div className="mt-3 rounded-lg border border-border bg-card p-4 space-y-2">
+              <p>
+                Run this once to create login accounts for all seeded staff (admin@jukebox.com / admin1234, plus PINs
+                1234/1111/2222).
+              </p>
+              <button
+                onClick={handleBootstrap}
+                disabled={busy}
+                className="w-full rounded-md bg-secondary py-1.5 text-xs font-medium hover:bg-secondary/80 disabled:opacity-50"
+              >
+                {busy ? "Working…" : "Run bootstrap"}
+              </button>
+              {bootstrapResult && <p className="text-[11px]">{bootstrapResult}</p>}
+            </div>
+          </details>
+        )}
       </div>
     </div>
   );
