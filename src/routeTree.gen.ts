@@ -29,8 +29,10 @@ import { Route as MarketingRouteImport } from './routes/marketing'
 import { Route as LoyaltyRouteImport } from './routes/loyalty'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LeaderboardRouteImport } from './routes/leaderboard'
+import { Route as LaunchRouteImport } from './routes/launch'
 import { Route as IntegrationsRouteImport } from './routes/integrations'
 import { Route as HostStandRouteImport } from './routes/host-stand'
+import { Route as HealthRouteImport } from './routes/health'
 import { Route as FloorplanRouteImport } from './routes/floorplan'
 import { Route as DemoRouteImport } from './routes/demo'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -155,6 +157,11 @@ const LeaderboardRoute = LeaderboardRouteImport.update({
   path: '/leaderboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LaunchRoute = LaunchRouteImport.update({
+  id: '/launch',
+  path: '/launch',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IntegrationsRoute = IntegrationsRouteImport.update({
   id: '/integrations',
   path: '/integrations',
@@ -163,6 +170,11 @@ const IntegrationsRoute = IntegrationsRouteImport.update({
 const HostStandRoute = HostStandRouteImport.update({
   id: '/host-stand',
   path: '/host-stand',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HealthRoute = HealthRouteImport.update({
+  id: '/health',
+  path: '/health',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FloorplanRoute = FloorplanRouteImport.update({
@@ -292,8 +304,10 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/demo': typeof DemoRoute
   '/floorplan': typeof FloorplanRoute
+  '/health': typeof HealthRoute
   '/host-stand': typeof HostStandRoute
   '/integrations': typeof IntegrationsRoute
+  '/launch': typeof LaunchRoute
   '/leaderboard': typeof LeaderboardRoute
   '/login': typeof LoginRoute
   '/loyalty': typeof LoyaltyRoute
@@ -339,8 +353,10 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/demo': typeof DemoRoute
   '/floorplan': typeof FloorplanRoute
+  '/health': typeof HealthRoute
   '/host-stand': typeof HostStandRoute
   '/integrations': typeof IntegrationsRoute
+  '/launch': typeof LaunchRoute
   '/leaderboard': typeof LeaderboardRoute
   '/login': typeof LoginRoute
   '/loyalty': typeof LoyaltyRoute
@@ -387,8 +403,10 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/demo': typeof DemoRoute
   '/floorplan': typeof FloorplanRoute
+  '/health': typeof HealthRoute
   '/host-stand': typeof HostStandRoute
   '/integrations': typeof IntegrationsRoute
+  '/launch': typeof LaunchRoute
   '/leaderboard': typeof LeaderboardRoute
   '/login': typeof LoginRoute
   '/loyalty': typeof LoyaltyRoute
@@ -436,8 +454,10 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/demo'
     | '/floorplan'
+    | '/health'
     | '/host-stand'
     | '/integrations'
+    | '/launch'
     | '/leaderboard'
     | '/login'
     | '/loyalty'
@@ -483,8 +503,10 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/demo'
     | '/floorplan'
+    | '/health'
     | '/host-stand'
     | '/integrations'
+    | '/launch'
     | '/leaderboard'
     | '/login'
     | '/loyalty'
@@ -530,8 +552,10 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/demo'
     | '/floorplan'
+    | '/health'
     | '/host-stand'
     | '/integrations'
+    | '/launch'
     | '/leaderboard'
     | '/login'
     | '/loyalty'
@@ -578,8 +602,10 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   DemoRoute: typeof DemoRoute
   FloorplanRoute: typeof FloorplanRoute
+  HealthRoute: typeof HealthRoute
   HostStandRoute: typeof HostStandRoute
   IntegrationsRoute: typeof IntegrationsRoute
+  LaunchRoute: typeof LaunchRoute
   LeaderboardRoute: typeof LeaderboardRoute
   LoginRoute: typeof LoginRoute
   LoyaltyRoute: typeof LoyaltyRoute
@@ -749,6 +775,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LeaderboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/launch': {
+      id: '/launch'
+      path: '/launch'
+      fullPath: '/launch'
+      preLoaderRoute: typeof LaunchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/integrations': {
       id: '/integrations'
       path: '/integrations'
@@ -761,6 +794,13 @@ declare module '@tanstack/react-router' {
       path: '/host-stand'
       fullPath: '/host-stand'
       preLoaderRoute: typeof HostStandRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/health': {
+      id: '/health'
+      path: '/health'
+      fullPath: '/health'
+      preLoaderRoute: typeof HealthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/floorplan': {
@@ -964,8 +1004,10 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   DemoRoute: DemoRoute,
   FloorplanRoute: FloorplanRoute,
+  HealthRoute: HealthRoute,
   HostStandRoute: HostStandRoute,
   IntegrationsRoute: IntegrationsRoute,
+  LaunchRoute: LaunchRoute,
   LeaderboardRoute: LeaderboardRoute,
   LoginRoute: LoginRoute,
   LoyaltyRoute: LoyaltyRoute,

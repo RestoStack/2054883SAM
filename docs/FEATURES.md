@@ -9,8 +9,10 @@ Status relative to the full-app feature branches (not empty `main`). Update this
 - Guest booking `/book/{slug}` (demo: `/book/italian-bistro`)
 - Pitch deck route
 - One-click sample `/demo` (**demo ship mode only**)
-- Terms `/terms` + Privacy `/privacy`
+- Ready-for-launch homepage (`LaunchLanding`) + `/launch` preview
+- Terms `/terms` + Privacy `/privacy` + Health `/health`
 - Invite-only signup gate (`src/lib/ship-mode.ts`; optional invite code)
+- Server-side signup kill-switch (`v2_platform_settings`)
 
 ### Auth & roles
 - Admin email/password login (`/admin-login`, `/login`)

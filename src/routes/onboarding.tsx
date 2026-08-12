@@ -127,12 +127,15 @@ function OnboardingPage() {
     if (restaurantIdRef.current) return restaurantIdRef.current;
     if (!restaurantName.trim()) return null;
     const plan = (typeof window !== "undefined" && sessionStorage.getItem("restostack:plan")) || "starter";
+    const invite =
+      (typeof window !== "undefined" && sessionStorage.getItem("restostack:invite_code")) || null;
     const { data, error } = await (supabase.rpc as any)("v2_signup_create_restaurant", {
       _restaurant_name: restaurantName.trim(),
       _slug: slugify(restaurantName),
       _city: city,
       _full_name: fullName,
       _plan: plan,
+      _invite_code: invite,
     });
     if (error) { toast.error(error.message); return null; }
     const row = Array.isArray(data) ? data[0] : data;

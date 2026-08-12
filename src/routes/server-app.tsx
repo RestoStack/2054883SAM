@@ -15,6 +15,7 @@ import {
   logoutFn,
 } from "@/lib/pos.functions";
 import { LogOut } from "lucide-react";
+import { isServerPadEnabled } from "@/lib/ship-mode";
 
 export const Route = createFileRoute("/server-app")({
   head: () => ({
@@ -24,6 +25,9 @@ export const Route = createFileRoute("/server-app")({
     ],
   }),
   beforeLoad: async () => {
+    if (!isServerPadEnabled()) {
+      throw redirect({ to: "/host-stand" });
+    }
     const me = await meFn();
     if (!me) throw redirect({ to: "/server-login" });
     return { me };

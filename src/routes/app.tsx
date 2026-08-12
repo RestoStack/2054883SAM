@@ -13,6 +13,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { InstallAppBanner } from "@/components/mobile/InstallAppBanner";
 import logoUrl from "@/assets/restostack-logo.png";
+import { isServerPadEnabled } from "@/lib/ship-mode";
 
 export const Route = createFileRoute("/app")({
   head: () => ({
@@ -132,7 +133,34 @@ function MobileAppHome() {
   }
 
   const role = staff.role;
-  const tiles = TILES.filter((t) => t.roles.includes(role));
+  const padOn = isServerPadEnabled();
+  const tiles = TILES.filter(
+    (t) => t.roles.includes(role) && (padOn || t.to !== "/server-app"),
+  );
+
+  const bottomNav =
+    role === "server"
+      ? padOn
+        ? [
+            { to: "/app", label: "Home", icon: LayoutDashboard },
+            { to: "/server-app", label: "Orders", icon: Utensils },
+          ]
+        : [
+            { to: "/app", label: "Home", icon: LayoutDashboard },
+            { to: "/menu", label: "Menu", icon: Utensils },
+          ]
+      : role === "hostess"
+        ? [
+            { to: "/app", label: "Home", icon: LayoutDashboard },
+            { to: "/host-stand", label: "Host", icon: ClipboardList },
+            { to: "/bookings", label: "Book", icon: CalendarDays },
+          ]
+        : [
+            { to: "/app", label: "Home", icon: LayoutDashboard },
+            { to: "/host-stand", label: "Host", icon: ClipboardList },
+            ...(padOn ? [{ to: "/server-app", label: "Pad", icon: Utensils }] : []),
+            { to: "/dashboard", label: "Stats", icon: BarChart3 },
+          ];
 
   return (
     <div className="min-h-dvh bg-background pb-24 text-foreground">
@@ -195,24 +223,7 @@ function MobileAppHome() {
 
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur">
         <div className="mx-auto flex max-w-lg items-stretch justify-around">
-          {(role === "server"
-            ? [
-                { to: "/app", label: "Home", icon: LayoutDashboard },
-                { to: "/server-app", label: "Orders", icon: Utensils },
-              ]
-            : role === "hostess"
-              ? [
-                  { to: "/app", label: "Home", icon: LayoutDashboard },
-                  { to: "/host-stand", label: "Host", icon: ClipboardList },
-                  { to: "/bookings", label: "Book", icon: CalendarDays },
-                ]
-              : [
-                  { to: "/app", label: "Home", icon: LayoutDashboard },
-                  { to: "/host-stand", label: "Host", icon: ClipboardList },
-                  { to: "/server-app", label: "Pad", icon: Utensils },
-                  { to: "/dashboard", label: "Stats", icon: BarChart3 },
-                ]
-          ).map((item) => {
+          {bottomNav.map((item) => {
             const Icon = item.icon;
             return (
               <Link
