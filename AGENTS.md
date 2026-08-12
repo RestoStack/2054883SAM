@@ -28,8 +28,8 @@ This file is the always-on brief for any Cursor agent opening this repo on any c
 
 1. **`main` is nearly empty.** Do not build on `main`. Prefer the latest full-app feature branch (see `docs/DEVELOPER.md`). Stack new work on the newest complete branch unless the user says otherwise.
 2. **Never commit service role keys.** Anon/publishable key may appear in client defaults; service role stays in local `.env` only.
-3. **Landing is gated.** Public CTAs go to “Request a demo” → `waitlist_signups`. Do not re-add Staff login / Create restaurant / `/start` on the marketing homepage unless asked. Default ship mode is **invite** (`src/lib/ship-mode.ts`): `/start` and `/signup` stay closed unless explicitly enabled.
-4. **Demo sample restaurant** is Italian Bistro (`italian-bistro`). One-click entry: `/demo` only when `VITE_SHIP_MODE=demo` (or `VITE_ENABLE_DEMO_ACCESS=true`). Credentials in `docs/ACCESS.md`.
+3. **Landing is gated.** Default ship mode is **launch** (`src/lib/ship-mode.ts`): ready-for-launch homepage, closed `/start`/`/signup`, Server Pad off. Demo mode only for sales sample. Public CTAs → “Request a demo”.
+4. **Demo sample restaurant** is Italian Bistro (`italian-bistro`). One-click entry: `/demo` only when `VITE_SHIP_MODE=demo`. Credentials in `docs/ACCESS.md`. Preview launch landing anytime at `/launch`.
 5. **Tenant key** is `restaurant_id` on `v2_*` tables. Prefer hooks in `src/lib/v2-data.ts`.
 6. **Design lock:** green success accent, existing Restostacks admin shell. Do not redesign the whole product when fixing a feature.
 7. **Lovable MCP** may need interactive auth on desktop Cursor. Cloud agents often cannot complete Lovable auth — push to GitHub and document; ask the human to auth/publish if needed.

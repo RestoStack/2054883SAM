@@ -70,6 +70,11 @@ function SignupPage() {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (inviteCodeMatches(inviteInput)) {
+                  try {
+                    sessionStorage.setItem("restostack:invite_code", inviteInput.trim());
+                  } catch {
+                    /* ignore */
+                  }
                   setInviteUnlocked(true);
                   setError(null);
                 } else {

@@ -6,7 +6,7 @@ See **[SHIP.md](./SHIP.md)** for the current ship decision and deploy flags.
 
 | Mode | Ready? |
 |------|--------|
-| Invite-only beta (recommended ship) | **Yes** — with `VITE_SHIP_MODE=invite` |
+| Invite-only launch (recommended) | **Yes** — `VITE_SHIP_MODE=launch` |
 | Private / sales demo with sample restaurant | **Yes** — with `VITE_SHIP_MODE=demo` |
 | Mass public self-serve signup + untrusted tenants | **No** — P0 blockers below |
 

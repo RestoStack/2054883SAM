@@ -12,7 +12,8 @@ import { Area, AreaChart, ResponsiveContainer, PieChart, Pie, Cell, Line, LineCh
 import logoUrl from "@/assets/restostack-logo.png";
 import { supabase } from "@/integrations/supabase/client";
 import { DemoRequestDialog } from "@/components/DemoRequestDialog";
-import { isDemoAccessEnabled } from "@/lib/ship-mode";
+import { LaunchLanding } from "@/components/LaunchLanding";
+import { isDemoAccessEnabled, isLaunchSurface } from "@/lib/ship-mode";
 import jukeboxLogo from "@/assets/logos/jukebox.png";
 import industriaLogo from "@/assets/logos/industria.webp";
 import bistroNoirLogo from "@/assets/logos/bistronoir.png";
@@ -24,15 +25,41 @@ import terraVerdeLogo from "@/assets/logos/terraverde.png";
 
 export const Route = createFileRoute("/")({
   head: () => ({
-    meta: [
-      { title: "RestoStack — The OS for Restaurants is Coming" },
-      { name: "description", content: "RestoStack connects reservations, guest profiles, loyalty, server ordering, and marketing automation into one intelligent platform." },
-      { property: "og:title", content: "RestoStack — The OS for Restaurants" },
-      { property: "og:description", content: "One intelligent platform for modern restaurants. Join the early access list." },
-    ],
+    meta: isLaunchSurface()
+      ? [
+          { title: "RestoStack — The OS for Restaurants" },
+          {
+            name: "description",
+            content:
+              "RestoStack is live for invited restaurants. Reservations, guests, floor, and team in one system.",
+          },
+          { property: "og:title", content: "RestoStack — Now launching" },
+          {
+            property: "og:description",
+            content: "Invite-only launch. Request a demo to get your restaurant on RestoStack.",
+          },
+        ]
+      : [
+          { title: "RestoStack — The OS for Restaurants is Coming" },
+          {
+            name: "description",
+            content:
+              "RestoStack connects reservations, guest profiles, loyalty, server ordering, and marketing automation into one intelligent platform.",
+          },
+          { property: "og:title", content: "RestoStack — The OS for Restaurants" },
+          {
+            property: "og:description",
+            content: "One intelligent platform for modern restaurants. Join the early access list.",
+          },
+        ],
   }),
-  component: ComingSoon,
+  component: HomePage,
 });
+
+function HomePage() {
+  if (isLaunchSurface()) return <LaunchLanding />;
+  return <ComingSoon />;
+}
 
 const GREEN = "#39D400";
 

@@ -5,7 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { bootstrapStaffAuth } from "@/lib/auth-bootstrap.functions";
-import { isDemoAccessEnabled } from "@/lib/ship-mode";
+import { isDemoAccessEnabled, isServerPadEnabled } from "@/lib/ship-mode";
 
 const RESTAURANT_SLUG = "italian-bistro";
 const STAFF_EMAIL_DOMAIN = "jukebox.local";
@@ -64,7 +64,9 @@ function LoginPage() {
           ? "/dashboard"
           : staff.role === "hostess"
             ? "/host-stand"
-            : "/server-app";
+            : isServerPadEnabled()
+              ? "/server-app"
+              : "/menu";
       navigate({ to: home, replace: true });
     }
   }, [loading, session, staff, needsOnboarding, navigate]);

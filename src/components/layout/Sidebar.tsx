@@ -13,10 +13,11 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { isServerPadEnabled } from "@/lib/ship-mode";
 
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
 
-const ADMIN_NAV: NavItem[] = [
+const ADMIN_NAV_BASE: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/host-stand", label: "Host Stand", icon: ClipboardList },
   { to: "/server-app", label: "Server Pad", icon: Utensils },
@@ -44,17 +45,24 @@ const HOSTESS_NAV: NavItem[] = [
   { to: "/customers", label: "Guests", icon: Users },
 ];
 
-const SERVER_NAV: NavItem[] = [
+const SERVER_NAV_BASE: NavItem[] = [
   { to: "/server-app", label: "Order Pad", icon: Utensils },
   { to: "/menu", label: "Menu", icon: UtensilsCrossed },
   { to: "/orders", label: "My Orders", icon: ShoppingBag },
 ];
 
-const NAV_BY_ROLE: Record<Role, NavItem[]> = {
-  admin: ADMIN_NAV,
-  hostess: HOSTESS_NAV,
-  server: SERVER_NAV,
-};
+function navForRole(role: Role): NavItem[] {
+  const allowPad = isServerPadEnabled();
+  if (role === "admin") {
+    return allowPad
+      ? ADMIN_NAV_BASE
+      : ADMIN_NAV_BASE.filter((i) => i.to !== "/server-app");
+  }
+  if (role === "hostess") return HOSTESS_NAV;
+  return allowPad
+    ? SERVER_NAV_BASE
+    : SERVER_NAV_BASE.filter((i) => i.to !== "/server-app");
+}
 
 const marketingActions = [
   { to: "/marketing/email", label: "Email Marketing", icon: Mail },
@@ -70,7 +78,7 @@ const marketingActions = [
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { role } = useRole();
-  const nav = NAV_BY_ROLE[role];
+  const nav = navForRole(role);
   const showMarketing = role === "admin" && (pathname.startsWith("/marketing") || pathname.startsWith("/loyalty"));
 
   return (

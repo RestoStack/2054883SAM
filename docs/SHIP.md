@@ -1,94 +1,70 @@
 # Ship readiness — what is missing
 
-**Verdict (Aug 2026):** Ready to ship as an **invite-only beta**. Not ready for mass public self-serve.
+**Verdict:** Ready to launch as **invite-only** with `VITE_SHIP_MODE=launch` (default).
 
 | Mode | Status |
 |------|--------|
-| **A — Invite-only beta** | Ready with controls in this branch |
-| **B — Sales demo deploy** | Ready with `VITE_SHIP_MODE=demo` |
-| **C — Public self-serve** | Blocked (P0s below) |
+| **A — Launch (invite-only)** | Ready — default. Launch landing + hardened gates |
+| **B — Sales demo** | Ready with `VITE_SHIP_MODE=demo` |
+| **C — Public self-serve** | Blocked (remaining P0s below) |
 
-## What “ship” means here
+## Launch variation (this branch)
 
-Operators you invite can run bookings, guests, host stand, menu, staff, marketing drafts, loyalty UI, reports, settings, and mobile `/app`. Prospects request demos from the marketing site. You bill manually.
+- Homepage uses the **ready-for-launch** surface (`LaunchLanding`) when mode is `launch` or `invite`
+- Preview anytime at `/launch`
+- Public `/start` + `/signup` closed (optional `VITE_INVITE_CODE`)
+- Demo credentials / bootstrap off unless `demo` mode
+- Global Server Pad hidden/redirected on launch deploys
+- `/terms`, `/privacy`, `/health`
+- DB migration: `v2_platform_settings` + signup RPC kill-switch (`allow_public_signup` default **false**)
 
-It does **not** mean open signup, Stripe checkout, real SMS/email send, or untrusted multi-tenant hardening.
-
-## Already good enough (invite beta)
-
-- Gated landing → demo request form
-- Core v2 ops (dashboard, bookings, customers, menu, host, floorplan, staff, payroll, reports)
-- Mobile PWA shell `/app`
-- Guest booking `/book/{slug}`
-- Terms `/terms` + Privacy `/privacy`
-- Ship mode gates (this branch):
-  - Public `/start` + `/signup` closed by default
-  - Demo credentials / bootstrap only when demo mode is on
-  - Optional `VITE_INVITE_CODE` unlock for signup
-  - Server Pad labeled as non-tenant demo POS
-
-## Configure the deploy
+## Configure
 
 ```bash
-# Invite-only customer beta (default)
-VITE_SHIP_MODE=invite
+# Customer-facing launch (default)
+VITE_SHIP_MODE=launch
 
-# Sales / investor demo site (Italian Bistro sample)
+# Sales / investor demo site
 VITE_SHIP_MODE=demo
 
-# Optional invite unlock for /signup while remaining invite-only
+# Optional invite unlock for /signup + onboarding RPC
 VITE_INVITE_CODE=your-shared-code
 
-# Overrides
-VITE_ALLOW_PUBLIC_SIGNUP=false
-VITE_ENABLE_DEMO_ACCESS=false
+# Force Server Pad on a launch deploy (not recommended)
+# VITE_ENABLE_SERVER_PAD=true
 ```
 
-Code: `src/lib/ship-mode.ts`.
+Apply migration `supabase/migrations/20260812210000_launch_signup_kill_switch.sql` on Supabase before inviting real restaurants.
+
+To allow invite-code signups server-side:
+
+```sql
+UPDATE v2_platform_settings
+SET signup_invite_code = 'your-shared-code', updated_at = now()
+WHERE id = 1;
+```
 
 ## Still missing before public self-serve (P0)
 
 1. Separate prod Supabase from demo data  
-2. Role-aware RLS (not just `restaurant_id` FOR ALL)  
+2. Role-aware RLS  
 3. Path-scoped storage policies  
-4. Tenantized Server Pad / POS (or permanently disable v1 POS)  
-5. Hashed / unique staff PINs; no public demo passwords  
-6. Real Stripe + entitlement gating  
-7. Server-side invite or verified signup kill-switch (client gates are not enough alone)  
-8. Booking RPC rate limits / abuse controls  
+4. Tenantized POS (or keep Server Pad off permanently)  
+5. Hashed / unique staff PINs  
+6. Real Stripe + entitlements  
+7. Booking RPC rate limits  
 
-## Before serious growth (P1)
+## Launch checklist
 
-- Error monitoring (Sentry or equivalent) + health check  
-- CI smoke tests  
-- Staging environment  
-- Ops inbox for `waitlist_signups`  
-- Stronger password policy + force password change for seeded accounts  
-- Replace Lovable-tied Google OAuth assumptions if leaving Lovable  
+- [ ] Deploy with `VITE_SHIP_MODE=launch`  
+- [ ] Apply signup kill-switch migration  
+- [ ] Confirm `/` shows launch landing; `/start` closed; `/demo` off  
+- [ ] Confirm Server Pad not in nav  
+- [ ] Confirm `/health` returns ok  
+- [ ] Confirm `/terms` + `/privacy`  
+- [ ] Onboard first restaurant via platform admin or invite code  
+- [ ] Keep `demo` mode only on a separate sales URL  
 
-## Polish (P2)
+## Related
 
-- Live email/SMS providers  
-- Real integrations beyond JSON toggles  
-- GDPR export/delete  
-- Richer offline PWA  
-- Order line-item / loyalty demo data quality  
-
-## Launch checklist — invite beta
-
-- [ ] Set `VITE_SHIP_MODE=invite` on the customer-facing deploy  
-- [ ] Keep `VITE_SHIP_MODE=demo` only on the sales demo URL (or turn demo off entirely)  
-- [ ] Confirm `/start` and `/signup` show invite-only / require invite code  
-- [ ] Confirm `/demo` redirects home when demo access is off  
-- [ ] Confirm `/terms` and `/privacy` linked from footer  
-- [ ] Onboard first real restaurant via platform admin or invite code (not public trial)  
-- [ ] Do not point customers at Server Pad for live multi-tenant use  
-- [ ] Manual billing / sales email agreed  
-- [ ] Rotate any credentials that were shared publicly during demos  
-
-## Related docs
-
-- [READINESS.md](./READINESS.md) — original P0–P2 list  
-- [FEATURES.md](./FEATURES.md) — built vs missing product surface  
-- [ACCESS.md](./ACCESS.md) — demo URLs (demo mode only)  
-- [DEVELOPER.md](./DEVELOPER.md) — run / branches  
+- [READINESS.md](./READINESS.md) · [FEATURES.md](./FEATURES.md) · [ACCESS.md](./ACCESS.md)

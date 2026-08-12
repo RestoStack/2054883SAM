@@ -15,13 +15,13 @@ Multi-tenant restaurant SaaS. Repo `RestoStack/2054883SAM` is source of truth.
 
 ## Product locks
 
-- Default ship mode is **invite** (`src/lib/ship-mode.ts`): no open signup; demo credentials only when `VITE_SHIP_MODE=demo`.
-- Landing homepage: demo-request gated (no Staff login / Create restaurant CTAs).
+- Default ship mode is **launch** (`src/lib/ship-mode.ts`): launch landing, no open signup, no demo credentials, Server Pad off.
+- Landing homepage: demo-request gated; launch surface at `/` (launch/invite) or `/launch`.
 - Demo tenant: Italian Bistro (`italian-bistro`); entry `/demo` in demo mode only.
 - Tenant column: `restaurant_id` on `v2_*` tables.
 - Prefer `src/lib/v2-data.ts` for data access.
 - Keep existing green-accent admin UI; no drive-by redesigns.
-- Server Pad is global v1 POS — not safe for multi-tenant live use.
+- Server Pad is global v1 POS — disabled on launch deploys.
 
 ## Key paths
 

@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate, useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -8,7 +8,7 @@ import { Delete, LockKeyhole, ShieldCheck } from "lucide-react";
 import { listServersFn, loginWithPinFn } from "@/lib/pos.functions";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { isDemoAccessEnabled } from "@/lib/ship-mode";
+import { isDemoAccessEnabled, isServerPadEnabled } from "@/lib/ship-mode";
 
 export const Route = createFileRoute("/server-login")({
   head: () => ({
@@ -17,6 +17,11 @@ export const Route = createFileRoute("/server-login")({
       { name: "description", content: "Tablet PIN sign-in for floor staff." },
     ],
   }),
+  beforeLoad: () => {
+    if (!isServerPadEnabled()) {
+      throw redirect({ to: "/login" });
+    }
+  },
   component: ServerLoginPage,
 });
 

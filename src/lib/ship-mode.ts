@@ -1,17 +1,18 @@
 /**
  * Ship mode controls what is publicly exposed.
  *
- * - invite (default): ready-to-ship beta — no open signup, no demo credential UI
- * - demo: sales/demo deploy — sample restaurant + known demo logins
+ * - launch (default): ready-for-launch invite-only — launch landing, no demo, Server Pad off
+ * - invite: same gates as launch (legacy alias)
+ * - demo: sales/demo deploy — sample restaurant + known demo logins + coming-soon marketing
  * - public: self-serve signup (NOT ready — treated like invite until P0s clear)
  *
- * Override with VITE_SHIP_MODE=demo|invite|public
+ * Override with VITE_SHIP_MODE=launch|demo|invite|public
  * Fine-grained:
  *   VITE_ALLOW_PUBLIC_SIGNUP=true|false
  *   VITE_ENABLE_DEMO_ACCESS=true|false
- *   VITE_INVITE_CODE=secret   (optional unlock for /signup when invite mode)
+ *   VITE_INVITE_CODE=secret   (optional unlock for /signup)
  */
-export type ShipMode = "demo" | "invite" | "public";
+export type ShipMode = "launch" | "demo" | "invite" | "public";
 
 function readEnv(name: string): string | undefined {
   try {
@@ -28,16 +29,21 @@ function readEnv(name: string): string | undefined {
 }
 
 export function getShipMode(): ShipMode {
-  const raw = (readEnv("VITE_SHIP_MODE") || readEnv("SHIP_MODE") || "invite").toLowerCase();
-  if (raw === "demo" || raw === "invite" || raw === "public") return raw;
-  return "invite";
+  const raw = (readEnv("VITE_SHIP_MODE") || readEnv("SHIP_MODE") || "launch").toLowerCase();
+  if (raw === "launch" || raw === "demo" || raw === "invite" || raw === "public") return raw;
+  return "launch";
+}
+
+/** True for customer-facing launch/invite deploys (not sales demo). */
+export function isLaunchSurface(): boolean {
+  const mode = getShipMode();
+  return mode === "launch" || mode === "invite";
 }
 
 export function isPublicSignupEnabled(): boolean {
   const override = readEnv("VITE_ALLOW_PUBLIC_SIGNUP");
   if (override === "true") return true;
   if (override === "false") return false;
-  // "public" mode is reserved for future self-serve; still blocked until ready.
   return false;
 }
 
@@ -48,7 +54,15 @@ export function isDemoAccessEnabled(): boolean {
   return getShipMode() === "demo";
 }
 
-/** Optional shared invite code that unlocks /signup in invite mode. */
+/** Global v1 Server Pad is unsafe for multi-tenant launch deploys. */
+export function isServerPadEnabled(): boolean {
+  const override = readEnv("VITE_ENABLE_SERVER_PAD");
+  if (override === "true") return true;
+  if (override === "false") return false;
+  return getShipMode() === "demo";
+}
+
+/** Optional shared invite code that unlocks /signup. */
 export function getInviteCode(): string | null {
   const code = readEnv("VITE_INVITE_CODE");
   return code && code.trim() ? code.trim() : null;
@@ -64,5 +78,6 @@ export function shipModeLabel(): string {
   const mode = getShipMode();
   if (mode === "demo") return "Demo deploy";
   if (mode === "public") return "Public (not ready — gated as invite)";
-  return "Invite-only beta";
+  if (mode === "invite") return "Invite-only beta";
+  return "Launch — invite only";
 }
