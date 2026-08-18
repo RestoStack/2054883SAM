@@ -334,6 +334,79 @@ export function FloorPlan({
   );
 }
 
+/**
+ * Fit table positions into the canvas so sparse DB layouts don't leave
+ * a huge empty band under a clustered top row.
+ */
+export function normalizeFloorLayout(
+  items: FloorItem[],
+  width = 1000,
+  height = 560,
+  padding = 56,
+): FloorItem[] {
+  const placed = items.filter(
+    (it): it is Extract<FloorItem, { kind: "round" | "rect" }> =>
+      (it.kind === "round" || it.kind === "rect") && it.id != null,
+  );
+  if (placed.length === 0) return items;
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const t of placed) {
+    const hw = t.kind === "round" ? (t.size ?? 64) / 2 : t.w / 2;
+    const hh = t.kind === "round" ? (t.size ?? 64) / 2 : t.h / 2;
+    minX = Math.min(minX, t.x - hw);
+    maxX = Math.max(maxX, t.x + hw);
+    minY = Math.min(minY, t.y - hh);
+    maxY = Math.max(maxY, t.y + hh);
+  }
+
+  const contentW = Math.max(40, maxX - minX);
+  const contentH = Math.max(40, maxY - minY);
+  const availW = Math.max(80, width - padding * 2);
+  const availH = Math.max(80, height - padding * 2);
+  // Fill the pane when tables are clustered; never shrink past reading size.
+  const scale = Math.min(availW / contentW, availH / contentH);
+  const usedW = contentW * scale;
+  const usedH = contentH * scale;
+  const originX = (width - usedW) / 2;
+  const originY = (height - usedH) / 2;
+
+  const mapPoint = (x: number, y: number) => ({
+    x: Math.round(originX + (x - minX) * scale),
+    y: Math.round(originY + (y - minY) * scale),
+  });
+
+  return items.map((it) => {
+    if (it.kind === "plant") {
+      const p = mapPoint(it.x, it.y);
+      return { ...it, x: p.x, y: p.y };
+    }
+    if (it.kind === "divider") {
+      const p = mapPoint(it.x, it.y);
+      return { ...it, x: p.x, y: p.y, h: Math.max(24, Math.round(it.h * scale)) };
+    }
+    if (it.kind === "round") {
+      const p = mapPoint(it.x, it.y);
+      const size = Math.max(36, Math.round((it.size ?? 64) * Math.min(scale, 1.25)));
+      return { ...it, x: p.x, y: p.y, size };
+    }
+    if (it.kind === "rect") {
+      const p = mapPoint(it.x, it.y);
+      return {
+        ...it,
+        x: p.x,
+        y: p.y,
+        w: Math.max(40, Math.round(it.w * Math.min(scale, 1.25))),
+        h: Math.max(36, Math.round(it.h * Math.min(scale, 1.25))),
+      };
+    }
+    return it;
+  });
+}
+
 /** Demo layout fallback when no saved table positions exist. */
 export const mainFloorPlan: FloorItem[] = [
   { kind: "divider", x: 500, y: 60, h: 480, arrow: true },

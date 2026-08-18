@@ -2,7 +2,14 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { useBookings, useCreateBooking, useStaffUsers, useUpdateBooking, type BookingRow } from "@/lib/v2-data";
+import {
+  useBookings,
+  useCreateBooking,
+  useStaffUsers,
+  useUpdateBooking,
+  stripServerTag,
+  type BookingRow,
+} from "@/lib/v2-data";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/Sidebar";
 import { Button } from "@/components/ui/button";
@@ -13,12 +20,12 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { FloorPlan, mainFloorPlan, type FloorItem } from "@/components/FloorPlan";
+import { FloorPlan, mainFloorPlan, normalizeFloorLayout, type FloorItem } from "@/components/FloorPlan";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
 import {
-  Users, Phone, Mail, MapPin, X, ExternalLink,
+  Users, Phone, Mail, MapPin, X, ExternalLink, UserRound,
   Calendar, Bell, MessageSquare, AlertTriangle,
   Crown, ChevronLeft, ChevronRight, Search, Cake, LayoutGrid,
   Settings, Armchair, List, Sun, Moon, Minus, Plus, Leaf,
@@ -267,14 +274,33 @@ function HostStandPage() {
   }, [seatTarget]);
 
   useEffect(() => {
-    if (detail) setTableNotes(detail.notes || "");
+    if (detail) setTableNotes(detail.displayNotes || stripServerTag(detail.notes) || "");
     else setTableNotes("");
-  }, [detail?.id, detail?.notes]);
+  }, [detail?.id, detail?.notes, detail?.displayNotes]);
 
   const activeStaffList = useMemo(
     () => staffUsers.filter((s) => s.active),
     [staffUsers],
   );
+
+  const serverOptions = useMemo(
+    () =>
+      activeStaffList.filter((s) => {
+        const role = s.role.toLowerCase();
+        return role === "server" || role === "hostess" || role === "admin";
+      }),
+    [activeStaffList],
+  );
+
+  const serverLoad = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const b of todays) {
+      if (!b.assignedServerId) continue;
+      if (b.status === "cancelled" || b.status === "no_show" || b.status === "completed") continue;
+      counts[b.assignedServerId] = (counts[b.assignedServerId] ?? 0) + 1;
+    }
+    return counts;
+  }, [todays]);
 
   const sendStaffMessage = async () => {
     const target = activeStaffList.find((s) => s.id === msgTargetId);
@@ -330,7 +356,7 @@ function HostStandPage() {
     return reservations
       .filter((b) => inPeriod(b.rawTime))
       .map((b) => {
-        const flags = noteFlags(b.notes);
+        const flags = noteFlags(b.displayNotes || b.notes);
         let statusTone: UpNextItem["statusTone"] = "upcoming";
         let statusLabel = "Upcoming";
         if (flags.birthday) {
@@ -353,7 +379,7 @@ function HostStandPage() {
           statusLabel,
           statusTone,
           tag: flags.vip ? "VIP" : flags.birthday ? "Birthday" : undefined,
-          notes: b.notes,
+          notes: b.displayNotes || stripServerTag(b.notes),
           booking: b,
           tableLabel: b.tableNumber,
           visits: b.visits,
@@ -377,7 +403,7 @@ function HostStandPage() {
           whenLabel: duration > 0 ? `${duration}m` : b.time || "—",
           statusLabel: "Seated",
           statusTone: "seated" as const,
-          notes: b.notes,
+          notes: b.displayNotes || stripServerTag(b.notes),
           booking: b,
           tableLabel: b.tableNumber,
           visits: b.visits,
@@ -453,7 +479,7 @@ function HostStandPage() {
               };
             });
 
-    return base.map((it) => {
+    const withStatus = base.map((it) => {
       if (it.kind !== "round" && it.kind !== "rect") return it;
       if (it.id == null) return it;
       const key = String(it.id);
@@ -477,14 +503,14 @@ function HostStandPage() {
         };
       }
       if (bookedHere) {
-        const flags = noteFlags(bookedHere.notes);
+        const flags = noteFlags(bookedHere.displayNotes || bookedHere.notes);
         const late =
           bookedHere.status === "confirmed" &&
           !!bookedHere.rawTime &&
           bookedHere.rawTime < now.toTimeString().slice(0, 5);
         const waitingNote =
-          (bookedHere.notes || "").toLowerCase().includes("arrived") ||
-          (bookedHere.notes || "").toLowerCase().includes("waiting");
+          (bookedHere.displayNotes || bookedHere.notes || "").toLowerCase().includes("arrived") ||
+          (bookedHere.displayNotes || bookedHere.notes || "").toLowerCase().includes("waiting");
         return {
           ...it,
           status: late
@@ -500,6 +526,9 @@ function HostStandPage() {
       }
       return { ...it, status: "free" as const };
     });
+
+    // Autofit so sparse section layouts fill the pane instead of hugging the top.
+    return normalizeFloorLayout(withStatus, 1000, 560, 52);
   }, [positionedTables, section, seated, reservations, now, blockedTableIds]);
 
   type FreeTable = { table_number: string; capacity: number };
@@ -695,6 +724,15 @@ function HostStandPage() {
       setSeatTarget(null);
       setSeatMode("seat");
       setSelectedTable(tableId);
+      const seatedBooking = todays.find((b) => b.id === target.id);
+      if (seatedBooking) {
+        setDetail({
+          ...seatedBooking,
+          tableNumber,
+          table: `Table ${tableNumber}`,
+          status: "seated",
+        });
+      }
       await reloadTables();
     } catch (e) {
       toast.error((e as Error).message || "Could not seat");
@@ -731,7 +769,7 @@ function HostStandPage() {
       ) ??
       null;
     setDetail(match);
-    if (match) setTableNotes(match.notes || "");
+    if (match) setTableNotes(match.displayNotes || stripServerTag(match.notes) || "");
     else setTableNotes("");
   };
 
@@ -739,6 +777,56 @@ function HostStandPage() {
     setSelectedTable(null);
     setDetail(null);
     setTableNotes("");
+  };
+
+  const openGuestDetail = (booking: BookingRow) => {
+    setDetail(booking);
+    setTableNotes(booking.displayNotes || stripServerTag(booking.notes) || "");
+    if (booking.tableNumber) setSelectedTable(booking.tableNumber);
+  };
+
+  const assignServer = async (
+    serverId: string | null,
+    booking: BookingRow | null = detail,
+  ) => {
+    if (!booking) {
+      toast.error("Select a reservation or seated party first");
+      return;
+    }
+    try {
+      await updateBooking.mutateAsync({
+        id: booking.id,
+        assignedServerId: serverId,
+      });
+      const name = serverId
+        ? serverOptions.find((s) => s.id === serverId)?.name ?? "server"
+        : null;
+      setDetail({
+        ...booking,
+        assignedServerId: serverId,
+      });
+      toast.success(name ? `Assigned ${name}` : "Server cleared");
+    } catch (e) {
+      toast.error((e as Error).message || "Could not assign server");
+    }
+  };
+
+  const saveTableNotes = async () => {
+    if (!detail) return;
+    try {
+      await updateBooking.mutateAsync({
+        id: detail.id,
+        notes: tableNotes,
+      });
+      setDetail({
+        ...detail,
+        notes: tableNotes,
+        displayNotes: tableNotes,
+      });
+      toast.success("Notes saved");
+    } catch (e) {
+      toast.error((e as Error).message || "Could not save notes");
+    }
   };
 
   const dateLong = useMemo(() => {
@@ -779,6 +867,23 @@ function HostStandPage() {
     });
     return Array.from(new Set(mapped));
   }, [dbTables]);
+
+  const sectionCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const tab of areaTabs) counts[tab] = 0;
+    for (const t of dbTables) {
+      const raw = t.section || "Main";
+      const label =
+        raw === "Main" || raw === "Main Floor"
+          ? "Main Floor"
+          : raw === "Private" || raw === "Private Room"
+            ? "Private Room"
+            : raw;
+      const match = areaTabs.find((a) => a === label || label.startsWith(a) || a.startsWith(label));
+      if (match) counts[match] = (counts[match] ?? 0) + 1;
+    }
+    return counts;
+  }, [areaTabs, dbTables]);
 
   useEffect(() => {
     if (areaTabs.length && !areaTabs.includes(section) && section !== "All") {
@@ -836,22 +941,6 @@ function HostStandPage() {
   const filteredSeated = seatedItems.filter((u) =>
     searchFilter(u.name, u.booking?.phone, u.notes),
   );
-
-  const saveTableNotes = async () => {
-    if (!detail) return;
-    try {
-      const { error } = await supabase
-        .from("v2_bookings")
-        .update({ notes: tableNotes } as never)
-        .eq("id", detail.id);
-      if (error) throw error;
-      qc.invalidateQueries({ queryKey: ["v2_bookings"] });
-      setDetail({ ...detail, notes: tableNotes });
-      toast.success("Notes saved");
-    } catch (e) {
-      toast.error((e as Error).message || "Could not save notes");
-    }
-  };
 
   const completeService = async (booking?: BookingRow | null) => {
     const target = booking ?? detail;
@@ -911,7 +1000,7 @@ function HostStandPage() {
     setResParty(String(b.people));
     setResPhone(b.phone || "");
     setResTime(b.rawTime || "18:00");
-    setResNotes(b.notes || "");
+    setResNotes(b.displayNotes || stripServerTag(b.notes) || "");
     setReservationOpen(true);
   };
 
@@ -947,6 +1036,7 @@ function HostStandPage() {
             rawTime: resTime,
             time: resTime,
             notes: resNotes.trim(),
+            displayNotes: resNotes.trim(),
             date: dateISO,
           });
           setTableNotes(resNotes.trim());
@@ -1219,7 +1309,7 @@ function HostStandPage() {
         <div
           className={cn(
             "flex-1 min-h-0 grid grid-cols-1",
-            selectedTable != null
+            selectedTable != null || detail
               ? "xl:grid-cols-[300px_minmax(0,1fr)_320px]"
               : "xl:grid-cols-[300px_minmax(0,1fr)]",
             "lg:grid-cols-[280px_minmax(0,1fr)]",
@@ -1288,11 +1378,24 @@ function HostStandPage() {
               {leftTab === "upcoming" &&
                 filteredUpcoming.map((u) => {
                   const flags = noteFlags(u.notes || "");
+                  const selected = detail?.id === u.id;
                   return (
                     <li
                       key={u.key}
-                      className={cn("rounded-[12px] border p-3", border, cardBg)}
+                      className={cn(
+                        "rounded-[12px] border p-3 transition",
+                        border,
+                        cardBg,
+                        selected && (dark ? "ring-1 ring-[#39D400]/60" : "ring-1 ring-[#00A36C]/50"),
+                      )}
                     >
+                      <button
+                        type="button"
+                        className="w-full text-left"
+                        onClick={() => {
+                          if (u.booking) openGuestDetail(u.booking);
+                        }}
+                      >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
@@ -1337,8 +1440,25 @@ function HostStandPage() {
                             {u.visits && u.visits !== "—" && (
                               <span>{u.visits} visits</span>
                             )}
+                            {u.booking?.phone && (
+                              <span className="inline-flex items-center gap-1">
+                                <Phone className="size-3" /> {u.booking.phone}
+                              </span>
+                            )}
                           </div>
                         </div>
+                      </div>
+                      </button>
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          className={cn("text-[11px] font-medium hover:underline", muted)}
+                          onClick={() => {
+                            if (u.booking) openGuestDetail(u.booking);
+                          }}
+                        >
+                          View details
+                        </button>
                         <button
                           type="button"
                           disabled={seatingBusy}
@@ -1357,18 +1477,6 @@ function HostStandPage() {
                           Seat
                         </button>
                       </div>
-                      <button
-                        type="button"
-                        className={cn("mt-2 text-[11px] font-medium hover:underline", muted)}
-                        onClick={() => {
-                          if (u.booking) {
-                            setDetail(u.booking);
-                            if (u.tableLabel) setSelectedTable(u.tableLabel);
-                          }
-                        }}
-                      >
-                        View details
-                      </button>
                     </li>
                   );
                 })}
@@ -1438,8 +1546,7 @@ function HostStandPage() {
                       type="button"
                       className="w-full text-left"
                       onClick={() => {
-                        if (u.booking) setDetail(u.booking);
-                        if (u.tableLabel) setSelectedTable(u.tableLabel);
+                        if (u.booking) openGuestDetail(u.booking);
                       }}
                     >
                       <div className="flex items-center gap-2">
@@ -1487,29 +1594,53 @@ function HostStandPage() {
           >
             <div
               className={cn(
-                "shrink-0 px-3 py-2.5 flex items-center gap-2 border-b overflow-x-auto",
+                "shrink-0 px-3 py-3 flex items-center gap-3 border-b",
                 border,
                 panelBg,
               )}
             >
-              <div className="flex gap-1.5 flex-1 min-w-0 overflow-x-auto">
-                {areaTabs.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setSection(s)}
-                    className={cn(
-                      "shrink-0 rounded-[10px] px-3 py-1.5 text-xs font-semibold border transition",
-                      section === s
-                        ? dark
-                          ? "bg-white/10 border-white/20 text-white"
-                          : "bg-slate-900 border-slate-900 text-white"
-                        : cn("border-transparent", muted, "hover:opacity-80"),
-                    )}
-                  >
-                    {s}
-                  </button>
-                ))}
+              <div
+                className={cn(
+                  "flex flex-1 min-w-0 overflow-x-auto gap-1 rounded-[12px] border p-1",
+                  border,
+                  dark ? "bg-black/30" : "bg-slate-100/80",
+                )}
+              >
+                {areaTabs.map((s) => {
+                  const active = section === s;
+                  const count = sectionCounts[s] ?? 0;
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSection(s)}
+                      className={cn(
+                        "relative shrink-0 rounded-[10px] px-3.5 py-2 text-sm font-bold tracking-tight transition min-w-[7.5rem]",
+                        active
+                          ? dark
+                            ? "bg-[#39D400] text-black shadow-sm"
+                            : "bg-[#00A36C] text-white shadow-sm"
+                          : dark
+                            ? "text-zinc-300 hover:bg-white/5"
+                            : "text-slate-600 hover:bg-white",
+                      )}
+                    >
+                      <span className="block leading-tight">{s}</span>
+                      <span
+                        className={cn(
+                          "block text-[10px] font-semibold mt-0.5",
+                          active
+                            ? dark
+                              ? "text-black/70"
+                              : "text-white/85"
+                            : muted,
+                        )}
+                      >
+                        {count} table{count === 1 ? "" : "s"}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
               <div
                 className={cn(
@@ -1666,10 +1797,7 @@ function HostStandPage() {
                               "border-t cursor-pointer",
                               dark ? "border-white/5 hover:bg-white/[0.03]" : "border-slate-100 hover:bg-slate-50",
                             )}
-                            onClick={() => {
-                              setDetail(b);
-                              if (b.tableNumber) setSelectedTable(b.tableNumber);
-                            }}
+                            onClick={() => openGuestDetail(b)}
                           >
                             <td className="px-3 py-2.5 tabular-nums" style={{ color: accent }}>
                               {b.time}
@@ -1694,8 +1822,8 @@ function HostStandPage() {
             )}
           </section>
 
-          {/* RIGHT — Table detail */}
-          {selectedTable != null && (
+          {/* RIGHT — Table / guest detail */}
+          {(selectedTable != null || detail) && (
             <aside
               className={cn(
                 "min-h-0 border-t xl:border-t-0 xl:border-l flex flex-col order-3 max-h-[48vh] xl:max-h-none overflow-y-auto",
@@ -1706,12 +1834,23 @@ function HostStandPage() {
               <div className="shrink-0 px-4 pt-4 pb-3 flex items-start justify-between gap-2">
                 <div>
                   <h2 className="text-xl font-bold tracking-tight">
-                    TABLE {selectedTable}
+                    {selectedTable != null
+                      ? `TABLE ${selectedTable}`
+                      : detail?.name ?? "Guest"}
                   </h2>
                   <p className={cn("text-xs mt-0.5", muted)}>
-                    {selectedDbTable?.section || section || "Main"} ·{" "}
-                    {selectedDbTable?.capacity ?? "—"} seats
-                    {isSelectedBlocked ? " · Blocked" : ""}
+                    {selectedTable != null ? (
+                      <>
+                        {selectedDbTable?.section || section || "Main"} ·{" "}
+                        {selectedDbTable?.capacity ?? "—"} seats
+                        {isSelectedBlocked ? " · Blocked" : ""}
+                      </>
+                    ) : (
+                      <>
+                        {detail?.time} · party of {detail?.people}
+                        {detail?.tableNumber ? ` · Table ${detail.tableNumber}` : " · Unassigned"}
+                      </>
+                    )}
                   </p>
                 </div>
                 <button
@@ -1722,21 +1861,21 @@ function HostStandPage() {
                     border,
                     muted,
                   )}
-                  aria-label="Close table detail"
+                  aria-label="Close detail"
                 >
                   <X className="size-4" />
                 </button>
               </div>
 
               <div className="px-4 pb-4 space-y-4 flex-1">
-                {/* Next reservation */}
-                {nextForTable && (
+                {/* Customer card */}
+                {(detail || nextForTable) && (
                   <div className={cn("rounded-[12px] border p-3", border, cardBg)}>
                     <div className="flex items-center justify-between gap-2">
                       <div className={cn("text-[10px] font-bold uppercase tracking-wider", muted)}>
-                        Next Reservation
+                        {detail?.status === "seated" ? "Guest" : "Reservation"}
                       </div>
-                      {minutesUntilNext != null && (
+                      {minutesUntilNext != null && detail?.status !== "seated" && (
                         <span
                           className={cn(
                             "rounded-md px-1.5 py-0.5 text-[10px] font-bold",
@@ -1747,63 +1886,146 @@ function HostStandPage() {
                                 : "bg-sky-100 text-sky-700",
                           )}
                         >
-                          {minutesUntilNext <= 0
-                            ? "now"
-                            : `in ${minutesUntilNext}m`}
+                          {minutesUntilNext <= 0 ? "now" : `in ${minutesUntilNext}m`}
                         </span>
                       )}
                     </div>
-                    <div className="mt-2 flex items-start gap-3">
-                      <div
-                        className="size-10 rounded-full grid place-items-center text-sm font-bold text-black shrink-0"
-                        style={{ backgroundColor: accent }}
-                      >
-                        {nextForTable.name
-                          .split(/\s+/)
-                          .map((p) => p[0])
-                          .slice(0, 2)
-                          .join("")
-                          .toUpperCase()}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold flex items-center gap-1.5 flex-wrap">
-                          {nextForTable.name}
-                          {noteFlags(nextForTable.notes).vip && (
-                            <span className={cn("inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-bold", statusBadgeCls("vip"))}>
-                              <Crown className="size-2.5" /> VIP
-                            </span>
-                          )}
-                        </div>
-                        <div className={cn("text-[11px] mt-0.5", muted)}>
-                          {nextForTable.time} · party of {nextForTable.people}
-                          {nextForTable.visits && nextForTable.visits !== "—"
-                            ? ` · ${nextForTable.visits} visits`
-                            : ""}
-                        </div>
-                        {nextForTable.phone && (
-                          <a
-                            href={`tel:${nextForTable.phone}`}
-                            className={cn("mt-1.5 inline-flex items-center gap-1.5 text-[12px] hover:underline")}
-                            style={{ color: accent }}
+                    {(() => {
+                      const guest = detail ?? nextForTable;
+                      if (!guest) return null;
+                      const flags = noteFlags(guest.displayNotes || guest.notes);
+                      return (
+                        <div className="mt-2 flex items-start gap-3">
+                          <div
+                            className="size-11 rounded-full grid place-items-center text-sm font-bold text-black shrink-0"
+                            style={{ backgroundColor: accent }}
                           >
-                            <Phone className="size-3" /> {nextForTable.phone}
-                          </a>
-                        )}
-                      </div>
-                    </div>
+                            {guest.name
+                              .split(/\s+/)
+                              .map((p) => p[0])
+                              .slice(0, 2)
+                              .join("")
+                              .toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold flex items-center gap-1.5 flex-wrap">
+                              {guest.name}
+                              {flags.vip && (
+                                <span className={cn("inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-bold", statusBadgeCls("vip"))}>
+                                  <Crown className="size-2.5" /> VIP
+                                </span>
+                              )}
+                              <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-semibold capitalize", muted)}>
+                                {guest.status}
+                              </span>
+                            </div>
+                            <div className={cn("text-[11px] mt-0.5", muted)}>
+                              {guest.time} · party of {guest.people}
+                              {guest.visits && guest.visits !== "—"
+                                ? ` · ${guest.visits} visits`
+                                : ""}
+                              {guest.last ? ` · last ${guest.last}` : ""}
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[12px]">
+                              {guest.phone && (
+                                <a
+                                  href={`tel:${guest.phone}`}
+                                  className="inline-flex items-center gap-1.5 hover:underline"
+                                  style={{ color: accent }}
+                                >
+                                  <Phone className="size-3" /> {guest.phone}
+                                </a>
+                              )}
+                              {guest.email && (
+                                <a
+                                  href={`mailto:${guest.email}`}
+                                  className={cn("inline-flex items-center gap-1.5", muted)}
+                                >
+                                  <Mail className="size-3" /> {guest.email}
+                                </a>
+                              )}
+                            </div>
+                            {guest.customerId && (
+                              <Link
+                                to="/customers/$id"
+                                params={{ id: guest.customerId }}
+                                search={{ tab: "overview" }}
+                                className="mt-2 inline-flex items-center gap-1 text-xs font-semibold hover:underline"
+                                style={{ color: accent }}
+                              >
+                                Full customer profile <ExternalLink className="size-3" />
+                              </Link>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
-                {detail && detail.status === "seated" && (
+                {/* Assign server */}
+                {(detail || seatedOnSelected || nextForTable) && (
                   <div className={cn("rounded-[12px] border p-3", border, cardBg)}>
-                    <div className={cn("text-[10px] font-bold uppercase tracking-wider", muted)}>
-                      Currently Seated
+                    <div className={cn("text-[10px] font-bold uppercase tracking-wider mb-2", muted)}>
+                      Assign Server
                     </div>
-                    <div className="mt-1 text-sm font-semibold">{detail.name}</div>
-                    <div className={cn("text-[11px]", muted)}>
-                      Party of {detail.people}
-                      {detail.phone ? ` · ${detail.phone}` : ""}
-                    </div>
+                    <Select
+                      value={
+                        (detail ?? seatedOnSelected ?? nextForTable)?.assignedServerId ??
+                        "__none__"
+                      }
+                      onValueChange={(v) => {
+                        const booking = detail ?? seatedOnSelected ?? nextForTable;
+                        if (!booking) return;
+                        void assignServer(v === "__none__" ? null : v, booking);
+                      }}
+                    >
+                      <SelectTrigger
+                        className={cn(
+                          "w-full h-10 rounded-[10px] border text-sm",
+                          border,
+                          dark ? "bg-[#161616]" : "bg-white",
+                        )}
+                      >
+                        <SelectValue placeholder="Choose server" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Unassigned</SelectItem>
+                        {serverOptions.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                            {serverLoad[s.id] != null
+                              ? ` · ${serverLoad[s.id]} assigned`
+                              : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {serverOptions.length === 0 && (
+                      <p className={cn("text-[11px] mt-2", muted)}>
+                        Add servers on the Staff page to assign tables here.
+                      </p>
+                    )}
+                    {activeStaffList.length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {serverOptions.slice(0, 4).map((s) => (
+                          <li
+                            key={s.id}
+                            className={cn(
+                              "flex items-center justify-between text-[11px] px-1",
+                              muted,
+                            )}
+                          >
+                            <span className="inline-flex items-center gap-1.5">
+                              <UserRound className="size-3" /> {s.name}
+                            </span>
+                            <span className="tabular-nums">
+                              {serverLoad[s.id] ?? 0} tables
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 )}
 
@@ -1837,7 +2059,8 @@ function HostStandPage() {
                       inputBg,
                     )}
                   />
-                  {detail && tableNotes !== (detail.notes || "") && (
+                  {detail &&
+                    tableNotes !== (detail.displayNotes || stripServerTag(detail.notes) || "") && (
                     <button
                       type="button"
                       onClick={() => void saveTableNotes()}
@@ -1867,9 +2090,8 @@ function HostStandPage() {
                     </button>
                   ) : (
                     (nextForTable ||
-                      (detail &&
-                        detail.status !== "seated" &&
-                        detail.status !== "completed")) && (
+                      (detail && detail.status !== "completed")) &&
+                    selectedTable != null && (
                       <button
                         type="button"
                         disabled={seatingBusy}
@@ -1924,17 +2146,6 @@ function HostStandPage() {
                       >
                         Change Table
                       </button>
-                      {detail.customerId && (
-                        <Link
-                          to="/customers/$id"
-                          params={{ id: detail.customerId }}
-                          search={{ tab: "overview" }}
-                          className="inline-flex items-center gap-1 text-xs font-medium hover:underline"
-                          style={{ color: accent }}
-                        >
-                          Open guest profile <ExternalLink className="size-3" />
-                        </Link>
-                      )}
                     </>
                   )}
                 </div>
@@ -1950,11 +2161,7 @@ function HostStandPage() {
                         <li key={b.id}>
                           <button
                             type="button"
-                            onClick={() => {
-                              setDetail(b);
-                              setTableNotes(b.notes || "");
-                              if (b.tableNumber) setSelectedTable(b.tableNumber);
-                            }}
+                            onClick={() => openGuestDetail(b)}
                             className={cn(
                               "w-full rounded-[10px] border px-3 py-2 flex items-center justify-between gap-2 text-sm text-left hover:opacity-90",
                               border,
@@ -1972,7 +2179,7 @@ function HostStandPage() {
                   </div>
                 )}
 
-                {!detail && !nextForTable && !isSelectedBlocked && (
+                {!detail && !nextForTable && !isSelectedBlocked && selectedTable != null && (
                   <div className={cn("rounded-[12px] border p-4 text-center", border, cardBg)}>
                     <Leaf className="size-5 mx-auto mb-2" style={{ color: accent }} />
                     <p className="text-sm font-semibold">Table available</p>
@@ -1982,7 +2189,8 @@ function HostStandPage() {
                   </div>
                 )}
 
-                {isSelectedBlocked ? (
+                {selectedTable != null &&
+                  (isSelectedBlocked ? (
                   <button
                     type="button"
                     onClick={() => void unblockTable()}
@@ -2008,17 +2216,10 @@ function HostStandPage() {
                   >
                     Block Table
                   </button>
-                )}
+                ))}
 
-                {detail?.email && (
-                  <a
-                    href={`mailto:${detail.email}`}
-                    className={cn("inline-flex items-center gap-1.5 text-xs", muted)}
-                  >
-                    <Mail className="size-3.5" /> {detail.email}
-                  </a>
-                )}
-                {detail?.notes && noteFlags(detail.notes).allergy && (
+                {(detail?.displayNotes || detail?.notes) &&
+                  noteFlags(detail.displayNotes || detail.notes).allergy && (
                   <div
                     className={cn(
                       "rounded-[10px] border px-3 py-2 text-xs flex items-start gap-2",
@@ -2028,7 +2229,7 @@ function HostStandPage() {
                     )}
                   >
                     <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
-                    <span>{detail.notes}</span>
+                    <span>{detail.displayNotes || stripServerTag(detail.notes)}</span>
                   </div>
                 )}
               </div>

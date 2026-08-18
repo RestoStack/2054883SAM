@@ -261,17 +261,53 @@ function Dashboard() {
               {upcomingBookings.length === 0 && (
                 <li className="text-xs text-muted-foreground text-center py-4">No upcoming bookings today.</li>
               )}
-              {upcomingBookings.map((b) => (
-                <li key={b.id} className="flex items-center gap-2 py-1.5 border-b border-border last:border-0">
-                  <div className="text-xs font-semibold w-16">{b.time}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate text-sm">{b.name}</div>
-                    <div className="text-xs text-muted-foreground">{b.people} People</div>
-                  </div>
-                  <span className="rounded-full bg-success/15 text-success text-[10px] font-semibold px-2 py-0.5 capitalize">{b.status}</span>
-                </li>
-              ))}
+              {upcomingBookings.map((b) => {
+                const body = (
+                  <>
+                    <div className="text-xs font-semibold w-16 shrink-0 tabular-nums">{b.time}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate text-sm">{b.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {b.people} guest{b.people === 1 ? "" : "s"}
+                        {b.tableNumber ? ` · Table ${b.tableNumber}` : " · Unassigned"}
+                        {b.phone ? ` · ${b.phone}` : ""}
+                        {b.visits && b.visits !== "—" ? ` · ${b.visits} visits` : ""}
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-success/15 text-success text-[10px] font-semibold px-2 py-0.5 capitalize shrink-0">
+                      {b.status}
+                    </span>
+                  </>
+                );
+                return (
+                  <li key={b.id} className="border-b border-border last:border-0">
+                    {b.customerId ? (
+                      <Link
+                        to="/customers/$id"
+                        params={{ id: b.customerId }}
+                        search={{ tab: "overview" }}
+                        className="flex items-center gap-2 py-2 hover:bg-muted/40 -mx-1 px-1 rounded-md transition-colors"
+                      >
+                        {body}
+                      </Link>
+                    ) : (
+                      <Link
+                        to="/bookings"
+                        className="flex items-center gap-2 py-2 hover:bg-muted/40 -mx-1 px-1 rounded-md transition-colors"
+                      >
+                        {body}
+                      </Link>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
+            <Link
+              to="/host-stand"
+              className="mt-3 inline-flex items-center gap-1 text-xs text-primary font-medium hover:underline"
+            >
+              Open Host Stand <ArrowRight className="size-3" />
+            </Link>
           </div>
         </div>
 

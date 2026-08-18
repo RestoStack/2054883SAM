@@ -21,6 +21,27 @@ const fmtMoney = (n: number) =>
 // ============ BOOKINGS ============
 export type BookingStatus = "pending" | "confirmed" | "seated" | "completed" | "cancelled" | "no_show";
 
+/** Embedded in booking notes until a dedicated column ships. */
+const SERVER_TAG_RE = /<!--rs-server:([0-9a-f-]{36})-->/i;
+
+export function parseAssignedServerId(notes: string | null | undefined): string | null {
+  const m = (notes || "").match(SERVER_TAG_RE);
+  return m?.[1] ?? null;
+}
+
+export function stripServerTag(notes: string | null | undefined): string {
+  return (notes || "").replace(SERVER_TAG_RE, "").trim();
+}
+
+export function withAssignedServerId(
+  notes: string | null | undefined,
+  serverId: string | null,
+): string {
+  const base = stripServerTag(notes);
+  if (!serverId) return base;
+  return `${base}${base ? "\n" : ""}<!--rs-server:${serverId}-->`;
+}
+
 export type BookingRow = {
   id: string;
   customerId: string | null;
@@ -39,8 +60,44 @@ export type BookingRow = {
   visits: string;
   last: string;
   notes: string;
+  /** Notes without internal tags (safe for UI). */
+  displayNotes: string;
+  assignedServerId: string | null;
   slug: string;
 };
+
+function mapBookingRow(
+  b: any,
+  customerMeta?: { visits?: number | null; last?: string | null } | null,
+): BookingRow {
+  const rawNotes = b.notes ?? "";
+  const visits =
+    customerMeta?.visits != null && customerMeta.visits > 0
+      ? String(customerMeta.visits)
+      : "—";
+  return {
+    id: b.id,
+    customerId: b.customer_id ?? null,
+    date: b.date,
+    rawTime: b.time,
+    time: fmtTime12(b.time),
+    name: b.guest_name ?? "Guest",
+    phone: b.guest_phone ?? "",
+    email: b.guest_email ?? "",
+    source: b.source ?? "walk_in",
+    people: b.party_size ?? 2,
+    table: b.table_number ? `Table ${b.table_number}` : "—",
+    tableNumber: b.table_number ?? null,
+    area: b.section ?? "—",
+    status: (b.status ?? "pending") as BookingStatus,
+    visits,
+    last: customerMeta?.last ? String(customerMeta.last).slice(0, 10) : "",
+    notes: rawNotes,
+    displayNotes: stripServerTag(rawNotes),
+    assignedServerId: parseAssignedServerId(rawNotes),
+    slug: slugify(b.guest_name ?? ""),
+  };
+}
 
 export function useBookings(dateFilter?: string) {
   return useQuery({
@@ -54,26 +111,26 @@ export function useBookings(dateFilter?: string) {
       if (dateFilter) q = q.eq("date", dateFilter);
       const { data, error } = await q;
       if (error) throw error;
-      return (data ?? []).map((b: any) => ({
-        id: b.id,
-        customerId: b.customer_id ?? null,
-        date: b.date,
-        rawTime: b.time,
-        time: fmtTime12(b.time),
-        name: b.guest_name ?? "Guest",
-        phone: b.guest_phone ?? "",
-        email: b.guest_email ?? "",
-        source: b.source ?? "walk_in",
-        people: b.party_size ?? 2,
-        table: b.table_number ? `Table ${b.table_number}` : "—",
-        tableNumber: b.table_number ?? null,
-        area: b.section ?? "—",
-        status: (b.status ?? "pending") as BookingStatus,
-        visits: "—",
-        last: "",
-        notes: b.notes ?? "",
-        slug: slugify(b.guest_name ?? ""),
-      }));
+      const rows = data ?? [];
+      const customerIds = [
+        ...new Set(rows.map((b: any) => b.customer_id).filter(Boolean) as string[]),
+      ];
+      const metaById: Record<string, { visits: number; last: string | null }> = {};
+      if (customerIds.length) {
+        const { data: customers } = await supabase
+          .from("v2_customers")
+          .select("id, visit_count, last_visit")
+          .in("id", customerIds);
+        for (const c of customers ?? []) {
+          metaById[c.id] = {
+            visits: c.visit_count ?? 0,
+            last: c.last_visit ?? null,
+          };
+        }
+      }
+      return rows.map((b: any) =>
+        mapBookingRow(b, b.customer_id ? metaById[b.customer_id] : null),
+      );
     },
   });
 }
@@ -186,6 +243,8 @@ export function useUpdateBooking() {
       time?: string;
       notes?: string | null;
       date?: string;
+      /** Set / clear FoH server assignment (stored in notes tag). */
+      assignedServerId?: string | null;
     }) => {
       const patch: Record<string, unknown> = {};
       if (input.status) patch.status = input.status;
@@ -195,9 +254,34 @@ export function useUpdateBooking() {
       if (input.guest_phone !== undefined) patch.guest_phone = input.guest_phone;
       if (input.party_size !== undefined) patch.party_size = input.party_size;
       if (input.time !== undefined) patch.time = input.time;
-      if (input.notes !== undefined) patch.notes = input.notes;
       if (input.date !== undefined) patch.date = input.date;
-      const { error } = await supabase.from("v2_bookings").update(patch).eq("id", input.id);
+
+      if (input.assignedServerId !== undefined || input.notes !== undefined) {
+        let baseNotes = input.notes;
+        if (baseNotes === undefined || input.assignedServerId !== undefined) {
+          const { data: existing, error: readErr } = await supabase
+            .from("v2_bookings")
+            .select("notes")
+            .eq("id", input.id)
+            .maybeSingle();
+          if (readErr) throw readErr;
+          baseNotes = existing?.notes ?? "";
+        }
+        if (input.notes !== undefined && input.assignedServerId === undefined) {
+          // Preserve existing server tag when editing guest-facing notes.
+          const serverId = parseAssignedServerId(baseNotes);
+          patch.notes = withAssignedServerId(input.notes, serverId);
+        } else if (input.assignedServerId !== undefined) {
+          const guestNotes =
+            input.notes !== undefined ? input.notes : stripServerTag(baseNotes);
+          patch.notes = withAssignedServerId(guestNotes, input.assignedServerId);
+        }
+      }
+
+      const { error } = await supabase
+        .from("v2_bookings")
+        .update(patch as never)
+        .eq("id", input.id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -295,26 +379,7 @@ export function useCustomerBookings(customerId: string | undefined) {
         .order("date", { ascending: false })
         .order("time", { ascending: false });
       if (error) throw error;
-      return (data ?? []).map((b: any) => ({
-        id: b.id,
-        customerId: b.customer_id ?? null,
-        date: b.date,
-        rawTime: b.time,
-        time: fmtTime12(b.time),
-        name: b.guest_name ?? "Guest",
-        phone: b.guest_phone ?? "",
-        email: b.guest_email ?? "",
-        source: b.source ?? "walk_in",
-        people: b.party_size ?? 2,
-        table: b.table_number ? `Table ${b.table_number}` : "—",
-        tableNumber: b.table_number ?? null,
-        area: b.section ?? "—",
-        status: (b.status ?? "pending") as BookingStatus,
-        visits: "—",
-        last: "",
-        notes: b.notes ?? "",
-        slug: slugify(b.guest_name ?? ""),
-      }));
+      return (data ?? []).map((b: any) => mapBookingRow(b));
     },
   });
 }
