@@ -44,6 +44,15 @@ type DbTable = {
   position_y: number | null;
   width: number | null;
   height: number | null;
+  status?: string | null;
+  current_booking_id?: string | null;
+};
+
+type AlertItem = {
+  id: string;
+  text: string;
+  tone: "warn" | "vip" | "info";
+  focus?: { kind: "booking" | "waitlist"; id: string; table?: string | null };
 };
 
 type WaitlistRow = {
@@ -122,11 +131,13 @@ function HostStandPage() {
   const [selectedTable, setSelectedTable] = useState<number | string | null>(null);
   const [detail, setDetail] = useState<BookingRow | null>(null);
   const [seatTarget, setSeatTarget] = useState<SeatTarget | null>(null);
+  const [seatMode, setSeatMode] = useState<"seat" | "move">("seat");
   const [seatingBusy, setSeatingBusy] = useState(false);
   const [dbTables, setDbTables] = useState<DbTable[]>([]);
   const [restaurantName, setRestaurantName] = useState("RestoStack");
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [reservationOpen, setReservationOpen] = useState(false);
+  const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
   const [leftTab, setLeftTab] = useState<LeftTab>("upcoming");
   const [mainView, setMainView] = useState<"floor" | "list">("floor");
   const [period, setPeriod] = useState<MealPeriod>("Dinner");
@@ -140,8 +151,10 @@ function HostStandPage() {
   const [resTime, setResTime] = useState("18:00");
   const [resNotes, setResNotes] = useState("");
   const [staffMsgOpen, setStaffMsgOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const [msgTargetId, setMsgTargetId] = useState<string | null>(null);
   const [staffMessage, setStaffMessage] = useState("");
+  const [sessionAlerts, setSessionAlerts] = useState<AlertItem[]>([]);
   const [newName, setNewName] = useState("");
   const [newParty, setNewParty] = useState("2");
   const [newPhone, setNewPhone] = useState("");
@@ -208,13 +221,26 @@ function HostStandPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["v2_waitlist"] }),
   });
 
+  const reloadTables = async () => {
+    if (!staff?.restaurant_id) return;
+    const { data: tables } = await supabase
+      .from("v2_tables")
+      .select(
+        "id, table_number, section, capacity, shape, position_x, position_y, width, height, status, current_booking_id",
+      )
+      .eq("restaurant_id", staff.restaurant_id);
+    setDbTables((tables ?? []) as DbTable[]);
+  };
+
   useEffect(() => {
     if (!staff) return;
     (async () => {
       const [{ data: tables }, { data: rest }] = await Promise.all([
         supabase
           .from("v2_tables")
-          .select("id, table_number, section, capacity, shape, position_x, position_y, width, height")
+          .select(
+            "id, table_number, section, capacity, shape, position_x, position_y, width, height, status, current_booking_id",
+          )
           .eq("restaurant_id", staff.restaurant_id),
         supabase.from("v2_restaurants").select("name").eq("id", staff.restaurant_id).maybeSingle(),
       ]);
@@ -231,7 +257,10 @@ function HostStandPage() {
   useEffect(() => {
     if (!seatTarget) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSeatTarget(null);
+      if (e.key === "Escape") {
+        setSeatTarget(null);
+        setSeatMode("seat");
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -239,14 +268,15 @@ function HostStandPage() {
 
   useEffect(() => {
     if (detail) setTableNotes(detail.notes || "");
-  }, [detail?.id]);
+    else setTableNotes("");
+  }, [detail?.id, detail?.notes]);
 
   const activeStaffList = useMemo(
     () => staffUsers.filter((s) => s.active),
     [staffUsers],
   );
 
-  const sendStaffMessage = () => {
+  const sendStaffMessage = async () => {
     const target = activeStaffList.find((s) => s.id === msgTargetId);
     if (!target) {
       toast.error("Select a staff member");
@@ -256,7 +286,21 @@ function HostStandPage() {
       toast.error("Enter a message");
       return;
     }
-    toast.success(`Message noted for ${target.name}`);
+    const text = `To ${target.name}: ${staffMessage.trim()}`;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      /* clipboard may be unavailable */
+    }
+    setSessionAlerts((prev) => [
+      {
+        id: `staff-${Date.now()}`,
+        text: `Staff note → ${target.name}: ${staffMessage.trim()}`,
+        tone: "info",
+      },
+      ...prev,
+    ].slice(0, 12));
+    toast.success(`Message copied for ${target.name}`);
     setStaffMsgOpen(false);
     setStaffMessage("");
     setMsgTargetId(null);
@@ -349,6 +393,14 @@ function HostStandPage() {
     return set;
   }, [todays]);
 
+  const blockedTableIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of dbTables) {
+      if (t.status === "cleaning") set.add(String(t.table_number));
+    }
+    return set;
+  }, [dbTables]);
+
   const positionedTables = useMemo(
     () =>
       dbTables.filter(
@@ -405,6 +457,13 @@ function HostStandPage() {
       if (it.kind !== "round" && it.kind !== "rect") return it;
       if (it.id == null) return it;
       const key = String(it.id);
+      if (blockedTableIds.has(key)) {
+        return {
+          ...it,
+          status: "alert" as const,
+          guestLabel: "Blocked",
+        };
+      }
       const seatedHere = seated.find((b) => String(b.tableNumber) === key);
       const bookedHere = reservations.find((b) => String(b.tableNumber) === key);
       if (seatedHere) {
@@ -441,14 +500,18 @@ function HostStandPage() {
       }
       return { ...it, status: "free" as const };
     });
-  }, [positionedTables, section, seated, reservations, now]);
+  }, [positionedTables, section, seated, reservations, now, blockedTableIds]);
 
   type FreeTable = { table_number: string; capacity: number };
 
   const freeTables = useMemo<FreeTable[]>(() => {
     if (positionedTables.length > 0) {
       return positionedTables
-        .filter((t) => !occupiedTableIds.has(String(t.table_number)))
+        .filter(
+          (t) =>
+            !occupiedTableIds.has(String(t.table_number)) &&
+            !blockedTableIds.has(String(t.table_number)),
+        )
         .map((t) => ({ table_number: t.table_number, capacity: t.capacity || 2 }))
         .sort((a, b) => a.capacity - b.capacity);
     }
@@ -463,7 +526,7 @@ function HostStandPage() {
         capacity: it.party ?? (it.kind === "round" ? 2 : 4),
       }))
       .sort((a, b) => a.capacity - b.capacity);
-  }, [positionedTables, occupiedTableIds, floorItems]);
+  }, [positionedTables, occupiedTableIds, blockedTableIds, floorItems]);
 
   const capacityTotal = useMemo(() => {
     if (dbTables.length) return dbTables.reduce((s, t) => s + (t.capacity || 0), 0);
@@ -477,34 +540,73 @@ function HostStandPage() {
 
   const availableCovers = Math.max(0, capacityTotal - seatedCovers);
 
-  const alerts = useMemo(() => {
-    const items: { text: string; tone: "warn" | "vip" }[] = [];
+  const alerts = useMemo<AlertItem[]>(() => {
+    const items: AlertItem[] = [];
     const late = reservations.filter((b) => {
       if (!b.rawTime) return false;
       return b.rawTime < now.toTimeString().slice(0, 5);
     });
-    if (late.length) {
+    for (const b of late.slice(0, 5)) {
       items.push({
-        text: `${late.length} reservation${late.length > 1 ? "s" : ""} late`,
+        id: `late-${b.id}`,
+        text: `${b.name} is late (${b.time || b.rawTime})`,
+        tone: "warn",
+        focus: { kind: "booking", id: b.id, table: b.tableNumber },
+      });
+    }
+    if (late.length > 5) {
+      items.push({
+        id: "late-more",
+        text: `+${late.length - 5} more late reservation${late.length - 5 > 1 ? "s" : ""}`,
         tone: "warn",
       });
     }
     const vip = upcomingItems.filter((u) => u.statusTone === "vip");
-    if (vip[0]) {
+    for (const u of vip.slice(0, 3)) {
       items.push({
-        text: `VIP arriving (${vip[0].name} ${vip[0].whenLabel})`,
+        id: `vip-${u.id}`,
+        text: `VIP arriving — ${u.name} at ${u.whenLabel}`,
         tone: "vip",
+        focus: { kind: "booking", id: u.id, table: u.tableLabel },
       });
     }
-    if (waitlist.length >= 3) {
-      items.push({ text: `${waitlist.length} parties on waitlist`, tone: "warn" });
+    if (waitlist.length > 0) {
+      items.push({
+        id: "waitlist-count",
+        text: `${waitlist.length} ${waitlist.length === 1 ? "party" : "parties"} on waitlist`,
+        tone: "warn",
+        focus: waitlist[0]
+          ? { kind: "waitlist", id: waitlist[0].id }
+          : undefined,
+      });
     }
-    return items.slice(0, 3);
-  }, [reservations, now, upcomingItems, waitlist.length]);
+    return [...sessionAlerts, ...items].slice(0, 12);
+  }, [reservations, now, upcomingItems, waitlist, sessionAlerts]);
 
-  const startSeat = (target: SeatTarget) => {
+  const focusAlert = (alert: AlertItem) => {
+    setAlertsOpen(false);
+    if (!alert.focus) return;
+    if (alert.focus.kind === "waitlist") {
+      setLeftTab("waiting");
+      return;
+    }
+    const booking = todays.find((b) => b.id === alert.focus!.id);
+    if (booking) {
+      setDetail(booking);
+      if (booking.tableNumber) setSelectedTable(booking.tableNumber);
+      else if (alert.focus.table) setSelectedTable(alert.focus.table);
+      setLeftTab(booking.status === "seated" ? "seated" : "upcoming");
+    }
+  };
+
+  const startSeat = (target: SeatTarget, mode: "seat" | "move" = "seat") => {
+    setSeatMode(mode);
     setSeatTarget(target);
-    toast.message(`Select a free table for ${target.name}`);
+    toast.message(
+      mode === "move"
+        ? `Tap a free table to move ${target.name}`
+        : `Select a free table for ${target.name}`,
+    );
   };
 
   const markTableOccupied = async (tableNumber: string, bookingId: string | null) => {
@@ -516,13 +618,36 @@ function HostStandPage() {
       .eq("table_number", tableNumber);
   };
 
+  const markTableAvailable = async (tableNumber: string) => {
+    if (!staff?.restaurant_id) return;
+    await supabase
+      .from("v2_tables")
+      .update({ status: "available", current_booking_id: null } as never)
+      .eq("restaurant_id", staff.restaurant_id)
+      .eq("table_number", tableNumber);
+  };
+
   const confirmSeatAt = async (tableId: number | string, target = seatTarget) => {
     if (!target) return;
-    if (occupiedTableIds.has(String(tableId))) {
+    const tableNumber = String(tableId);
+    if (blockedTableIds.has(tableNumber)) {
+      toast.error(`Table ${tableId} is blocked`);
+      return;
+    }
+
+    const existingBooking =
+      target.kind === "booking" ? todays.find((b) => b.id === target.id) : undefined;
+    const isMove =
+      seatMode === "move" ||
+      (existingBooking?.status === "seated" &&
+        existingBooking.tableNumber != null &&
+        String(existingBooking.tableNumber) !== tableNumber);
+
+    if (occupiedTableIds.has(tableNumber)) {
       toast.error(`Table ${tableId} is occupied`);
       return;
     }
-    const tableNumber = String(tableId);
+
     setSeatingBusy(true);
     try {
       if (target.kind === "waitlist") {
@@ -532,6 +657,32 @@ function HostStandPage() {
           table_number: tableNumber,
         });
         await markTableOccupied(tableNumber, null);
+        qc.invalidateQueries({ queryKey: ["v2_waitlist"] });
+      } else if (isMove && existingBooking) {
+        const oldTable = existingBooking.tableNumber
+          ? String(existingBooking.tableNumber)
+          : null;
+        await updateBooking.mutateAsync({
+          id: target.id,
+          status: "seated",
+          table_number: tableNumber,
+        });
+        if (oldTable && oldTable !== tableNumber) {
+          await markTableAvailable(oldTable);
+        }
+        await markTableOccupied(tableNumber, target.id);
+        toast.success(`${target.name} moved to ${tableNumber}`);
+        setSeatTarget(null);
+        setSeatMode("seat");
+        setSelectedTable(tableId);
+        setDetail({
+          ...existingBooking,
+          tableNumber,
+          table: `Table ${tableNumber}`,
+          status: "seated",
+        });
+        await reloadTables();
+        return;
       } else {
         await updateBooking.mutateAsync({
           id: target.id,
@@ -542,7 +693,9 @@ function HostStandPage() {
       }
       toast.success(`${target.name} seated at ${tableNumber}`);
       setSeatTarget(null);
+      setSeatMode("seat");
       setSelectedTable(tableId);
+      await reloadTables();
     } catch (e) {
       toast.error((e as Error).message || "Could not seat");
     } finally {
@@ -552,6 +705,10 @@ function HostStandPage() {
 
   const onTableClick = (id: number | string) => {
     if (seatTarget) {
+      if (blockedTableIds.has(String(id))) {
+        toast.message(`Table ${id} is blocked — pick another`);
+        return;
+      }
       if (occupiedTableIds.has(String(id))) {
         toast.message(`Table ${id} is occupied — pick another`);
         return;
@@ -560,14 +717,28 @@ function HostStandPage() {
       return;
     }
     setSelectedTable(id);
+    const seatedMatch = todays.find(
+      (b) => String(b.tableNumber) === String(id) && b.status === "seated",
+    );
     const match =
-      todays.find((b) => String(b.tableNumber) === String(id) && b.status !== "cancelled") ?? null;
+      seatedMatch ??
+      todays.find(
+        (b) =>
+          String(b.tableNumber) === String(id) &&
+          b.status !== "cancelled" &&
+          b.status !== "completed" &&
+          b.status !== "no_show",
+      ) ??
+      null;
     setDetail(match);
+    if (match) setTableNotes(match.notes || "");
+    else setTableNotes("");
   };
 
   const clearTableSelection = () => {
     setSelectedTable(null);
     setDetail(null);
+    setTableNotes("");
   };
 
   const dateLong = useMemo(() => {
@@ -682,11 +853,133 @@ function HostStandPage() {
     }
   };
 
-  const blockTable = () => {
-    toast.message(`Table ${selectedTable} marked blocked`, {
-      description: "Blocking is local for this session — wire to table status when ready.",
-    });
+  const completeService = async (booking?: BookingRow | null) => {
+    const target = booking ?? detail;
+    if (!target || target.status !== "seated") return;
+    const tableNumber = target.tableNumber
+      ? String(target.tableNumber)
+      : selectedTable != null
+        ? String(selectedTable)
+        : null;
+    setSeatingBusy(true);
+    try {
+      await updateBooking.mutateAsync({ id: target.id, status: "completed" });
+      if (tableNumber) await markTableAvailable(tableNumber);
+      toast.success(`${target.name} completed · table cleared`);
+      setDetail(null);
+      setTableNotes("");
+      await reloadTables();
+    } catch (e) {
+      toast.error((e as Error).message || "Could not complete");
+    } finally {
+      setSeatingBusy(false);
+    }
   };
+
+  const blockTable = async () => {
+    if (selectedTable == null || !staff?.restaurant_id) return;
+    const tableNumber = String(selectedTable);
+    try {
+      const { error } = await supabase
+        .from("v2_tables")
+        .update({ status: "cleaning", current_booking_id: null } as never)
+        .eq("restaurant_id", staff.restaurant_id)
+        .eq("table_number", tableNumber);
+      if (error) throw error;
+      await reloadTables();
+      toast.success(`Table ${tableNumber} blocked`);
+    } catch (e) {
+      toast.error((e as Error).message || "Could not block table");
+    }
+  };
+
+  const unblockTable = async () => {
+    if (selectedTable == null || !staff?.restaurant_id) return;
+    const tableNumber = String(selectedTable);
+    try {
+      await markTableAvailable(tableNumber);
+      await reloadTables();
+      toast.success(`Table ${tableNumber} unblocked`);
+    } catch (e) {
+      toast.error((e as Error).message || "Could not unblock table");
+    }
+  };
+
+  const openEditReservation = (b: BookingRow) => {
+    setEditingBookingId(b.id);
+    setResName(b.name);
+    setResParty(String(b.people));
+    setResPhone(b.phone || "");
+    setResTime(b.rawTime || "18:00");
+    setResNotes(b.notes || "");
+    setReservationOpen(true);
+  };
+
+  const openNewReservation = () => {
+    setEditingBookingId(null);
+    setResName("");
+    setResParty("2");
+    setResPhone("");
+    setResTime("18:00");
+    setResNotes("");
+    setReservationOpen(true);
+  };
+
+  const saveReservation = async () => {
+    try {
+      if (editingBookingId) {
+        await updateBooking.mutateAsync({
+          id: editingBookingId,
+          guest_name: resName.trim(),
+          guest_phone: resPhone.trim() || null,
+          party_size: parseInt(resParty, 10) || 2,
+          time: resTime,
+          notes: resNotes.trim() || null,
+          date: dateISO,
+        });
+        toast.success("Reservation updated");
+        if (detail?.id === editingBookingId) {
+          setDetail({
+            ...detail,
+            name: resName.trim(),
+            phone: resPhone.trim(),
+            people: parseInt(resParty, 10) || 2,
+            rawTime: resTime,
+            time: resTime,
+            notes: resNotes.trim(),
+            date: dateISO,
+          });
+          setTableNotes(resNotes.trim());
+        }
+      } else {
+        await createBooking.mutateAsync({
+          guest_name: resName.trim(),
+          guest_phone: resPhone.trim() || undefined,
+          party_size: parseInt(resParty, 10) || 2,
+          date: dateISO,
+          time: resTime,
+          notes: resNotes.trim() || undefined,
+          source: "phone",
+        });
+        toast.success("Reservation added");
+        setLeftTab("upcoming");
+      }
+      setReservationOpen(false);
+      setEditingBookingId(null);
+      setResName("");
+      setResPhone("");
+      setResNotes("");
+    } catch (e) {
+      toast.error((e as Error).message || "Could not save reservation");
+    }
+  };
+
+  const isSelectedBlocked =
+    selectedTable != null && blockedTableIds.has(String(selectedTable));
+  const seatedOnSelected =
+    selectedTable != null
+      ? seated.find((b) => String(b.tableNumber) === String(selectedTable)) ?? null
+      : null;
 
   const shellBg = dark ? "bg-[#121212] text-zinc-100" : "bg-[#F8F9FA] text-slate-900";
   const panelBg = dark ? "bg-[#161616]" : "bg-white";
@@ -844,7 +1137,7 @@ function HostStandPage() {
             <IconBtn dark={dark} label="Message staff" onClick={() => setStaffMsgOpen(true)}>
               <MessageSquare className="size-4" />
             </IconBtn>
-            <IconBtn dark={dark} label="Notifications" onClick={() => setStaffMsgOpen(true)}>
+            <IconBtn dark={dark} label="Notifications" onClick={() => setAlertsOpen(true)}>
               <span className="relative">
                 <Bell className="size-4" />
                 {alerts.length > 0 && (
@@ -866,7 +1159,7 @@ function HostStandPage() {
             </IconBtn>
             <button
               type="button"
-              onClick={() => setReservationOpen(true)}
+              onClick={openNewReservation}
               className="inline-flex h-9 items-center gap-1.5 rounded-[10px] px-3 text-xs font-bold text-black hover:brightness-110"
               style={{ backgroundColor: accent }}
             >
@@ -905,12 +1198,17 @@ function HostStandPage() {
           >
             <MapPin className="size-4 shrink-0" />
             <div className="text-sm font-semibold flex-1">
-              Select a table for {seatTarget.name}
+              {seatMode === "move"
+                ? `Tap a free table to move ${seatTarget.name}`
+                : `Select a table for ${seatTarget.name}`}
               <span className="font-normal opacity-80"> · party of {seatTarget.party}</span>
             </div>
             <button
               type="button"
-              onClick={() => setSeatTarget(null)}
+              onClick={() => {
+                setSeatTarget(null);
+                setSeatMode("seat");
+              }}
               className="inline-flex items-center gap-1 rounded-md bg-black/10 px-2.5 py-1 text-xs font-semibold"
             >
               <X className="size-3.5" /> Cancel
@@ -1309,7 +1607,7 @@ function HostStandPage() {
                       <LegendDot color="#3B82F6" label="Reserved" />
                       <LegendDot color="#00A36C" label="Seated" />
                       <LegendDot color="#F59E0B" label="Waiting" />
-                      <LegendDot color="#EF4444" label="Late" />
+                      <LegendDot color="#EF4444" label="Late / Blocked" />
                     </div>
                     <div
                       className={cn(
@@ -1413,6 +1711,7 @@ function HostStandPage() {
                   <p className={cn("text-xs mt-0.5", muted)}>
                     {selectedDbTable?.section || section || "Main"} ·{" "}
                     {selectedDbTable?.capacity ?? "—"} seats
+                    {isSelectedBlocked ? " · Blocked" : ""}
                   </p>
                 </div>
                 <button
@@ -1508,6 +1807,20 @@ function HostStandPage() {
                   </div>
                 )}
 
+                {isSelectedBlocked && (
+                  <div
+                    className={cn(
+                      "rounded-[12px] border px-3 py-2 text-xs flex items-start gap-2",
+                      dark
+                        ? "border-rose-500/30 bg-rose-500/10 text-rose-200"
+                        : "border-rose-200 bg-rose-50 text-rose-800",
+                    )}
+                  >
+                    <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
+                    <span>This table is blocked. Unblock it before seating guests.</span>
+                  </div>
+                )}
+
                 {/* Notes */}
                 <div>
                   <label className={cn("text-[10px] font-bold uppercase tracking-wider", muted)}>
@@ -1538,47 +1851,50 @@ function HostStandPage() {
 
                 {/* Actions */}
                 <div className="space-y-2">
-                  {(nextForTable || (detail && detail.status !== "seated" && detail.status !== "completed")) && (
+                  {isSelectedBlocked ? null : seatedOnSelected || detail?.status === "seated" ? (
                     <button
                       type="button"
                       disabled={seatingBusy}
-                      onClick={() => {
-                        const b = nextForTable ?? detail;
-                        if (!b) return;
-                        if (occupiedTableIds.has(String(selectedTable))) {
-                          startSeat({
-                            kind: "booking",
-                            id: b.id,
-                            name: b.name,
-                            party: b.people,
-                          });
-                        } else {
-                          void confirmSeatAt(selectedTable!, {
-                            kind: "booking",
-                            id: b.id,
-                            name: b.name,
-                            party: b.people,
-                          });
-                        }
-                      }}
+                      onClick={() =>
+                        void completeService(
+                          seatedOnSelected ?? (detail?.status === "seated" ? detail : null),
+                        )
+                      }
                       className="w-full h-11 rounded-[10px] text-sm font-bold text-black hover:brightness-110 disabled:opacity-50"
                       style={{ backgroundColor: accent }}
                     >
-                      Seat Party
+                      Complete / Clear Table
                     </button>
+                  ) : (
+                    (nextForTable ||
+                      (detail &&
+                        detail.status !== "seated" &&
+                        detail.status !== "completed")) && (
+                      <button
+                        type="button"
+                        disabled={seatingBusy}
+                        onClick={() => {
+                          const b = nextForTable ?? detail;
+                          if (!b || selectedTable == null) return;
+                          void confirmSeatAt(selectedTable, {
+                            kind: "booking",
+                            id: b.id,
+                            name: b.name,
+                            party: b.people,
+                          });
+                        }}
+                        className="w-full h-11 rounded-[10px] text-sm font-bold text-black hover:brightness-110 disabled:opacity-50"
+                        style={{ backgroundColor: accent }}
+                      >
+                        Seat Party
+                      </button>
+                    )
                   )}
                   {detail && (
                     <>
                       <button
                         type="button"
-                        onClick={() => {
-                          setReservationOpen(true);
-                          setResName(detail.name);
-                          setResParty(String(detail.people));
-                          setResPhone(detail.phone || "");
-                          setResTime(detail.rawTime || "18:00");
-                          setResNotes(detail.notes || "");
-                        }}
+                        onClick={() => openEditReservation(detail)}
                         className={cn(
                           "w-full h-10 rounded-[10px] border text-sm font-semibold",
                           border,
@@ -1590,12 +1906,15 @@ function HostStandPage() {
                       <button
                         type="button"
                         onClick={() =>
-                          startSeat({
-                            kind: "booking",
-                            id: detail.id,
-                            name: detail.name,
-                            party: detail.people,
-                          })
+                          startSeat(
+                            {
+                              kind: "booking",
+                              id: detail.id,
+                              name: detail.name,
+                              party: detail.people,
+                            },
+                            detail.status === "seated" ? "move" : "seat",
+                          )
                         }
                         className={cn(
                           "w-full h-10 rounded-[10px] border text-sm font-semibold",
@@ -1628,25 +1947,32 @@ function HostStandPage() {
                     </div>
                     <ul className="space-y-1.5">
                       {laterTonight.map((b) => (
-                        <li
-                          key={b.id}
-                          className={cn(
-                            "rounded-[10px] border px-3 py-2 flex items-center justify-between gap-2 text-sm",
-                            border,
-                            cardBg,
-                          )}
-                        >
-                          <span className="font-medium truncate">{b.name}</span>
-                          <span className={cn("tabular-nums text-xs shrink-0", muted)}>
-                            {b.time} · {b.people}
-                          </span>
+                        <li key={b.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDetail(b);
+                              setTableNotes(b.notes || "");
+                              if (b.tableNumber) setSelectedTable(b.tableNumber);
+                            }}
+                            className={cn(
+                              "w-full rounded-[10px] border px-3 py-2 flex items-center justify-between gap-2 text-sm text-left hover:opacity-90",
+                              border,
+                              cardBg,
+                            )}
+                          >
+                            <span className="font-medium truncate">{b.name}</span>
+                            <span className={cn("tabular-nums text-xs shrink-0", muted)}>
+                              {b.time} · {b.people}
+                            </span>
+                          </button>
                         </li>
                       ))}
                     </ul>
                   </div>
                 )}
 
-                {!detail && !nextForTable && (
+                {!detail && !nextForTable && !isSelectedBlocked && (
                   <div className={cn("rounded-[12px] border p-4 text-center", border, cardBg)}>
                     <Leaf className="size-5 mx-auto mb-2" style={{ color: accent }} />
                     <p className="text-sm font-semibold">Table available</p>
@@ -1656,18 +1982,33 @@ function HostStandPage() {
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  onClick={blockTable}
-                  className={cn(
-                    "w-full h-10 rounded-[10px] border text-sm font-semibold",
-                    dark
-                      ? "border-rose-500/40 text-rose-400 hover:bg-rose-500/10"
-                      : "border-rose-300 text-rose-600 hover:bg-rose-50",
-                  )}
-                >
-                  Block Table
-                </button>
+                {isSelectedBlocked ? (
+                  <button
+                    type="button"
+                    onClick={() => void unblockTable()}
+                    className={cn(
+                      "w-full h-10 rounded-[10px] border text-sm font-semibold",
+                      dark
+                        ? "border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
+                        : "border-emerald-300 text-emerald-700 hover:bg-emerald-50",
+                    )}
+                  >
+                    Unblock Table
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void blockTable()}
+                    className={cn(
+                      "w-full h-10 rounded-[10px] border text-sm font-semibold",
+                      dark
+                        ? "border-rose-500/40 text-rose-400 hover:bg-rose-500/10"
+                        : "border-rose-300 text-rose-600 hover:bg-rose-50",
+                    )}
+                  >
+                    Block Table
+                  </button>
+                )}
 
                 {detail?.email && (
                   <a
@@ -1711,9 +2052,7 @@ function HostStandPage() {
           <DialogHeader>
             <DialogTitle>Message staff</DialogTitle>
             <DialogDescription className={muted}>
-              {alerts.length > 0
-                ? alerts.map((a) => a.text).join(" · ")
-                : "Send a note to an active team member on the floor."}
+              Send a note to an active team member on the floor. Copied to clipboard and saved to Alerts.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -1768,6 +2107,62 @@ function HostStandPage() {
               onClick={sendStaffMessage}
             >
               Send note
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Alerts / notifications */}
+      <Dialog open={alertsOpen} onOpenChange={setAlertsOpen}>
+        <DialogContent className={cn("sm:max-w-md", dialogSkin)}>
+          <DialogHeader>
+            <DialogTitle>Alerts</DialogTitle>
+            <DialogDescription className={muted}>
+              Late parties, VIPs, waitlist, and staff notes.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="max-h-72 overflow-y-auto space-y-2 py-1">
+            {alerts.length === 0 && (
+              <li className={cn("text-sm text-center py-8", muted)}>No alerts right now.</li>
+            )}
+            {alerts.map((a) => (
+              <li key={a.id}>
+                <button
+                  type="button"
+                  onClick={() => focusAlert(a)}
+                  className={cn(
+                    "w-full text-left rounded-[10px] border px-3 py-2.5 text-sm transition",
+                    border,
+                    cardBg,
+                    a.focus ? "hover:opacity-90 cursor-pointer" : "cursor-default",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide mr-2",
+                      a.tone === "vip"
+                        ? dark
+                          ? "bg-violet-500/20 text-violet-300"
+                          : "bg-violet-100 text-violet-700"
+                        : a.tone === "info"
+                          ? dark
+                            ? "bg-sky-500/20 text-sky-300"
+                            : "bg-sky-100 text-sky-700"
+                          : dark
+                            ? "bg-amber-500/20 text-amber-300"
+                            : "bg-amber-100 text-amber-800",
+                    )}
+                  >
+                    {a.tone === "vip" ? "VIP" : a.tone === "info" ? "Note" : "Alert"}
+                  </span>
+                  {a.text}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button variant="outline" className={border} onClick={() => setAlertsOpen(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1834,12 +2229,22 @@ function HostStandPage() {
       </Dialog>
 
       {/* New / edit reservation */}
-      <Dialog open={reservationOpen} onOpenChange={setReservationOpen}>
+      <Dialog
+        open={reservationOpen}
+        onOpenChange={(o) => {
+          setReservationOpen(o);
+          if (!o) setEditingBookingId(null);
+        }}
+      >
         <DialogContent className={cn("sm:max-w-md", dialogSkin)}>
           <DialogHeader>
-            <DialogTitle>New reservation</DialogTitle>
+            <DialogTitle>
+              {editingBookingId ? "Edit reservation" : "New reservation"}
+            </DialogTitle>
             <DialogDescription className={muted}>
-              Creates a booking for {dateLong}.
+              {editingBookingId
+                ? `Update booking details for ${dateLong}.`
+                : `Creates a booking for ${dateLong}.`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -1886,37 +2291,22 @@ function HostStandPage() {
             <Button
               variant="outline"
               className={border}
-              onClick={() => setReservationOpen(false)}
+              onClick={() => {
+                setReservationOpen(false);
+                setEditingBookingId(null);
+              }}
             >
               Cancel
             </Button>
             <Button
               className="text-black hover:brightness-110"
               style={{ backgroundColor: accent }}
-              disabled={!resName.trim() || createBooking.isPending}
-              onClick={async () => {
-                try {
-                  await createBooking.mutateAsync({
-                    guest_name: resName.trim(),
-                    guest_phone: resPhone.trim() || undefined,
-                    party_size: parseInt(resParty, 10) || 2,
-                    date: dateISO,
-                    time: resTime,
-                    notes: resNotes.trim() || undefined,
-                    source: "phone",
-                  });
-                  toast.success("Reservation added");
-                  setReservationOpen(false);
-                  setResName("");
-                  setResPhone("");
-                  setResNotes("");
-                  setLeftTab("upcoming");
-                } catch (e) {
-                  toast.error((e as Error).message || "Could not create reservation");
-                }
-              }}
+              disabled={
+                !resName.trim() || createBooking.isPending || updateBooking.isPending
+              }
+              onClick={() => void saveReservation()}
             >
-              Save reservation
+              {editingBookingId ? "Save changes" : "Save reservation"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -180,15 +180,23 @@ export function useUpdateBooking() {
       status?: BookingStatus;
       table_number?: string | null;
       section?: string | null;
+      guest_name?: string;
+      guest_phone?: string | null;
+      party_size?: number;
+      time?: string;
+      notes?: string | null;
+      date?: string;
     }) => {
-      const patch: {
-        status?: BookingStatus;
-        table_number?: string | null;
-        section?: string | null;
-      } = {};
+      const patch: Record<string, unknown> = {};
       if (input.status) patch.status = input.status;
       if (input.table_number !== undefined) patch.table_number = input.table_number;
       if (input.section !== undefined) patch.section = input.section;
+      if (input.guest_name !== undefined) patch.guest_name = input.guest_name;
+      if (input.guest_phone !== undefined) patch.guest_phone = input.guest_phone;
+      if (input.party_size !== undefined) patch.party_size = input.party_size;
+      if (input.time !== undefined) patch.time = input.time;
+      if (input.notes !== undefined) patch.notes = input.notes;
+      if (input.date !== undefined) patch.date = input.date;
       const { error } = await supabase.from("v2_bookings").update(patch).eq("id", input.id);
       if (error) throw error;
     },
