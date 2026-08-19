@@ -28,6 +28,7 @@ import {
   updateReservationStatus,
 } from "@/lib/booking-api";
 import { settingsListLocations } from "@/lib/settings-api";
+import { ensureGuestIdForContact } from "@/lib/guests-api";
 import { addDays, endOfMonth, format, startOfMonth, startOfWeek } from "date-fns";
 import {
   Calendar,
@@ -76,6 +77,7 @@ type ReservationRow = {
   status: ReservationStatus;
   source: string;
   notes: string | null;
+  guest_id?: string | null;
 };
 
 function todayISO(): string {
@@ -432,7 +434,30 @@ function ReservationsPage() {
                           {formatTime(r.reserved_time)}
                         </div>
                         <div className="flex-1 min-w-[160px]">
-                          <div className="font-medium">{r.guest_name}</div>
+                          <button
+                            type="button"
+                            className="font-medium text-left hover:underline text-emerald-700"
+                            title="View guest profile"
+                            onClick={() => {
+                              void (async () => {
+                                let id = r.guest_id ?? null;
+                                if (!id) {
+                                  id = await ensureGuestIdForContact(restaurantId, {
+                                    full_name: r.guest_name,
+                                    email: r.guest_email,
+                                    phone: r.guest_phone,
+                                  });
+                                }
+                                if (!id) {
+                                  toast.error("Could not open guest profile");
+                                  return;
+                                }
+                                void navigate({ to: "/app/guests/$id", params: { id } });
+                              })();
+                            }}
+                          >
+                            {r.guest_name}
+                          </button>
                           <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2.5 mt-0.5">
                             <span className="inline-flex items-center gap-1">
                               <Users className="size-3" /> {r.party_size}

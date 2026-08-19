@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { AppShell } from "@/components/layout/Sidebar";
@@ -28,6 +28,7 @@ import {
 } from "@/components/FloorPlan";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { ensureGuestIdForContact } from "@/lib/guests-api";
 import { supabase } from "@/integrations/supabase/client";
 import {
   formatTimeLabel,
@@ -135,6 +136,7 @@ function abbreviateGuest(name: string): string {
 }
 
 function HostStandLive() {
+  const navigate = useNavigate();
   const { org, staff } = useAuth();
   const { t } = useI18n();
   const orgId = org.activeOrganizationId;
@@ -344,6 +346,22 @@ function HostStandLive() {
   };
   const startSeat = (r: HostFloorReservation) => {
     setTarget({ id: r.id, name: r.guest_name, party: r.party_size, mode: "seat" });
+  };
+
+  const openGuestProfile = async (r: HostFloorReservation) => {
+    let id = r.guest_id;
+    if (!id) {
+      id = await ensureGuestIdForContact(restaurantId, {
+        full_name: r.guest_name,
+        email: r.guest_email,
+        phone: r.guest_phone,
+      });
+    }
+    if (!id) {
+      toast.error("Could not open guest profile");
+      return;
+    }
+    void navigate({ to: "/app/guests/$id", params: { id } });
   };
 
   const resolveTableId = (rawId: string): HostFloorTable | undefined =>
@@ -731,23 +749,37 @@ function HostStandLive() {
                 <div className="py-8 text-center text-xs text-muted-foreground">{t("common.empty")}</div>
               )}
               {toSeat.slice(0, 20).map((r) => (
-                <button
+                <div
                   key={r.id}
-                  type="button"
-                  onClick={() => startSeat(r)}
                   className="w-full rounded-xl border border-border bg-card p-3 text-left hover:border-emerald-300 hover:bg-emerald-50/40"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="truncate text-sm font-semibold">{r.guest_name}</div>
+                    <button
+                      type="button"
+                      onClick={() => void openGuestProfile(r)}
+                      className="truncate text-sm font-semibold text-left hover:underline text-emerald-700"
+                      title="View guest profile"
+                    >
+                      {r.guest_name}
+                    </button>
                     <div className="text-xs font-semibold tabular-nums text-muted-foreground">
                       {formatTimeLabel(r.reserved_time)}
                     </div>
                   </div>
-                  <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-                    <Users className="size-3" /> {r.party_size}
-                    {r.table_number && <span>· T{r.table_number}</span>}
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <Users className="size-3" /> {r.party_size}
+                      {r.table_number && <span>· T{r.table_number}</span>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => startSeat(r)}
+                      className="text-[11px] font-semibold text-emerald-700 hover:underline"
+                    >
+                      Seat
+                    </button>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           </aside>
@@ -874,7 +906,14 @@ function HostStandLive() {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <div className="text-sm font-semibold">{r.guest_name}</div>
+                          <button
+                            type="button"
+                            onClick={() => void openGuestProfile(r)}
+                            className="text-sm font-semibold hover:underline text-left text-emerald-700"
+                            title="View guest profile"
+                          >
+                            {r.guest_name}
+                          </button>
                           <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5">
                             <Clock className="size-3" /> {formatTimeLabel(r.reserved_time)}
                             <Users className="size-3" /> {r.party_size}

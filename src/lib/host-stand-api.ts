@@ -48,6 +48,7 @@ export type HostFloorReservation = {
   status: "pending" | "confirmed" | "seated" | "completed" | "cancelled" | "no_show";
   source: string;
   notes: string | null;
+  guest_id: string | null;
 };
 
 export async function hostListFloor(
@@ -67,7 +68,10 @@ export async function hostListFloor(
         ok: true as const,
         date: data.date as string,
         tables: (data.tables ?? []) as HostFloorTable[],
-        reservations: (data.reservations ?? []) as HostFloorReservation[],
+        reservations: ((data.reservations ?? []) as HostFloorReservation[]).map((r) => ({
+          ...r,
+          guest_id: (r as HostFloorReservation).guest_id ?? null,
+        })),
       };
     }
     if (error && !isMissingDbObject(error)) {
@@ -123,6 +127,7 @@ export async function hostListFloor(
       status: m.status as HostFloorReservation["status"],
       source: m.source,
       notes: m.notes,
+      guest_id: m.guest_id,
     };
   });
 

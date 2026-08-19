@@ -1,9 +1,9 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Download, Loader2, Save, Search, Users, BookmarkCheck } from "lucide-react";
+import { ChevronRight, Download, Loader2, Save, Search, Users, BookmarkCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
   guestsToCsv,
@@ -47,7 +47,6 @@ type SavedSegment = {
 };
 
 function GuestsPage() {
-  const navigate = useNavigate();
   const { org, staff } = useAuth();
   const orgId = org.activeOrganizationId;
   const restaurantId = staff?.restaurant_id ?? null;
@@ -140,15 +139,11 @@ function GuestsPage() {
     toast.success(`Exported ${guests.length} guest${guests.length === 1 ? "" : "s"}`);
   };
 
-  const openGuest = (guestId: string) => {
-    void navigate({ to: "/app/guests/$id", params: { id: guestId } });
-  };
-
   return (
     <AppShell>
       <PageHeader
         title="Guests"
-        description="Search, filter, and manage your guest CRM."
+        description="Search, filter, and open a guest to see their details."
         icon={Users}
         actions={
           <>
@@ -227,80 +222,64 @@ function GuestsPage() {
         </div>
 
         <div className="rounded-xl border border-border bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-muted-foreground border-b border-border bg-muted/30">
-                {["Name", "Email", "Phone", "Marketing opt-in", "Tags", "Since"].map((h) => (
-                  <th key={h} className="text-left font-medium px-5 py-3">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading && (
-                <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin inline mr-2" /> Loading…
-                  </td>
-                </tr>
-              )}
-              {!loading &&
-                guests.map((g) => (
-                  <tr
-                    key={g.id}
-                    role="link"
-                    tabIndex={0}
-                    onClick={() => openGuest(g.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        openGuest(g.id);
+          <div className="hidden sm:grid grid-cols-[1.4fr_1.2fr_1fr_1fr_1fr_auto] gap-2 px-5 py-3 text-xs text-muted-foreground border-b border-border bg-muted/30">
+            {["Name", "Email", "Phone", "Marketing opt-in", "Tags", ""].map((h) => (
+              <div key={h || "action"} className="font-medium">
+                {h}
+              </div>
+            ))}
+          </div>
+          <div className="divide-y divide-border">
+            {loading && (
+              <div className="px-5 py-10 text-center text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin inline mr-2" /> Loading…
+              </div>
+            )}
+            {!loading &&
+              guests.map((g) => (
+                <Link
+                  key={g.id}
+                  to="/app/guests/$id"
+                  params={{ id: g.id }}
+                  className="grid grid-cols-1 sm:grid-cols-[1.4fr_1.2fr_1fr_1fr_1fr_auto] gap-2 items-center px-5 py-4 text-sm hover:bg-muted/40 transition-colors"
+                >
+                  <div className="flex items-center gap-3 font-medium min-w-0">
+                    <div className="size-9 rounded-full bg-gradient-to-br from-accent to-primary/30 shrink-0" />
+                    <span className="truncate">{g.full_name || "Unnamed guest"}</span>
+                  </div>
+                  <div className="text-muted-foreground truncate">{g.email ?? "—"}</div>
+                  <div className="text-muted-foreground truncate">
+                    {g.phone_e164 ?? g.phone ?? "—"}
+                  </div>
+                  <div>
+                    <Badge
+                      variant={g.marketing_opt_in ? "default" : "outline"}
+                      className={
+                        g.marketing_opt_in
+                          ? "bg-success/15 text-success border-transparent"
+                          : "text-muted-foreground"
                       }
-                    }}
-                    className="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer"
-                  >
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3 font-medium">
-                        <div className="size-9 rounded-full bg-gradient-to-br from-accent to-primary/30 shrink-0" />
-                        {g.full_name}
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 text-muted-foreground">{g.email ?? "—"}</td>
-                    <td className="px-5 py-4 text-muted-foreground">
-                      {g.phone_e164 ?? g.phone ?? "—"}
-                    </td>
-                    <td className="px-5 py-4">
-                      <Badge
-                        variant={g.marketing_opt_in ? "default" : "outline"}
-                        className={
-                          g.marketing_opt_in
-                            ? "bg-success/15 text-success border-transparent"
-                            : "text-muted-foreground"
-                        }
-                      >
-                        {g.marketing_opt_in ? "Opted in" : "Opted out"}
-                      </Badge>
-                    </td>
-                    <td className="px-5 py-4 text-muted-foreground">
-                      {(g.tags ?? []).length > 0 ? g.tags!.join(", ") : "—"}
-                    </td>
-                    <td className="px-5 py-4 text-muted-foreground">
-                      {new Date(g.created_at).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
-              {!loading && guests.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">
-                    {tenantReady
-                      ? "No guests match these filters."
-                      : "No restaurant workspace found."}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                    >
+                      {g.marketing_opt_in ? "Opted in" : "Opted out"}
+                    </Badge>
+                  </div>
+                  <div className="text-muted-foreground truncate">
+                    {(g.tags ?? []).length > 0 ? g.tags!.join(", ") : "—"}
+                  </div>
+                  <div className="flex items-center justify-end gap-1 text-emerald-600 font-medium text-xs">
+                    View
+                    <ChevronRight className="size-4" />
+                  </div>
+                </Link>
+              ))}
+            {!loading && guests.length === 0 && (
+              <div className="px-5 py-10 text-center text-sm text-muted-foreground">
+                {tenantReady
+                  ? "No guests match these filters."
+                  : "No restaurant workspace found."}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

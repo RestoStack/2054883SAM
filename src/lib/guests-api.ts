@@ -52,6 +52,63 @@ function mapLegacyCustomer(c: Record<string, unknown>): GuestRow & Record<string
   };
 }
 
+/** Find or create a v2_customers row so reservation names can open guest detail. */
+export async function ensureGuestIdForContact(
+  restaurantId: string | null | undefined,
+  contact: { full_name: string; email?: string | null; phone?: string | null },
+): Promise<string | null> {
+  const rid = await resolveRestaurantId(restaurantId);
+  if (!rid) return null;
+  const name = contact.full_name?.trim();
+  if (!name) return null;
+  const email = contact.email?.trim() || null;
+  const phone = contact.phone?.trim() || null;
+
+  try {
+    if (email) {
+      const { data } = await (supabase as any)
+        .from("v2_customers")
+        .select("id")
+        .eq("restaurant_id", rid)
+        .eq("email", email)
+        .maybeSingle();
+      if (data?.id) return String(data.id);
+    }
+    if (phone) {
+      const { data } = await (supabase as any)
+        .from("v2_customers")
+        .select("id")
+        .eq("restaurant_id", rid)
+        .eq("phone", phone)
+        .maybeSingle();
+      if (data?.id) return String(data.id);
+    }
+    {
+      const { data } = await (supabase as any)
+        .from("v2_customers")
+        .select("id")
+        .eq("restaurant_id", rid)
+        .eq("full_name", name)
+        .limit(1)
+        .maybeSingle();
+      if (data?.id) return String(data.id);
+    }
+    const { data: created } = await (supabase as any)
+      .from("v2_customers")
+      .insert({
+        restaurant_id: rid,
+        full_name: name,
+        email,
+        phone,
+      })
+      .select("id")
+      .single();
+    return created?.id ? String(created.id) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function listGuests(
   organizationId: string | null,
   q?: string,
