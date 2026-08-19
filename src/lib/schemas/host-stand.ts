@@ -27,6 +27,7 @@ export const hostUnseatSchema = z.object({
   organization_id: z.string().uuid(),
   reservation_id: z.string().uuid(),
   complete: z.boolean().optional().default(false),
+  restaurant_id: z.string().uuid().nullable().optional(),
 });
 
 export const hostSetTableStatusSchema = z.object({

@@ -249,10 +249,15 @@ export async function hostUnseat(input: HostUnseatInput) {
   if (updErr) return { ok: false as const, error: updErr.message };
 
   if (booking?.table_number) {
-    await (supabase as any)
+    const rid = await resolveRestaurantId(
+      (parsed.data as { restaurant_id?: string | null }).restaurant_id,
+    );
+    let tq = (supabase as any)
       .from("v2_tables")
       .update({ status: "available", current_booking_id: null })
       .eq("table_number", booking.table_number);
+    if (rid) tq = tq.eq("restaurant_id", rid);
+    await tq;
   }
 
   return { ok: true as const, completed: complete };

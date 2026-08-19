@@ -16,6 +16,7 @@ import {
   billingVerify,
   legacyOnboardingComplete,
   legacyOnboardingLoadRestaurant,
+  legacyOnboardingSaveBookingRules,
   legacyOnboardingSaveHours,
   legacyOnboardingSaveRestaurant,
   legacyOnboardingSaveTables,
@@ -346,11 +347,20 @@ function OnboardingStepPage() {
         error={error}
         onContinue={async () => {
           await continueOrAdvance(4, async () => {
-            if (!orgId || !locationId) return true; // booking rules live in org schema only
-            const res = await onboardingSaveBooking(orgId, locationId, booking);
-            if (!res.ok) {
-              setError(res.error);
-              return false;
+            if (orgId && locationId) {
+              const res = await onboardingSaveBooking(orgId, locationId, booking);
+              if (!res.ok) {
+                setError(res.error);
+                return false;
+              }
+              return true;
+            }
+            if (restaurantId) {
+              const res = await legacyOnboardingSaveBookingRules(restaurantId, booking);
+              if (!res.ok) {
+                setError(res.error);
+                return false;
+              }
             }
             return true;
           });
@@ -462,11 +472,23 @@ function OnboardingStepPage() {
       }}
       slugAvailable={slugAvailable}
       onCheckSlug={async () => {
-        if (!orgId) {
-          setSlugAvailable(true);
-          return;
+        const res = await onboardingCheckSlug(
+          bookingUrlSlug,
+          orgId ?? restaurantId ?? undefined,
+        );
+        // Own restaurant slug is always fine for legacy.
+        if (restaurantId && !orgId) {
+          const { data: own } = await supabase
+            .from("v2_restaurants")
+            .select("id")
+            .eq("id", restaurantId)
+            .eq("slug", bookingUrlSlug.trim().toLowerCase())
+            .maybeSingle();
+          if (own) {
+            setSlugAvailable(true);
+            return;
+          }
         }
-        const res = await onboardingCheckSlug(bookingUrlSlug, orgId);
         setSlugAvailable(res.available);
         if (!res.ok && res.error) setError(res.error);
       }}

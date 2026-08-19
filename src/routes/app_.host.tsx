@@ -461,7 +461,12 @@ function HostStandLive() {
       );
     }
     setBusy(true);
-    const res = await hostUnseat({ organization_id: scopeId, reservation_id: r.id, complete: true });
+    const res = await hostUnseat({
+      organization_id: scopeId,
+      reservation_id: r.id,
+      complete: true,
+      restaurant_id: restaurantId,
+    });
     setBusy(false);
     if (!res.ok) {
       setReservations(snapshot.reservations);

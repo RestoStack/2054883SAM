@@ -254,18 +254,34 @@ export async function onboardingSaveTeam(organizationId: string, input: TeamStep
   return res;
 }
 
-export async function onboardingCheckSlug(slug: string, organizationId?: string) {
+export async function onboardingCheckSlug(slug: string, organizationOrRestaurantId?: string) {
   const clean = slug.trim().toLowerCase();
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(clean)) {
     return { ok: false as const, available: false, error: "Invalid slug" };
   }
-  let q = (supabase as any).from("locations").select("id, organization_id").eq("public_slug", clean);
-  const { data, error } = await q.maybeSingle();
-  if (error && error.code !== "PGRST116") {
-    return { ok: false as const, available: false, error: error.message };
+  // Org locations table (when migrated)
+  const { data, error } = await (supabase as any)
+    .from("locations")
+    .select("id, organization_id")
+    .eq("public_slug", clean)
+    .maybeSingle();
+  if (!error && data) {
+    if (organizationOrRestaurantId && data.organization_id === organizationOrRestaurantId) {
+      return { ok: true as const, available: true };
+    }
+    return { ok: true as const, available: false };
   }
-  if (!data) return { ok: true as const, available: true };
-  if (organizationId && data.organization_id === organizationId) {
+  // Legacy v2 restaurants
+  const { data: rest, error: rErr } = await supabase
+    .from("v2_restaurants")
+    .select("id")
+    .eq("slug", clean)
+    .maybeSingle();
+  if (rErr && rErr.code !== "PGRST116") {
+    return { ok: false as const, available: false, error: rErr.message };
+  }
+  if (!rest) return { ok: true as const, available: true };
+  if (organizationOrRestaurantId && rest.id === organizationOrRestaurantId) {
     return { ok: true as const, available: true };
   }
   return { ok: true as const, available: false };
@@ -386,6 +402,42 @@ export async function legacyOnboardingSaveHours(restaurantId: string, input: Hou
   const { error } = await supabase
     .from("v2_restaurants")
     .update({ hours: hours as never })
+    .eq("id", restaurantId);
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const };
+}
+
+export async function legacyOnboardingSaveBookingRules(
+  restaurantId: string,
+  input: BookingStepInput,
+) {
+  const parsed = bookingStepSchema.safeParse(input);
+  if (!parsed.success)
+    return { ok: false as const, error: parsed.error.errors[0]?.message ?? "Invalid" };
+  const p = parsed.data;
+  const { data: current } = await supabase
+    .from("v2_restaurants")
+    .select("integrations")
+    .eq("id", restaurantId)
+    .maybeSingle();
+  const integrations =
+    current?.integrations && typeof current.integrations === "object" && !Array.isArray(current.integrations)
+      ? { ...(current.integrations as Record<string, unknown>) }
+      : {};
+  integrations.booking_rules = {
+    slot_interval_minutes: p.slot_interval_minutes,
+    max_covers_per_slot: p.max_covers_per_slot,
+    turn_times: turnTimesToJson(p.turn_times),
+    min_party_size: p.min_party_size,
+    max_party_size: p.max_party_size,
+    advance_days: p.advance_days,
+    lead_time_hours: p.lead_time_hours,
+    use_opening_hours: p.use_opening_hours,
+    booking_ranges: p.booking_ranges ?? [],
+  };
+  const { error } = await supabase
+    .from("v2_restaurants")
+    .update({ integrations: integrations as never })
     .eq("id", restaurantId);
   if (error) return { ok: false as const, error: error.message };
   return { ok: true as const };

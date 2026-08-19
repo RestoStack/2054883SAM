@@ -51,6 +51,18 @@ Signup/onboarding routes may still exist in code (`/signup`, `/onboarding`) for 
 
 Emails in `v2_platform_admin_allowlist` can claim platform admin via `v2_claim_platform_admin()` → `/platform`.
 
+**Ready accounts (after running `supabase/emergency/002_production_ready.sql`):**
+
+| Role | URL | Email | Password |
+|------|-----|-------|----------|
+| Super Admin | `/super-admin-login` | `platform@restostack-mail.dev` | `RestoStack!Platform2026` |
+| Restaurant owner | `/login` | `ghassan.owner@restostack-mail.dev` | `RestoStack!Owner2026` |
+| Demo restaurant | `/login` | `admin@jukebox.com` | `admin1234` |
+
+Owner restaurant: **Maison Khalil** — booking page `/book/maison-khalil`
+
+Also allowlisted for super admin: `info@dreamlabstudios.ca` (create/login that Auth user, then `/super-admin-login`).
+
 ## Supabase (public client)
 
 | Field | Value |

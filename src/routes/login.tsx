@@ -94,7 +94,14 @@ function LoginPage() {
     try {
       await signInWithGoogle();
     } catch (err) {
-      setError((err as Error).message || "Google sign-in failed");
+      const msg = (err as Error).message || "Google sign-in failed";
+      if (/missing OAuth secret|Unsupported provider/i.test(msg)) {
+        setError(
+          "Google sign-in is not configured yet. In Supabase → Authentication → Providers → Google, add your Google Client ID and Client Secret. Until then, use email sign-in.",
+        );
+      } else {
+        setError(msg);
+      }
       setBusy(false);
     }
   };

@@ -1,5 +1,5 @@
 /* RestoStack PWA service worker — caches app shell for offline open */
-const CACHE = "restostack-shell-v4";
+const CACHE = "restostack-shell-v5";
 const PRECACHE = ["/", "/login", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {

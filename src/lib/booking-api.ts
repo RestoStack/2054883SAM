@@ -73,6 +73,8 @@ export async function createPublicReservation(input: CreateReservationInput & { 
     return { ok: false as const, error: parsed.error.errors[0]?.message ?? "Invalid" };
   }
   const p = parsed.data;
+  const time = p.time.length === 5 ? `${p.time}:00` : p.time;
+
   const { data, error } = await (supabase as any).rpc("create_public_reservation", {
     _slug: p.slug,
     _guest_name: p.guest_name,
@@ -80,13 +82,33 @@ export async function createPublicReservation(input: CreateReservationInput & { 
     _guest_email: p.guest_email ?? "",
     _party_size: p.party_size,
     _date: p.date,
-    _time: p.time.length === 5 ? `${p.time}:00` : p.time,
+    _time: time,
     _section: p.section ?? null,
     _notes: p.notes ?? null,
     _client_key: p.client_key ?? clientKey(),
     _ip: input.ip ?? null,
   });
-  if (error) {
+  if (!error && data?.ok) {
+    if (data.needs_confirmation_email && p.guest_email) {
+      void supabase.functions
+        .invoke("send-reservation-confirmation", {
+          body: {
+            reservation_id: data.reservation_id,
+            email: p.guest_email,
+            guest_name: p.guest_name,
+            party_size: p.party_size,
+            date: p.date,
+            time: p.time,
+            slug: p.slug,
+          },
+        })
+        .catch(() => undefined);
+    }
+    return data as { ok: true; reservation_id: string; guest_id?: string };
+  }
+
+  // Older org RPC name
+  if (error || data?.ok === false) {
     const fb = await (supabase as any).rpc("public_create_reservation", {
       _slug: p.slug,
       _guest_name: p.guest_name,
@@ -94,35 +116,39 @@ export async function createPublicReservation(input: CreateReservationInput & { 
       _guest_email: p.guest_email ?? "",
       _party_size: p.party_size,
       _date: p.date,
-      _time: p.time.length === 5 ? `${p.time}:00` : p.time,
+      _time: time,
       _section: p.section ?? null,
       _notes: p.notes ?? null,
       _client_key: p.client_key ?? clientKey(),
     });
-    if (fb.error) return { ok: false as const, error: error.message, missing: true };
-    if (!fb.data?.ok) return { ok: false as const, error: fb.data?.error ?? "Booking failed" };
-    return fb.data as { ok: true; reservation_id: string };
-  }
-  if (!data?.ok) return { ok: false as const, error: data?.error ?? "Booking failed" };
-
-  // Fire-and-forget confirmation email via Edge Function (Resend)
-  if (data.needs_confirmation_email && p.guest_email) {
-    void supabase.functions
-      .invoke("send-reservation-confirmation", {
-        body: {
-          reservation_id: data.reservation_id,
-          email: p.guest_email,
-          guest_name: p.guest_name,
-          party_size: p.party_size,
-          date: p.date,
-          time: p.time,
-          slug: p.slug,
-        },
-      })
-      .catch(() => undefined);
+    if (!fb.error && fb.data?.ok) {
+      return fb.data as { ok: true; reservation_id: string };
+    }
   }
 
-  return data as { ok: true; reservation_id: string; guest_id?: string };
+  // Live v2 DB: SECURITY DEFINER public booking (no org tables required).
+  const legacy = await (supabase as any).rpc("v2_public_create_booking", {
+    _slug: p.slug,
+    _guest_name: p.guest_name,
+    _guest_phone: p.guest_phone ?? "",
+    _guest_email: p.guest_email ?? "",
+    _party_size: p.party_size,
+    _date: p.date,
+    _time: time,
+    _section: p.section ?? null,
+    _notes: p.notes ?? null,
+  });
+  if (!legacy.error && legacy.data) {
+    return { ok: true as const, reservation_id: String(legacy.data) };
+  }
+
+  const msg =
+    legacy.error?.message ||
+    error?.message ||
+    (typeof data?.error === "string" ? data.error : null) ||
+    "Booking failed";
+  const missing = isMissingDbObject(legacy.error) || isMissingDbObject(error);
+  return { ok: false as const, error: msg, missing };
 }
 
 export async function getBookingRules(organizationId: string, locationId: string) {
@@ -278,7 +304,7 @@ export async function createManualReservation(input: {
       date: input.date,
       time,
       status: "confirmed",
-      source: "manual",
+      source: "phone",
       notes: input.notes ?? null,
       table_number: null,
       customer_id: customerId,

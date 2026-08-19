@@ -249,36 +249,17 @@ function BookingFlow({ restaurant, menu }: { restaurant: Restaurant; menu: MenuR
       notes: notesFull,
     });
 
-    if (created.ok) {
-      setBusy(false);
-      setConfirmed(true);
-      return;
-    }
-
-    // Fallback to legacy RPC until Phase 2 migration is applied.
-    if ("missing" in created && created.missing) {
-      const { error: legacyErr } = await supabase.rpc("v2_public_create_booking", {
-        _slug: restaurant.slug,
-        _guest_name: name.trim(),
-        _guest_phone: phone.trim(),
-        _guest_email: email.trim(),
-        _party_size: party,
-        _date: isoDate,
-        _time: `${time.length === 5 ? time : time}:00`.replace(/::00$/, ":00"),
-        _section: sectionName,
-        _notes: notesFull,
-      });
-      setBusy(false);
-      if (legacyErr) {
-        setError(legacyErr.message || "Could not save your booking.");
-        return;
-      }
-      setConfirmed(true);
-      return;
-    }
-
     setBusy(false);
-    setError(created.error || "Could not save your booking.");
+    if (created.ok) {
+      setConfirmed(true);
+      return;
+    }
+
+    const hint =
+      "missing" in created && created.missing
+        ? " Public booking is not enabled on this database yet — run supabase/emergency/002_production_ready.sql in the Supabase SQL Editor."
+        : "";
+    setError((created.error || "Could not save your booking.") + hint);
   };
 
   const brandStyle = { "--brand": primary, "--brand-2": accent } as React.CSSProperties;
