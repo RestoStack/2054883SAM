@@ -1,9 +1,7 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Utensils } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/lib/auth";
-import { fetchSignupMode } from "@/lib/org";
 import {
   createRestaurantForCurrentUser,
   isGoogleOAuthMisconfigured,
@@ -11,22 +9,25 @@ import {
 import { signInWithGoogle } from "@/lib/oauth";
 import { isPlanId, PLANS, readSelectedPlan, saveSelectedPlan, type PlanId } from "@/lib/plans";
 import { isPublicSignupEnabled } from "@/lib/ship-mode";
+import { fetchSignupMode } from "@/lib/org";
 
-type SignupSearch = { plan?: string; oauth?: string };
+type SignupSearch = { plan?: string };
 
 export const Route = createFileRoute("/signup")({
   validateSearch: (search: Record<string, unknown>): SignupSearch => ({
     plan: typeof search.plan === "string" ? search.plan : undefined,
-    oauth: typeof search.oauth === "string" ? search.oauth : undefined,
   }),
   head: () => ({ meta: [{ title: "Create your account — RestoStack" }] }),
   component: SignupPage,
 });
 
+/** Yield so supabase-js can release its auth mutex before the next RPC. */
+function yieldAuthLock(ms = 75) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
 function SignupPage() {
-  const navigate = useNavigate();
-  const { session, loading, refreshStaff } = useAuth();
-  const { plan: planParam, oauth } = Route.useSearch();
+  const { plan: planParam } = Route.useSearch();
   const [plan, setPlan] = useState<PlanId>("starter");
   const [fullName, setFullName] = useState("");
   const [restaurantName, setRestaurantName] = useState("");
@@ -37,13 +38,11 @@ function SignupPage() {
   const [googleBroken, setGoogleBroken] = useState(false);
   const [modeLoading, setModeLoading] = useState(true);
   const [signupOpen, setSignupOpen] = useState(true);
-  const finishingRef = useRef(false);
+  const inFlight = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Demo / public env → always open. If DB settings missing, default OPEN
-      // so stakeholders are never stuck on "invite-only" during setup.
       if (isPublicSignupEnabled()) {
         if (!cancelled) {
           setSignupOpen(true);
@@ -73,71 +72,6 @@ function SignupPage() {
     }
   }, [planParam]);
 
-  const finishNewOwner = async (nameHint?: string) => {
-    if (finishingRef.current) return { ok: true as const, restaurant_id: "pending" };
-    finishingRef.current = true;
-
-    const full =
-      fullName.trim() ||
-      nameHint ||
-      email.split("@")[0] ||
-      "Owner";
-    const restaurant =
-      restaurantName.trim() ||
-      `${String(full).split(/\s+/)[0]}'s restaurant` ||
-      "My restaurant";
-
-    try {
-      const created = await createRestaurantForCurrentUser({
-        restaurantName: restaurant,
-        fullName: full,
-        plan,
-      });
-
-      // Never call auth.getUser() here — it can deadlock with onAuthStateChange.
-      try {
-        await refreshStaff();
-      } catch {
-        // Staff hydrate is best-effort; wizard can recover.
-      }
-
-      if (!created.ok) {
-        if (created.needsMigration) {
-          navigate({ to: "/onboarding", replace: true });
-          return created;
-        }
-        finishingRef.current = false;
-        throw new Error(created.error);
-      }
-      navigate({ to: "/onboarding", replace: true });
-      return created;
-    } catch (e) {
-      finishingRef.current = false;
-      throw e;
-    }
-  };
-
-  // Only auto-finish after Google OAuth returns to /signup?oauth=1 — never on every session.
-  useEffect(() => {
-    if (loading || !session || busy || oauth !== "1") return;
-    if (finishingRef.current) return;
-    void (async () => {
-      setBusy("google");
-      try {
-        const meta = (session.user.user_metadata as Record<string, unknown>) ?? {};
-        await finishNewOwner(
-          (meta.full_name as string) || (meta.name as string) || session.user.email || undefined,
-        );
-      } catch (e) {
-        setError((e as Error).message);
-        finishingRef.current = false;
-      } finally {
-        setBusy(null);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, session, oauth]);
-
   if (modeLoading) {
     return (
       <div className="min-h-screen grid place-items-center">
@@ -164,6 +98,11 @@ function SignupPage() {
 
   const selected = PLANS.find((p) => p.id === plan) ?? PLANS[0];
 
+  const goOnboarding = () => {
+    // Hard navigation clears any React/auth listener loops that freeze the tab.
+    window.location.assign("/onboarding/1");
+  };
+
   const onGoogle = async () => {
     setError(null);
     setBusy("google");
@@ -174,7 +113,7 @@ function SignupPage() {
       if (isGoogleOAuthMisconfigured(msg)) {
         setGoogleBroken(true);
         setError(
-          "Google is not configured in Supabase yet (missing OAuth client secret). Use email signup below, or add the Google Client ID + Secret under Authentication → Providers → Google.",
+          "Google is not configured in Supabase yet (missing OAuth client secret). Use email signup below.",
         );
       } else {
         setError(msg + " Try email signup below.");
@@ -186,19 +125,24 @@ function SignupPage() {
   const onEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (password.length < 8) return setError("Password must be at least 8 characters.");
-    if (finishingRef.current || busy) return;
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (inFlight.current || busy) return;
+    inFlight.current = true;
     setBusy("email");
     saveSelectedPlan(plan);
+
     try {
       const { data: signUp, error: suErr } = await supabase.auth.signUp({
-        email,
+        email: email.trim(),
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: {
-            full_name: fullName,
-            restaurant_name: restaurantName,
+            full_name: fullName.trim(),
+            restaurant_name: restaurantName.trim(),
           },
         },
       });
@@ -206,32 +150,51 @@ function SignupPage() {
       if (suErr) {
         const msg = suErr.message ?? "";
         if (/already|registered|exists/i.test(msg)) {
-          const { error: siErr } = await supabase.auth.signInWithPassword({ email, password });
+          const { error: siErr } = await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password,
+          });
           if (siErr) throw new Error(`This email is already registered. ${siErr.message}`);
         } else if (/weak|easy to guess|pwned/i.test(msg)) {
-          throw new Error("Choose a stronger password (mix of letters, numbers, symbols).");
+          throw new Error("Choose a stronger password (letters, numbers, and symbols).");
         } else {
-          throw suErr;
+          throw new Error(msg || "Sign up failed");
         }
       } else if (!signUp.session) {
-        // Email confirmation may be required — try password sign-in anyway.
-        const { error: siErr } = await supabase.auth.signInWithPassword({ email, password });
+        const { error: siErr } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
         if (siErr) {
           throw new Error(
-            "Check your email to confirm the account, then sign in. Or disable email confirmation in Supabase Auth settings.",
+            "Check your email to confirm the account, then sign in. Or disable email confirmation in Supabase Auth.",
           );
         }
       }
 
-      const result = await finishNewOwner(fullName.trim() || undefined);
-      if (result && "ok" in result && !result.ok && "needsMigration" in result && result.needsMigration) {
-        setError(result.error);
+      // Critical: release supabase-js auth lock before restaurant RPC.
+      await yieldAuthLock(100);
+
+      const full = fullName.trim() || email.split("@")[0] || "Owner";
+      const restaurant =
+        restaurantName.trim() || `${full.split(/\s+/)[0]}'s restaurant` || "My restaurant";
+
+      const created = await createRestaurantForCurrentUser({
+        restaurantName: restaurant,
+        fullName: full,
+        plan,
+      });
+
+      if (!created.ok && !created.needsMigration) {
+        throw new Error(created.error);
       }
+
+      goOnboarding();
+      return;
     } catch (err: unknown) {
-      const e = err as { message?: string };
-      setError(e?.message || "Something went wrong. Please try again.");
-      finishingRef.current = false;
-    } finally {
+      const message = err instanceof Error ? err.message : "Something went wrong. Please try again.";
+      setError(message);
+      inFlight.current = false;
       setBusy(null);
     }
   };
@@ -289,7 +252,14 @@ function SignupPage() {
               required
               autoComplete="organization"
             />
-            <Field label="Work email" value={email} onChange={setEmail} type="email" required autoComplete="email" />
+            <Field
+              label="Work email"
+              value={email}
+              onChange={setEmail}
+              type="email"
+              required
+              autoComplete="email"
+            />
             <Field
               label="Password"
               value={password}
@@ -311,7 +281,7 @@ function SignupPage() {
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 hover:bg-emerald-500"
             >
               {busy === "email" && <Loader2 className="size-4 animate-spin" />}
-              Create account
+              {busy === "email" ? "Creating account…" : "Create account"}
             </button>
           </form>
 

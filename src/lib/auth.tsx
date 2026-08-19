@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -87,8 +87,8 @@ async function staffFromOrg(authUserId: string, org: OrgContext): Promise<StaffU
   const mem = org.memberships.find((m) => m.organization_id === org.activeOrganizationId);
   if (!mem?.legacy_restaurant_id) return null;
 
-  const { data: user } = await supabase.auth.getUser();
-  const meta = user.user?.user_metadata ?? {};
+  // Do NOT call supabase.auth.getUser() here — it deadlocks inside onAuthStateChange.
+  const meta: Record<string, unknown> = {};
 
   const { data: restaurant } = await supabase
     .from("v2_restaurants")
@@ -99,19 +99,23 @@ async function staffFromOrg(authUserId: string, org: OrgContext): Promise<StaffU
   return {
     id: authUserId,
     restaurant_id: mem.legacy_restaurant_id,
-    full_name: (meta.full_name as string) || user.user?.email || "Team member",
+    full_name: (meta.full_name as string) || "Team member",
     role: orgRoleToStaffRole(org.role),
-    email: user.user?.email ?? null,
+    email: null,
     avatar_url: null,
     onboarding_completed_at: restaurant?.onboarding_completed_at ?? null,
   };
 }
 
 async function loadPlatformAdmin(): Promise<boolean> {
-  const { data: claimed } = await supabase.rpc("v2_claim_platform_admin");
-  if (claimed === true) return true;
-  const { data } = await supabase.rpc("v2_is_platform_admin");
-  return data === true;
+  try {
+    const { data: claimed } = await supabase.rpc("v2_claim_platform_admin");
+    if (claimed === true) return true;
+    const { data } = await supabase.rpc("v2_is_platform_admin");
+    return data === true;
+  } catch {
+    return false;
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -120,40 +124,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [platformAdmin, setPlatformAdmin] = useState(false);
   const [org, setOrg] = useState<OrgContext>(EMPTY_ORG);
   const [loading, setLoading] = useState(true);
+  const sessionRef = useRef<Session | null>(null);
+  const hydratingRef = useRef(false);
 
   const hydrate = async (authUserId: string) => {
-    const [s, p, o] = await Promise.all([
-      loadStaffFor(authUserId),
-      loadPlatformAdmin(),
-      loadOrgContext(authUserId),
-    ]);
-    setOrg(o);
-    setPlatformAdmin(p);
-    if (s) {
-      setStaff(s);
-    } else {
-      setStaff(await staffFromOrg(authUserId, o));
+    if (hydratingRef.current) return;
+    hydratingRef.current = true;
+    try {
+      const [s, p, o] = await Promise.all([
+        loadStaffFor(authUserId),
+        loadPlatformAdmin(),
+        loadOrgContext(authUserId),
+      ]);
+      setOrg(o);
+      setPlatformAdmin(p);
+      if (s) {
+        setStaff(s);
+      } else {
+        setStaff(await staffFromOrg(authUserId, o));
+      }
+    } catch (e) {
+      console.warn("auth hydrate failed", e);
+    } finally {
+      hydratingRef.current = false;
     }
   };
 
   const refreshStaff = async () => {
-    if (!session?.user) {
+    const current = sessionRef.current;
+    if (!current?.user) {
       setStaff(null);
       setPlatformAdmin(false);
       setOrg(EMPTY_ORG);
       return;
     }
-    await hydrate(session.user.id);
+    await hydrate(current.user.id);
   };
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
+      sessionRef.current = newSession;
       setSession(newSession);
       if (event === "SIGNED_OUT") {
         setStaff(null);
         setPlatformAdmin(false);
         setOrg(EMPTY_ORG);
       } else if (newSession?.user) {
+        // Defer ALL supabase calls out of the auth callback (prevents mutex deadlock).
         setTimeout(() => {
           void hydrate(newSession.user.id);
         }, 0);
@@ -161,6 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     supabase.auth.getSession().then(async ({ data }) => {
+      sessionRef.current = data.session;
       setSession(data.session);
       if (data.session?.user) {
         await hydrate(data.session.user.id);
