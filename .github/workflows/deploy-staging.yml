@@ -1,0 +1,50 @@
+# Deploy staging — Phase 6 §2 (PENDING APPROVAL)
+
+# Triggers are workflow_dispatch ONLY until Phase 6 §2 is approved.
+# After approval: add `push: branches: [main]` and remove this comment block.
+
+name: Deploy Staging
+
+on:
+  workflow_dispatch:
+
+jobs:
+  isolate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run test:isolation
+      - run: npx tsc --noEmit
+
+  migrate:
+    needs: isolate
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Link + push (staging)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_STAGING_PROJECT_REF }}
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_ID"
+          supabase db push
+      - name: Deploy Edge Functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_STAGING_PROJECT_REF }}
+        run: |
+          supabase functions deploy send-reservation-confirmation --project-ref "$SUPABASE_PROJECT_ID"
+          supabase functions deploy billing-checkout --project-ref "$SUPABASE_PROJECT_ID" || true
+          supabase functions deploy billing-portal --project-ref "$SUPABASE_PROJECT_ID" || true
+          supabase functions deploy stripe-webhook --project-ref "$SUPABASE_PROJECT_ID" || true
+          supabase functions deploy export-report-csv --project-ref "$SUPABASE_PROJECT_ID" || true

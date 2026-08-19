@@ -6,6 +6,7 @@ import {
   CreditCard,
   LayoutGrid,
   MapPin,
+  BookOpen,
   Settings as SettingsIcon,
   Users,
 } from "lucide-react";
@@ -17,6 +18,7 @@ import { SettingsLocations } from "@/components/settings/SettingsLocations";
 import { SettingsTeam } from "@/components/settings/SettingsTeam";
 import { SettingsBilling } from "@/components/settings/SettingsBilling";
 import { SettingsTables } from "@/components/settings/SettingsTables";
+import { SettingsMenu } from "@/components/settings/SettingsMenu";
 import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/settings")({
@@ -24,18 +26,20 @@ export const Route = createFileRoute("/settings")({
   component: SettingsPage,
 });
 
-type SectionId = "profile" | "hours" | "locations" | "team" | "billing" | "tables";
+type SectionId = "profile" | "hours" | "locations" | "team" | "billing" | "tables" | "menu";
 
 const SECTIONS: {
   id: SectionId;
   label: string;
   icon: typeof Building2;
   ownerOnly?: boolean;
+  managerOnly?: boolean;
 }[] = [
   { id: "profile", label: "Profile", icon: Building2 },
   { id: "hours", label: "Hours", icon: Clock },
   { id: "locations", label: "Locations", icon: MapPin },
   { id: "tables", label: "Tables & booking", icon: LayoutGrid },
+  { id: "menu", label: "Menu", icon: BookOpen, managerOnly: true },
   { id: "team", label: "Team", icon: Users },
   { id: "billing", label: "Billing", icon: CreditCard, ownerOnly: true },
 ];
@@ -44,8 +48,11 @@ function SettingsPage() {
   const { org } = useAuth();
   const [active, setActive] = useState<SectionId>("profile");
   const isOwner = org.role === "owner" || !org.available;
+  const isManager = isOwner || org.role === "manager";
 
-  const visible = SECTIONS.filter((s) => !s.ownerOnly || isOwner);
+  const visible = SECTIONS.filter(
+    (s) => (!s.ownerOnly || isOwner) && (!s.managerOnly || isManager),
+  );
 
   return (
     <AppShell>
@@ -87,6 +94,7 @@ function SettingsPage() {
             {active === "team" && <SettingsTeam />}
             {active === "billing" && <SettingsBilling />}
             {active === "tables" && <SettingsTables />}
+            {active === "menu" && <SettingsMenu />}
           </section>
         </div>
       </div>

@@ -16,6 +16,7 @@ import { RoleProvider } from "@/lib/role";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { Toaster } from "@/components/ui/sonner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { I18nProvider } from "@/lib/i18n";
 import { usePwaRegister } from "@/hooks/use-pwa";
 
 const PUBLIC_PATHS = [
@@ -269,14 +270,16 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <RoleProvider>
-          <AuthGate>
-            <Outlet />
-          </AuthGate>
-          <Toaster />
-        </RoleProvider>
-      </AuthProvider>
+      <I18nProvider>
+        <AuthProvider>
+          <RoleProvider>
+            <AuthGate>
+              <Outlet />
+            </AuthGate>
+            <Toaster />
+          </RoleProvider>
+        </AuthProvider>
+      </I18nProvider>
     </QueryClientProvider>
   );
 }

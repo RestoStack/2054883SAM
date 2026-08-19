@@ -6,7 +6,7 @@ import {
   PartyPopper, Wine, BookOpen, Sun, Moon, Loader2, Utensils,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { createPublicReservation, getPublicAvailability } from "@/lib/booking-api";
+import { createPublicReservation, getAvailability } from "@/lib/booking-api";
 import { slotsForDay, fmtSlot12, dayKeyFromDate, DAYS, type WeekHours } from "@/components/onboarding/HoursEditor";
 import heroImg from "@/assets/book-hero-v2.jpg";
 import mainImg from "@/assets/section-main.jpg";
@@ -186,7 +186,7 @@ function BookingFlow({ restaurant, menu }: { restaurant: Restaurant; menu: MenuR
     let cancelled = false;
     const isoDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
     (async () => {
-      const res = await getPublicAvailability(restaurant.slug, isoDate);
+      const res = await getAvailability(restaurant.slug, isoDate, party);
       if (cancelled) return;
       if (!res.ok) {
         setAvailSlots(null);
@@ -196,18 +196,23 @@ function BookingFlow({ restaurant, menu }: { restaurant: Restaurant; menu: MenuR
       setMaxParty(res.max_party_size || 8);
       setAvailClosed(!!res.closed);
       setAvailSlots(
-        (res.slots ?? []).map((s, i) => ({
-          t: s.time,
-          available: s.available,
-          popular: i === 2 || i === 5,
-        })),
+        (res.slots ?? []).map(
+          (
+            s: { time: string; available: boolean },
+            i: number,
+          ) => ({
+            t: s.time,
+            available: s.available,
+            popular: i === 2 || i === 5,
+          }),
+        ),
       );
       if (party > (res.max_party_size || 8)) setParty(Math.min(party, res.max_party_size || 8));
     })();
     return () => {
       cancelled = true;
     };
-  }, [date, restaurant.slug]);
+  }, [date, restaurant.slug, party]);
 
   const canStep2 = !!time && !isClosed;
   const canStep3 = !!section && isBirthday !== null;

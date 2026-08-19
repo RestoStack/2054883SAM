@@ -16,24 +16,24 @@ type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
 
 /** MVP nav only — docs/ROUTES.md */
 const ADMIN_NAV: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/bookings", label: "Bookings", icon: CalendarDays },
-  { to: "/host-stand", label: "Host Stand", icon: ClipboardList },
-  { to: "/customers", label: "Guests", icon: Users },
-  { to: "/reports", label: "Reports", icon: BarChart3 },
+  { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/app/reservations", label: "Bookings", icon: CalendarDays },
+  { to: "/app/host", label: "Host Stand", icon: ClipboardList },
+  { to: "/app/guests", label: "Guests", icon: Users },
+  { to: "/app/reports", label: "Reports", icon: BarChart3 },
   { to: "/staff", label: "Team", icon: UserCog },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
 const HOSTESS_NAV: NavItem[] = [
-  { to: "/host-stand", label: "Host Stand", icon: ClipboardList },
-  { to: "/bookings", label: "Reservations", icon: CalendarDays },
-  { to: "/customers", label: "Guests", icon: Users },
+  { to: "/app/host", label: "Host Stand", icon: ClipboardList },
+  { to: "/app/reservations", label: "Reservations", icon: CalendarDays },
+  { to: "/app/guests", label: "Guests", icon: Users },
 ];
 
 const SERVER_NAV: NavItem[] = [
-  { to: "/host-stand", label: "Host Stand", icon: ClipboardList },
-  { to: "/bookings", label: "Bookings", icon: CalendarDays },
+  { to: "/app/host", label: "Host Stand", icon: ClipboardList },
+  { to: "/app/reservations", label: "Bookings", icon: CalendarDays },
 ];
 
 function navForRole(role: Role): NavItem[] {
@@ -198,7 +198,7 @@ export function AppShell({
       {!fullBleed && <Sidebar />}
       {fullBleed && (
         <aside className="hidden lg:flex w-14 shrink-0 flex-col border-r border-sidebar-border bg-sidebar sticky top-0 h-dvh items-center py-3 gap-2">
-          <Link to="/dashboard" className="mb-2" title="Dashboard">
+          <Link to="/app/dashboard" className="mb-2" title="Dashboard">
             <img src={logo} alt="RestoStack" className="h-8 w-8 object-contain" />
           </Link>
           {navForRole(role).slice(0, 6).map((item) => (

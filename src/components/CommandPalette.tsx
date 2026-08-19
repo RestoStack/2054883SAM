@@ -9,11 +9,11 @@ import {
 import { useBookings, useCustomers } from "@/lib/v2-data";
 
 const pages = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/bookings", label: "Bookings", icon: CalendarDays },
-  { to: "/host-stand", label: "Host Stand", icon: ClipboardList },
-  { to: "/customers", label: "Guests", icon: Users },
-  { to: "/reports", label: "Reports", icon: BarChart3 },
+  { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/app/reservations", label: "Bookings", icon: CalendarDays },
+  { to: "/app/host", label: "Host Stand", icon: ClipboardList },
+  { to: "/app/guests", label: "Guests", icon: Users },
+  { to: "/app/reports", label: "Reports", icon: BarChart3 },
   { to: "/staff", label: "Team", icon: UserCog },
   { to: "/settings", label: "Settings", icon: Settings },
 ] as const;
@@ -91,7 +91,7 @@ export function CommandPalette() {
                         params: { id: b.customerId },
                         search: { tab: "overview" },
                       });
-                    } else navigate({ to: "/bookings" });
+                    } else navigate({ to: "/app/reservations" });
                   })
                 }
               >
