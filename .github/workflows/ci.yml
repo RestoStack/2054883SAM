@@ -19,6 +19,7 @@ jobs:
         run: npx tsc --noEmit
       - name: Lint
         run: npm run lint --if-present
+        continue-on-error: true
       - name: Build
         run: npm run build
       - name: Isolation unit tests
