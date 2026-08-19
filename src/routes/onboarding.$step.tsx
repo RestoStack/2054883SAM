@@ -25,6 +25,8 @@ import {
   onboardingSaveTeam,
   onboardingSkipTo,
 } from "@/lib/onboarding-api";
+import { createRestaurantForCurrentUser } from "@/lib/create-restaurant";
+import { readSelectedPlan } from "@/lib/plans";
 import {
   DEFAULT_BOOKING,
   DEFAULT_HOURS_RANGES,
@@ -122,8 +124,23 @@ function OnboardingStepPage() {
           seedName ? `${seedName.split(/\s+/)[0]}'s restaurant` : "My restaurant",
         );
         if (!boot.ok) {
+          // Org schema / bootstrap RPC missing — fall back to legacy v2 signup.
+          const legacy = await createRestaurantForCurrentUser({
+            restaurantName: seedName ? `${seedName.split(/\s+/)[0]}'s restaurant` : "My restaurant",
+            fullName: seedName,
+            plan: readSelectedPlan(),
+          });
+          if (legacy.ok) {
+            await refreshStaff();
+            if (!cancelled) navigate({ to: "/app", replace: true });
+            return;
+          }
           if (!cancelled) {
-            setError(boot.error);
+            setError(
+              legacy.needsMigration
+                ? legacy.error
+                : boot.error || legacy.error,
+            );
             setBooting(false);
           }
           return;

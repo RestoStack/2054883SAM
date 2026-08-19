@@ -27,11 +27,31 @@ export async function signInWithGoogle(plan?: PlanId) {
   const redirectTo = oauthCallbackUrl();
   if (!redirectTo) throw new Error("OAuth redirect URL unavailable");
 
+  // Fail fast when Google Client Secret is missing in Supabase.
+  try {
+    const base = (await import("@/integrations/supabase/config")).getSupabaseUrl();
+    const key = (await import("@/integrations/supabase/config")).getSupabasePublishableKey();
+    const probeUrl = `${base}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
+    const probe = await fetch(probeUrl, {
+      method: "GET",
+      redirect: "manual",
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+    });
+    if (probe.status === 400) {
+      const body = await probe.text();
+      if (/missing OAuth secret|Unsupported provider/i.test(body)) {
+        throw new Error("Unsupported provider: missing OAuth secret");
+      }
+    }
+  } catch (e) {
+    if (e instanceof Error && /missing OAuth secret/i.test(e.message)) throw e;
+  }
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
       redirectTo,
-      skipBrowserRedirect: false,
+      skipBrowserRedirect: true,
       queryParams: {
         access_type: "offline",
         prompt: "select_account",
@@ -44,7 +64,7 @@ export async function signInWithGoogle(plan?: PlanId) {
       "Google sign-in did not return a URL. Check that Google is enabled in Supabase Auth → Providers.",
     );
   }
-  // Explicit navigation — more reliable than relying solely on client redirect.
+
   window.location.assign(data.url);
   return data;
 }

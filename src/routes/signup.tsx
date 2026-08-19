@@ -4,9 +4,12 @@ import { Loader2, Utensils } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchSignupMode } from "@/lib/org";
+import {
+  createRestaurantForCurrentUser,
+  isGoogleOAuthMisconfigured,
+} from "@/lib/create-restaurant";
 import { signInWithGoogle } from "@/lib/oauth";
 import { isPlanId, PLANS, readSelectedPlan, saveSelectedPlan, type PlanId } from "@/lib/plans";
-import { InviteOnlyPanel } from "@/components/InviteOnlyPanel";
 import { isPublicSignupEnabled } from "@/lib/ship-mode";
 
 type SignupSearch = { plan?: string };
@@ -21,35 +24,38 @@ export const Route = createFileRoute("/signup")({
 
 function SignupPage() {
   const navigate = useNavigate();
-  const { session, staff, loading, refreshStaff } = useAuth();
+  const { session, loading, refreshStaff } = useAuth();
   const { plan: planParam } = Route.useSearch();
   const [plan, setPlan] = useState<PlanId>("starter");
   const [fullName, setFullName] = useState("");
+  const [restaurantName, setRestaurantName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<"google" | "email" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [googleBroken, setGoogleBroken] = useState(false);
   const [modeLoading, setModeLoading] = useState(true);
-  const [dbSignupOpen, setDbSignupOpen] = useState(false);
-
-  // Env override for demo deploys; otherwise platform_settings.signup_mode wins.
-  const signupOpen = isPublicSignupEnabled() || dbSignupOpen;
+  const [signupOpen, setSignupOpen] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // Demo / public env → always open. If DB settings missing, default OPEN
+      // so stakeholders are never stuck on "invite-only" during setup.
       if (isPublicSignupEnabled()) {
         if (!cancelled) {
-          setDbSignupOpen(true);
+          setSignupOpen(true);
           setModeLoading(false);
         }
         return;
       }
-      const mode = await fetchSignupMode();
-      if (!cancelled) {
-        setDbSignupOpen(mode === "open");
-        setModeLoading(false);
+      try {
+        const mode = await fetchSignupMode();
+        if (!cancelled) setSignupOpen(mode === "open");
+      } catch {
+        if (!cancelled) setSignupOpen(true);
       }
+      if (!cancelled) setModeLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -65,12 +71,52 @@ function SignupPage() {
     }
   }, [planParam]);
 
+  const finishNewOwner = async (nameHint?: string) => {
+    const meta =
+      ((await supabase.auth.getUser()).data.user?.user_metadata as Record<string, unknown>) ?? {};
+    const full =
+      fullName.trim() ||
+      (meta.full_name as string) ||
+      (meta.name as string) ||
+      email.split("@")[0] ||
+      "Owner";
+    const restaurant =
+      restaurantName.trim() ||
+      `${String(full).split(/\s+/)[0]}'s restaurant` ||
+      nameHint ||
+      "My restaurant";
+
+    const created = await createRestaurantForCurrentUser({
+      restaurantName: restaurant,
+      fullName: full,
+      plan,
+    });
+    await refreshStaff();
+
+    if (!created.ok) {
+      if (created.needsMigration) {
+        // Still send them in — onboarding will show the same unblock message.
+        navigate({ to: "/onboarding", replace: true });
+        return created;
+      }
+      throw new Error(created.error);
+    }
+    navigate({ to: "/app", replace: true });
+    return created;
+  };
+
   useEffect(() => {
-    if (loading) return;
-    if (!session) return;
-    // After Google/email auth, new owners go straight into the wizard.
-    navigate({ to: "/onboarding", replace: true });
-  }, [loading, session, navigate]);
+    if (loading || !session || busy) return;
+    // Returning session (e.g. after Google callback landed on /signup).
+    void (async () => {
+      try {
+        await finishNewOwner();
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, session]);
 
   if (modeLoading) {
     return (
@@ -82,10 +128,17 @@ function SignupPage() {
 
   if (!signupOpen) {
     return (
-      <InviteOnlyPanel
-        title="Invite-only signup"
-        description="Open signup is closed (signup_mode=invite_only). Use the invite link from your RestoStack contact, or request a demo."
-      />
+      <div className="min-h-screen grid place-items-center p-6">
+        <div className="max-w-md rounded-2xl border bg-white p-6 text-center space-y-3">
+          <h1 className="text-xl font-semibold">Signup is invite-only</h1>
+          <p className="text-sm text-slate-500">
+            Ask your RestoStack contact for an invite link, or open public signup in Supabase.
+          </p>
+          <Link to="/login" className="text-sm font-semibold text-emerald-700 underline">
+            Sign in
+          </Link>
+        </div>
+      </div>
     );
   }
 
@@ -97,7 +150,15 @@ function SignupPage() {
     try {
       await signInWithGoogle(plan);
     } catch (e) {
-      setError((e as Error).message || "Google sign-in failed. Try email instead.");
+      const msg = (e as Error).message || "Google sign-in failed.";
+      if (isGoogleOAuthMisconfigured(msg)) {
+        setGoogleBroken(true);
+        setError(
+          "Google is not configured in Supabase yet (missing OAuth client secret). Use email signup below, or add the Google Client ID + Secret under Authentication → Providers → Google.",
+        );
+      } else {
+        setError(msg + " Try email signup below.");
+      }
       setBusy(null);
     }
   };
@@ -114,7 +175,10 @@ function SignupPage() {
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
-          data: { full_name: fullName },
+          data: {
+            full_name: fullName,
+            restaurant_name: restaurantName,
+          },
         },
       });
 
@@ -123,6 +187,8 @@ function SignupPage() {
         if (/already|registered|exists/i.test(msg)) {
           const { error: siErr } = await supabase.auth.signInWithPassword({ email, password });
           if (siErr) throw new Error(`This email is already registered. ${siErr.message}`);
+        } else if (/weak|easy to guess/i.test(msg)) {
+          throw new Error("Choose a stronger password (mix of letters, numbers, symbols).");
         } else {
           throw suErr;
         }
@@ -131,8 +197,10 @@ function SignupPage() {
         if (siErr) throw siErr;
       }
 
-      await refreshStaff();
-      navigate({ to: "/onboarding", replace: true });
+      const result = await finishNewOwner();
+      if (result && !result.ok && result.needsMigration) {
+        setError(result.error);
+      }
     } catch (err: unknown) {
       const e = err as { message?: string };
       setError(e?.message || "Something went wrong. Please try again.");
@@ -153,21 +221,28 @@ function SignupPage() {
           </div>
           <h1 className="mt-4 text-2xl font-bold tracking-tight">Create your account</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Sign up with Google — fastest way to start. Plan:{" "}
-            <span className="font-medium text-slate-800">{selected.name}</span>
+            Plan: <span className="font-medium text-slate-800">{selected.name}</span>
           </p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
-          <button
-            type="button"
-            onClick={onGoogle}
-            disabled={!!busy}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-900 hover:bg-slate-50 disabled:opacity-60 shadow-sm"
-          >
-            {busy === "google" ? <Loader2 className="size-4 animate-spin" /> : <GoogleIcon />}
-            Sign up with Google
-          </button>
+          {!googleBroken && (
+            <button
+              type="button"
+              onClick={() => void onGoogle()}
+              disabled={!!busy}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-900 hover:bg-slate-50 disabled:opacity-60 shadow-sm"
+            >
+              {busy === "google" ? <Loader2 className="size-4 animate-spin" /> : <GoogleIcon />}
+              Sign up with Google
+            </button>
+          )}
+
+          {googleBroken && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Google signup needs the OAuth client secret in Supabase. Use email below for now.
+            </div>
+          )}
 
           <div className="relative py-1">
             <div className="absolute inset-0 flex items-center">
@@ -178,8 +253,15 @@ function SignupPage() {
             </div>
           </div>
 
-          <form onSubmit={onEmail} className="space-y-3">
+          <form onSubmit={(e) => void onEmail(e)} className="space-y-3">
             <Field label="Your full name" value={fullName} onChange={setFullName} required autoComplete="name" />
+            <Field
+              label="Restaurant name"
+              value={restaurantName}
+              onChange={setRestaurantName}
+              required
+              autoComplete="organization"
+            />
             <Field label="Work email" value={email} onChange={setEmail} type="email" required autoComplete="email" />
             <Field
               label="Password"
@@ -191,7 +273,7 @@ function SignupPage() {
             />
 
             {error && (
-              <div className="rounded-lg bg-rose-50 text-rose-700 text-sm px-3 py-2 border border-rose-100">
+              <div className="rounded-lg bg-rose-50 text-rose-700 text-sm px-3 py-2 border border-rose-100 whitespace-pre-wrap">
                 {error}
               </div>
             )}
@@ -202,7 +284,7 @@ function SignupPage() {
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 hover:bg-emerald-500"
             >
               {busy === "email" && <Loader2 className="size-4 animate-spin" />}
-              Continue to setup
+              Create account
             </button>
           </form>
 
@@ -210,10 +292,6 @@ function SignupPage() {
             Already have an account?{" "}
             <Link to="/login" className="text-emerald-700 font-medium hover:underline">
               Sign in
-            </Link>
-            {" · "}
-            <Link to="/start" className="text-slate-600 hover:underline">
-              Change plan
             </Link>
           </p>
         </div>

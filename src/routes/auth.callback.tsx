@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
+import { createRestaurantForCurrentUser } from "@/lib/create-restaurant";
+import { readSelectedPlan } from "@/lib/plans";
 
 export const Route = createFileRoute("/auth/callback")({
   head: () => ({ meta: [{ title: "Signing you in — RestoStack" }] }),
@@ -20,23 +22,18 @@ function AuthCallbackPage() {
     (async () => {
       try {
         const url = new URL(window.location.href);
-        const oauthError = url.searchParams.get("error_description") || url.searchParams.get("error");
-        if (oauthError) {
-          throw new Error(oauthError);
-        }
+        const oauthError =
+          url.searchParams.get("error_description") || url.searchParams.get("error");
+        if (oauthError) throw new Error(oauthError);
 
         const code = url.searchParams.get("code");
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) throw error;
         } else {
-          // Hash fragment tokens (implicit) — getSession picks them up.
           const { error } = await supabase.auth.getSession();
           if (error) throw error;
         }
-
-        await refreshStaff();
-        if (cancelled) return;
 
         const {
           data: { session },
@@ -46,8 +43,15 @@ function AuthCallbackPage() {
           return;
         }
 
-        // New accounts (no staff / unfinished onboarding) → wizard.
-        // Never send brand-new Google signups to billing first.
+        const meta = (session.user.user_metadata as Record<string, unknown>) ?? {};
+        const fullName =
+          (meta.full_name as string) ||
+          (meta.name as string) ||
+          (session.user.email ?? "").split("@")[0] ||
+          "Owner";
+        const restaurantName =
+          (meta.restaurant_name as string) || `${String(fullName).split(/\s+/)[0]}'s restaurant`;
+
         const { data: staff } = await supabase
           .from("v2_users")
           .select("restaurant_id")
@@ -55,20 +59,36 @@ function AuthCallbackPage() {
           .maybeSingle();
 
         if (!staff?.restaurant_id) {
-          navigate({ to: "/onboarding", replace: true });
-          return;
+          const created = await createRestaurantForCurrentUser({
+            restaurantName,
+            fullName,
+            plan: readSelectedPlan(),
+          });
+          if (!created.ok && !created.needsMigration) {
+            throw new Error(created.error);
+          }
+          if (!created.ok && created.needsMigration) {
+            await refreshStaff();
+            if (!cancelled) navigate({ to: "/onboarding", replace: true });
+            return;
+          }
         }
 
-        const { data: restaurant } = await supabase
-          .from("v2_restaurants")
-          .select("onboarding_completed_at")
-          .eq("id", staff.restaurant_id)
-          .maybeSingle();
+        await refreshStaff();
+        if (cancelled) return;
 
-        if (restaurant?.onboarding_completed_at) {
-          navigate({ to: "/app", replace: true });
-        } else {
+        const { data: restaurant } = staff?.restaurant_id
+          ? await supabase
+              .from("v2_restaurants")
+              .select("onboarding_completed_at")
+              .eq("id", staff.restaurant_id)
+              .maybeSingle()
+          : { data: null };
+
+        if (restaurant && !restaurant.onboarding_completed_at) {
           navigate({ to: "/onboarding", replace: true });
+        } else {
+          navigate({ to: "/app", replace: true });
         }
       } catch (e) {
         if (!cancelled) {
@@ -100,7 +120,7 @@ function AuthCallbackPage() {
         ) : (
           <>
             <Loader2 className="size-6 animate-spin text-slate-400 mx-auto mb-3" />
-            <p className="text-sm text-slate-600">Finishing Google sign-in…</p>
+            <p className="text-sm text-slate-600">Finishing sign-in…</p>
           </>
         )}
       </div>
