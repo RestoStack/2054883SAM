@@ -186,18 +186,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     org.memberships.length === 0 &&
     !platformAdmin;
 
-  // Only force the wizard when the user belongs to an org (or legacy staff)
-  // and onboarding is unfinished. Bare Google logins must not hit a dead end.
+  // New Google/email accounts (no staff row yet) must reach the wizard.
   const needsOnboarding =
     !!session &&
-    !needsInvite &&
-    (!staff || !staff.onboarding_completed_at);
+    (needsInvite || !staff || !staff.onboarding_completed_at);
 
-  // Pre-migration: treat as live so existing tenants are not locked out.
+  // No org yet → treat as live so AuthGate does not send people to /billing/locked.
   const subscriptionLive = !org.available
     ? true
     : !org.activeOrganizationId
-      ? !needsInvite
+      ? true
       : subscriptionIsLive(org.subscriptionStatus);
 
   const needsPayment =

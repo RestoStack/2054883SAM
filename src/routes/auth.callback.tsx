@@ -19,13 +19,18 @@ function AuthCallbackPage() {
 
     (async () => {
       try {
-        // Handle both PKCE (?code=) and hash token redirects.
         const url = new URL(window.location.href);
+        const oauthError = url.searchParams.get("error_description") || url.searchParams.get("error");
+        if (oauthError) {
+          throw new Error(oauthError);
+        }
+
         const code = url.searchParams.get("code");
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) throw error;
         } else {
+          // Hash fragment tokens (implicit) — getSession picks them up.
           const { error } = await supabase.auth.getSession();
           if (error) throw error;
         }
@@ -37,10 +42,12 @@ function AuthCallbackPage() {
           data: { session },
         } = await supabase.auth.getSession();
         if (!session?.user) {
-          navigate({ to: "/login", replace: true });
+          navigate({ to: "/signup", replace: true });
           return;
         }
 
+        // New accounts (no staff / unfinished onboarding) → wizard.
+        // Never send brand-new Google signups to billing first.
         const { data: staff } = await supabase
           .from("v2_users")
           .select("restaurant_id")
@@ -59,7 +66,7 @@ function AuthCallbackPage() {
           .maybeSingle();
 
         if (restaurant?.onboarding_completed_at) {
-          navigate({ to: "/dashboard", replace: true });
+          navigate({ to: "/app", replace: true });
         } else {
           navigate({ to: "/onboarding", replace: true });
         }
@@ -81,14 +88,19 @@ function AuthCallbackPage() {
         {error ? (
           <>
             <p className="text-sm text-rose-600 mb-4">{error}</p>
-            <a href="/login" className="text-sm font-semibold text-emerald-700 underline">
-              Back to sign in
-            </a>
+            <div className="flex flex-col gap-2 items-center">
+              <a href="/signup" className="text-sm font-semibold text-emerald-700 underline">
+                Back to create account
+              </a>
+              <a href="/login" className="text-sm text-slate-500 underline">
+                Sign in instead
+              </a>
+            </div>
           </>
         ) : (
           <>
             <Loader2 className="size-6 animate-spin text-slate-400 mx-auto mb-3" />
-            <p className="text-sm text-slate-600">Finishing sign-in…</p>
+            <p className="text-sm text-slate-600">Finishing Google sign-in…</p>
           </>
         )}
       </div>

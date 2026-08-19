@@ -19,7 +19,8 @@ export const Route = createFileRoute("/login")({
 /** MVP: Google or email+password only — no staff PIN login (docs/DECISIONS.md). */
 function LoginPage() {
   const navigate = useNavigate();
-  const { session, staff, loading, needsOnboarding, needsPayment, subscriptionLive } = useAuth();
+  const { session, staff, loading, needsOnboarding, needsInvite, needsPayment, subscriptionLive } =
+    useAuth();
   const demo = isDemoAccessEnabled();
   const [email, setEmail] = useState(demo ? "admin@jukebox.com" : "");
   const [password, setPassword] = useState(demo ? "admin1234" : "");
@@ -29,16 +30,17 @@ function LoginPage() {
   useEffect(() => {
     if (loading) return;
     if (!session) return;
+    // New accounts → wizard (never billing first).
+    if (needsInvite || needsOnboarding) {
+      navigate({ to: "/onboarding", replace: true });
+      return;
+    }
     if (needsPayment) {
       navigate({ to: "/billing/setup", replace: true });
       return;
     }
     if (!subscriptionLive) {
       navigate({ to: "/billing/locked", replace: true });
-      return;
-    }
-    if (needsOnboarding) {
-      navigate({ to: "/onboarding", replace: true });
       return;
     }
     if (staff) {
@@ -58,7 +60,16 @@ function LoginPage() {
           : "/dashboard";
       navigate({ to: home, replace: true });
     }
-  }, [loading, session, staff, needsOnboarding, needsPayment, subscriptionLive, navigate]);
+  }, [
+    loading,
+    session,
+    staff,
+    needsOnboarding,
+    needsInvite,
+    needsPayment,
+    subscriptionLive,
+    navigate,
+  ]);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,8 +112,9 @@ function LoginPage() {
             type="button"
             disabled={busy}
             onClick={() => void handleGoogle()}
-            className="w-full h-11 rounded-lg border border-border bg-background text-sm font-semibold hover:bg-muted/50 disabled:opacity-50"
+            className="w-full h-11 rounded-lg border border-border bg-background text-sm font-semibold hover:bg-muted/50 disabled:opacity-50 inline-flex items-center justify-center gap-2"
           >
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <GoogleIcon />}
             Continue with Google
           </button>
 
@@ -144,14 +156,25 @@ function LoginPage() {
             </button>
           </form>
 
-          <p className="text-center text-xs text-muted-foreground">
-            Have an invite?{" "}
-            <Link to="/signup" className="underline underline-offset-2 font-medium text-foreground">
-              Continue from your invite link
+          <p className="text-center text-sm text-muted-foreground">
+            New restaurant?{" "}
+            <Link to="/signup" className="underline underline-offset-2 font-semibold text-foreground">
+              Create an account
             </Link>
           </p>
         </div>
       </div>
     </div>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg className="size-4" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="#EA4335"
+        d="M12 10.2v3.9h5.5c-.2 1.3-1.7 3.9-5.5 3.9-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.4 14.6 2.5 12 2.5 6.8 2.5 2.5 6.8 2.5 12S6.8 21.5 12 21.5c5.5 0 9.1-3.9 9.1-9.3 0-.6-.1-1.1-.2-1.6H12z"
+      />
+    </svg>
   );
 }

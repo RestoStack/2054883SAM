@@ -21,7 +21,7 @@ export const Route = createFileRoute("/signup")({
 
 function SignupPage() {
   const navigate = useNavigate();
-  const { session, staff, loading, needsPayment, subscriptionLive, refreshStaff } = useAuth();
+  const { session, staff, loading, refreshStaff } = useAuth();
   const { plan: planParam } = Route.useSearch();
   const [plan, setPlan] = useState<PlanId>("starter");
   const [fullName, setFullName] = useState("");
@@ -68,16 +68,9 @@ function SignupPage() {
   useEffect(() => {
     if (loading) return;
     if (!session) return;
-    if (needsPayment) {
-      navigate({ to: "/billing/setup", replace: true });
-      return;
-    }
-    if (!subscriptionLive) {
-      navigate({ to: "/billing/locked", replace: true });
-      return;
-    }
+    // After Google/email auth, new owners go straight into the wizard.
     navigate({ to: "/onboarding", replace: true });
-  }, [loading, session, staff, needsPayment, subscriptionLive, navigate]);
+  }, [loading, session, navigate]);
 
   if (modeLoading) {
     return (
@@ -139,7 +132,7 @@ function SignupPage() {
       }
 
       await refreshStaff();
-      navigate({ to: "/billing/setup", replace: true });
+      navigate({ to: "/onboarding", replace: true });
     } catch (err: unknown) {
       const e = err as { message?: string };
       setError(e?.message || "Something went wrong. Please try again.");
@@ -160,7 +153,8 @@ function SignupPage() {
           </div>
           <h1 className="mt-4 text-2xl font-bold tracking-tight">Create your account</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Plan: <span className="font-medium text-slate-800">{selected.name}</span> · 14-day free trial
+            Sign up with Google — fastest way to start. Plan:{" "}
+            <span className="font-medium text-slate-800">{selected.name}</span>
           </p>
         </div>
 
@@ -169,10 +163,10 @@ function SignupPage() {
             type="button"
             onClick={onGoogle}
             disabled={!!busy}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50 disabled:opacity-60"
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-900 hover:bg-slate-50 disabled:opacity-60 shadow-sm"
           >
             {busy === "google" ? <Loader2 className="size-4 animate-spin" /> : <GoogleIcon />}
-            Continue with Google
+            Sign up with Google
           </button>
 
           <div className="relative py-1">
