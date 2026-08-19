@@ -293,6 +293,168 @@ export async function onboardingComplete(organizationId: string, slug?: string) 
   return res;
 }
 
+const LEGACY_DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+
+function hoursRangesToWeekHours(input: HoursStepInput): Record<string, { open: string; close: string; closed: boolean }> {
+  const week: Record<string, { open: string; close: string; closed: boolean }> = {};
+  for (let i = 0; i < 7; i++) {
+    const key = LEGACY_DAY_KEYS[i]!;
+    const closed = input.closed_days.includes(i);
+    const range = input.ranges.find((r) => r.day === i);
+    week[key] = {
+      open: range?.open ?? "11:00",
+      close: range?.close ?? "22:00",
+      closed,
+    };
+  }
+  return week;
+}
+
+/** Load existing restaurant into the wizard when org schema isn't available. */
+export async function legacyOnboardingLoadRestaurant(restaurantId: string) {
+  const { data, error } = await supabase
+    .from("v2_restaurants")
+    .select("id, name, slug, address, city, phone, website, cuisine, timezone, logo_url, hours")
+    .eq("id", restaurantId)
+    .maybeSingle();
+  if (error) return { ok: false as const, error: error.message };
+  if (!data) return { ok: false as const, error: "Restaurant not found" };
+  return {
+    ok: true as const,
+    restaurant: {
+      name: data.name ?? "",
+      location_name: "Main",
+      address: data.address ?? "",
+      city: data.city ?? "",
+      phone: data.phone ?? "",
+      website: data.website ?? "",
+      cuisine: data.cuisine ?? "",
+      timezone: data.timezone || "America/Toronto",
+      google_place_id: null as string | null,
+      logo_url: data.logo_url,
+      slug: data.slug || undefined,
+    },
+    slug: data.slug ?? "",
+    location_id: data.id,
+    hours: data.hours,
+  };
+}
+
+/** Persist restaurant profile + primary location fields on v2_restaurants. */
+export async function legacyOnboardingSaveRestaurant(
+  restaurantId: string,
+  input: RestaurantStepInput,
+) {
+  const parsed = restaurantStepSchema.safeParse(input);
+  if (!parsed.success)
+    return { ok: false as const, error: parsed.error.errors[0]?.message ?? "Invalid" };
+  const p = parsed.data;
+  const slug = (p.slug?.trim() || slugifyFromName(p.name)).slice(0, 64);
+  const { data: current } = await supabase
+    .from("v2_restaurants")
+    .select("integrations")
+    .eq("id", restaurantId)
+    .maybeSingle();
+  const patch: Record<string, unknown> = {
+    name: p.name.trim(),
+    slug,
+    address: p.address?.trim() || null,
+    city: p.city?.trim() || null,
+    phone: p.phone?.trim() || null,
+    website: p.website?.trim() || null,
+    cuisine: p.cuisine?.trim() || null,
+    timezone: p.timezone || "America/Toronto",
+    logo_url: p.logo_url || null,
+  };
+  // Normalize bad array integrations so Settings → Locations can store extras.
+  if (Array.isArray(current?.integrations)) {
+    patch.integrations = {};
+  }
+  const { error } = await supabase
+    .from("v2_restaurants")
+    .update(patch as never)
+    .eq("id", restaurantId);
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const, location_id: restaurantId, public_slug: slug };
+}
+
+export async function legacyOnboardingSaveHours(restaurantId: string, input: HoursStepInput) {
+  const parsed = hoursStepSchema.safeParse(input);
+  if (!parsed.success)
+    return { ok: false as const, error: parsed.error.errors[0]?.message ?? "Invalid" };
+  const hours = hoursRangesToWeekHours(parsed.data);
+  const { error } = await supabase
+    .from("v2_restaurants")
+    .update({ hours: hours as never })
+    .eq("id", restaurantId);
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const };
+}
+
+export async function legacyOnboardingSaveTables(
+  restaurantId: string,
+  count: number,
+  seats: number,
+  section: string,
+) {
+  const safeCount = Math.max(0, Math.min(60, Math.trunc(count)));
+  if (safeCount === 0) return { ok: true as const, seeded: 0 };
+
+  const { count: existing } = await supabase
+    .from("v2_tables")
+    .select("id", { count: "exact", head: true })
+    .eq("restaurant_id", restaurantId);
+  if ((existing ?? 0) > 0) {
+    // Already seeded — don't duplicate on wizard re-entry.
+    return { ok: true as const, seeded: 0 };
+  }
+
+  const rows = Array.from({ length: safeCount }, (_, i) => ({
+    restaurant_id: restaurantId,
+    table_number: String(i + 1),
+    section: section || "Main Floor",
+    capacity: Math.max(1, seats),
+    status: "available" as const,
+    shape: "rectangle" as const,
+  }));
+  const { error } = await supabase.from("v2_tables").insert(rows);
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const, seeded: rows.length };
+}
+
+export async function legacyOnboardingComplete(restaurantId: string, slug?: string) {
+  const patch: Record<string, unknown> = {
+    onboarding_completed_at: new Date().toISOString(),
+  };
+  if (slug?.trim()) {
+    const clean = slug.trim().toLowerCase();
+    if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(clean)) {
+      // Ensure slug uniqueness among restaurants
+      const { data: clash } = await supabase
+        .from("v2_restaurants")
+        .select("id")
+        .eq("slug", clean)
+        .neq("id", restaurantId)
+        .maybeSingle();
+      if (clash) return { ok: false as const, error: "Slug is not available" };
+      patch.slug = clean;
+    }
+  }
+  const { error } = await supabase.from("v2_restaurants").update(patch as never).eq("id", restaurantId);
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const };
+}
+
+function slugifyFromName(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 48) || `restaurant-${Date.now()}`
+  );
+}
+
 /** Legacy exports kept for older imports */
 export async function onboardingGet(organizationId: string) {
   return onboardingGetV1(organizationId);

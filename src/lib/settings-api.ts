@@ -48,9 +48,17 @@ type StoredExtraLocation = {
   is_active?: boolean;
 };
 
+function asIntegrationsObject(integrations: unknown): Record<string, unknown> {
+  // Live rows sometimes store `integrations: []` — treat arrays as empty object.
+  if (!integrations || typeof integrations !== "object" || Array.isArray(integrations)) {
+    return {};
+  }
+  return { ...(integrations as Record<string, unknown>) };
+}
+
 function extrasFromIntegrations(integrations: unknown): StoredExtraLocation[] {
-  if (!integrations || typeof integrations !== "object") return [];
-  const locs = (integrations as Record<string, unknown>).locations;
+  const obj = asIntegrationsObject(integrations);
+  const locs = obj.locations;
   if (!Array.isArray(locs)) return [];
   return locs.filter((l) => l && typeof l === "object") as StoredExtraLocation[];
 }
@@ -132,10 +140,7 @@ async function upsertLegacyLocation(
   }
 
   // Extra locations live in integrations.locations (works without org migrations)
-  const integrations =
-    restaurant.integrations && typeof restaurant.integrations === "object"
-      ? ({ ...(restaurant.integrations as Record<string, unknown>) } as Record<string, unknown>)
-      : {};
+  const integrations = asIntegrationsObject(restaurant.integrations);
   const extras = extrasFromIntegrations(integrations);
   const id = input.location_id || crypto.randomUUID();
   const next: StoredExtraLocation = {

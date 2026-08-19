@@ -208,14 +208,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     !staff &&
     !platformAdmin;
 
-  // Legacy v2 staff with a restaurant can use the app — do not trap them in the
-  // org-wizard loop (that freeze/crash cycle). Only force onboarding when there
-  // is truly no restaurant yet.
+  // Force onboarding when:
+  // - no restaurant yet (new signup), or
+  // - legacy restaurant exists but setup was never finished (null completed_at).
+  // Do NOT use org bootstrap RPCs for legacy restaurant_id users — the wizard
+  // updates v2_restaurants / v2_tables directly to avoid the freeze loop.
   const needsOnboarding =
     !!session &&
     !platformAdmin &&
-    !staff?.restaurant_id &&
-    (needsInvite || (!staff && org.available && org.memberships.length === 0));
+    ((!staff?.restaurant_id &&
+      (needsInvite || (!staff && org.available && org.memberships.length === 0))) ||
+      (!!staff?.restaurant_id && !staff.onboarding_completed_at));
 
   const subscriptionLive = !org.available
     ? true

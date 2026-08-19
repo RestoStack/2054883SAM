@@ -198,9 +198,9 @@ function HostStandLive() {
   }, [tenantReady, orgId, locationId, dateISO, restaurantId]);
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId && !restaurantId) return;
     (async () => {
-      const res = await settingsListLocations(orgId);
+      const res = await settingsListLocations(orgId, restaurantId);
       const locs = (
         res.ok && Array.isArray((res as any).locations) ? (res as any).locations : []
       ) as Array<{
@@ -211,10 +211,11 @@ function HostStandLive() {
       const preferred =
         (org.activeLocationId && locs.find((l) => l.id === org.activeLocationId)?.id) ||
         locs[0]?.id ||
+        restaurantId ||
         "";
       setLocationId((prev) => prev || preferred);
     })();
-  }, [orgId, org.activeLocationId]);
+  }, [orgId, restaurantId, org.activeLocationId]);
 
   useEffect(() => {
     setLoading(true);

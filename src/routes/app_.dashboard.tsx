@@ -131,12 +131,12 @@ function DashboardPage() {
   };
 
   useEffect(() => {
-    if (!orgId) {
+    if (!orgId && !restaurantId) {
       setLocations([]);
       return;
     }
     (async () => {
-      const res = await settingsListLocations(orgId);
+      const res = await settingsListLocations(orgId, restaurantId);
       const locs = (res.ok && Array.isArray(res.locations) ? res.locations : []) as Array<{
         id: string;
         name: string;
@@ -145,10 +145,11 @@ function DashboardPage() {
       const preferred =
         (org.activeLocationId && locs.find((l) => l.id === org.activeLocationId)?.id) ||
         locs[0]?.id ||
+        restaurantId ||
         "";
       setLocationId((prev) => prev || preferred);
     })();
-  }, [orgId, org.activeLocationId]);
+  }, [orgId, restaurantId, org.activeLocationId]);
 
   const refresh = useCallback(async () => {
     if (!tenantReady) {
