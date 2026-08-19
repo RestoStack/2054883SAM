@@ -4,7 +4,16 @@ import { supabase } from "@/integrations/supabase/client";
 export const slugify = (s: string) =>
   (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+/** Calendar date in the user's local timezone (YYYY-MM-DD). Never use UTC for booking days. */
+export function localDateISO(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** @deprecated Prefer localDateISO — kept as alias so existing call sites stay correct. */
+const todayISO = () => localDateISO();
 
 const fmtTime12 = (t: string | null | undefined) => {
   if (!t) return "";
@@ -20,6 +29,27 @@ const fmtMoney = (n: number) =>
 
 // ============ BOOKINGS ============
 export type BookingStatus = "pending" | "confirmed" | "seated" | "completed" | "cancelled" | "no_show";
+
+/** Embedded in booking notes until a dedicated column ships. */
+const SERVER_TAG_RE = /<!--rs-server:([0-9a-f-]{36})-->/i;
+
+export function parseAssignedServerId(notes: string | null | undefined): string | null {
+  const m = (notes || "").match(SERVER_TAG_RE);
+  return m?.[1] ?? null;
+}
+
+export function stripServerTag(notes: string | null | undefined): string {
+  return (notes || "").replace(SERVER_TAG_RE, "").trim();
+}
+
+export function withAssignedServerId(
+  notes: string | null | undefined,
+  serverId: string | null,
+): string {
+  const base = stripServerTag(notes);
+  if (!serverId) return base;
+  return `${base}${base ? "\n" : ""}<!--rs-server:${serverId}-->`;
+}
 
 export type BookingRow = {
   id: string;
@@ -39,42 +69,90 @@ export type BookingRow = {
   visits: string;
   last: string;
   notes: string;
+  /** Notes without internal tags (safe for UI). */
+  displayNotes: string;
+  assignedServerId: string | null;
   slug: string;
 };
 
-export function useBookings(dateFilter?: string) {
+function mapBookingRow(
+  b: any,
+  customerMeta?: { visits?: number | null; last?: string | null } | null,
+): BookingRow {
+  const rawNotes = b.notes ?? "";
+  const visits =
+    customerMeta?.visits != null && customerMeta.visits > 0
+      ? String(customerMeta.visits)
+      : "—";
+  return {
+    id: b.id,
+    customerId: b.customer_id ?? null,
+    date: b.date,
+    rawTime: b.time,
+    time: fmtTime12(b.time),
+    name: b.guest_name ?? "Guest",
+    phone: b.guest_phone ?? "",
+    email: b.guest_email ?? "",
+    source: b.source ?? "walk_in",
+    people: b.party_size ?? 2,
+    table: b.table_number ? `Table ${b.table_number}` : "—",
+    tableNumber: b.table_number ?? null,
+    area: b.section ?? "—",
+    status: (b.status ?? "pending") as BookingStatus,
+    visits,
+    last: customerMeta?.last ? String(customerMeta.last).slice(0, 10) : "",
+    notes: rawNotes,
+    displayNotes: stripServerTag(rawNotes),
+    assignedServerId: parseAssignedServerId(rawNotes),
+    slug: slugify(b.guest_name ?? ""),
+  };
+}
+
+export function useBookings(dateFilter?: string | { from: string; to: string }) {
+  const key =
+    !dateFilter
+      ? "all"
+      : typeof dateFilter === "string"
+        ? dateFilter
+        : `${dateFilter.from}:${dateFilter.to}`;
   return useQuery({
-    queryKey: ["v2_bookings", dateFilter ?? "all"],
+    queryKey: ["v2_bookings", key],
     queryFn: async (): Promise<BookingRow[]> => {
       let q = supabase
         .from("v2_bookings")
         .select("*")
         .order("date", { ascending: true })
         .order("time", { ascending: true });
-      if (dateFilter) q = q.eq("date", dateFilter);
+      if (typeof dateFilter === "string") {
+        q = q.eq("date", dateFilter);
+      } else if (dateFilter) {
+        q = q.gte("date", dateFilter.from).lte("date", dateFilter.to);
+      }
       const { data, error } = await q;
       if (error) throw error;
-      return (data ?? []).map((b: any) => ({
-        id: b.id,
-        customerId: b.customer_id ?? null,
-        date: b.date,
-        rawTime: b.time,
-        time: fmtTime12(b.time),
-        name: b.guest_name ?? "Guest",
-        phone: b.guest_phone ?? "",
-        email: b.guest_email ?? "",
-        source: b.source ?? "walk_in",
-        people: b.party_size ?? 2,
-        table: b.table_number ? `Table ${b.table_number}` : "—",
-        tableNumber: b.table_number ?? null,
-        area: b.section ?? "—",
-        status: (b.status ?? "pending") as BookingStatus,
-        visits: "—",
-        last: "",
-        notes: b.notes ?? "",
-        slug: slugify(b.guest_name ?? ""),
-      }));
+      const rows = data ?? [];
+      const customerIds = [
+        ...new Set(rows.map((b: any) => b.customer_id).filter(Boolean) as string[]),
+      ];
+      const metaById: Record<string, { visits: number; last: string | null }> = {};
+      if (customerIds.length) {
+        const { data: customers } = await supabase
+          .from("v2_customers")
+          .select("id, visit_count, last_visit")
+          .in("id", customerIds);
+        for (const c of customers ?? []) {
+          metaById[c.id] = {
+            visits: c.visit_count ?? 0,
+            last: c.last_visit ?? null,
+          };
+        }
+      }
+      return rows.map((b: any) =>
+        mapBookingRow(b, b.customer_id ? metaById[b.customer_id] : null),
+      );
     },
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -168,6 +246,7 @@ export function useCreateBooking() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["v2_bookings"] });
       qc.invalidateQueries({ queryKey: ["v2_dashboard_stats"] });
+      qc.invalidateQueries({ queryKey: ["v2_last7_metrics"] });
     },
   });
 }
@@ -180,21 +259,57 @@ export function useUpdateBooking() {
       status?: BookingStatus;
       table_number?: string | null;
       section?: string | null;
+      guest_name?: string;
+      guest_phone?: string | null;
+      party_size?: number;
+      time?: string;
+      notes?: string | null;
+      date?: string;
+      /** Set / clear FoH server assignment (stored in notes tag). */
+      assignedServerId?: string | null;
     }) => {
-      const patch: {
-        status?: BookingStatus;
-        table_number?: string | null;
-        section?: string | null;
-      } = {};
+      const patch: Record<string, unknown> = {};
       if (input.status) patch.status = input.status;
       if (input.table_number !== undefined) patch.table_number = input.table_number;
       if (input.section !== undefined) patch.section = input.section;
-      const { error } = await supabase.from("v2_bookings").update(patch).eq("id", input.id);
+      if (input.guest_name !== undefined) patch.guest_name = input.guest_name;
+      if (input.guest_phone !== undefined) patch.guest_phone = input.guest_phone;
+      if (input.party_size !== undefined) patch.party_size = input.party_size;
+      if (input.time !== undefined) patch.time = input.time;
+      if (input.date !== undefined) patch.date = input.date;
+
+      if (input.assignedServerId !== undefined || input.notes !== undefined) {
+        let baseNotes = input.notes;
+        if (baseNotes === undefined || input.assignedServerId !== undefined) {
+          const { data: existing, error: readErr } = await supabase
+            .from("v2_bookings")
+            .select("notes")
+            .eq("id", input.id)
+            .maybeSingle();
+          if (readErr) throw readErr;
+          baseNotes = existing?.notes ?? "";
+        }
+        if (input.notes !== undefined && input.assignedServerId === undefined) {
+          // Preserve existing server tag when editing guest-facing notes.
+          const serverId = parseAssignedServerId(baseNotes);
+          patch.notes = withAssignedServerId(input.notes, serverId);
+        } else if (input.assignedServerId !== undefined) {
+          const guestNotes =
+            input.notes !== undefined ? input.notes : stripServerTag(baseNotes);
+          patch.notes = withAssignedServerId(guestNotes, input.assignedServerId);
+        }
+      }
+
+      const { error } = await supabase
+        .from("v2_bookings")
+        .update(patch as never)
+        .eq("id", input.id);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["v2_bookings"] });
       qc.invalidateQueries({ queryKey: ["v2_dashboard_stats"] });
+      qc.invalidateQueries({ queryKey: ["v2_last7_metrics"] });
     },
   });
 }
@@ -287,26 +402,7 @@ export function useCustomerBookings(customerId: string | undefined) {
         .order("date", { ascending: false })
         .order("time", { ascending: false });
       if (error) throw error;
-      return (data ?? []).map((b: any) => ({
-        id: b.id,
-        customerId: b.customer_id ?? null,
-        date: b.date,
-        rawTime: b.time,
-        time: fmtTime12(b.time),
-        name: b.guest_name ?? "Guest",
-        phone: b.guest_phone ?? "",
-        email: b.guest_email ?? "",
-        source: b.source ?? "walk_in",
-        people: b.party_size ?? 2,
-        table: b.table_number ? `Table ${b.table_number}` : "—",
-        tableNumber: b.table_number ?? null,
-        area: b.section ?? "—",
-        status: (b.status ?? "pending") as BookingStatus,
-        visits: "—",
-        last: "",
-        notes: b.notes ?? "",
-        slug: slugify(b.guest_name ?? ""),
-      }));
+      return (data ?? []).map((b: any) => mapBookingRow(b));
     },
   });
 }
@@ -367,10 +463,10 @@ export function useTables() {
 
 // ============ DASHBOARD METRICS ============
 export function useDashboardStats() {
+  const today = localDateISO();
   return useQuery({
-    queryKey: ["v2_dashboard_stats", todayISO()],
+    queryKey: ["v2_dashboard_stats", today],
     queryFn: async () => {
-      const today = todayISO();
       const [bookingsRes, ordersRes, customersRes] = await Promise.all([
         supabase.from("v2_bookings").select("party_size,status").eq("date", today),
         supabase
@@ -407,6 +503,8 @@ export function useDashboardStats() {
         customerCount: customersRes.count ?? 0,
       };
     },
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -601,7 +699,7 @@ export function useLast7DayMetrics() {
       for (let i = 6; i >= 0; i--) {
         const d = new Date(today);
         d.setDate(today.getDate() - i);
-        const iso = d.toISOString().slice(0, 10);
+        const iso = localDateISO(d);
         days.push({
           day: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
           date: iso,
@@ -1031,7 +1129,7 @@ export function useMetricsInRange(from: string, to: string) {
       const end = new Date(`${to}T00:00:00`);
       const days: DayMetric[] = [];
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const iso = d.toISOString().slice(0, 10);
+        const iso = localDateISO(d);
         days.push({
           day: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
           date: iso,

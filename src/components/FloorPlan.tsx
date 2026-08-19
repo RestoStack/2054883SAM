@@ -1,7 +1,7 @@
 import { useRef, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { cn } from "@/lib/utils";
 
-export type FloorStatus = "free" | "booked" | "alert" | "seated";
+export type FloorStatus = "free" | "booked" | "alert" | "seated" | "waiting";
 export type FloorTableStatus = FloorStatus;
 
 export type FloorItem =
@@ -56,19 +56,21 @@ export type FloorPlanProps = {
   light?: boolean;
 };
 
+/** Mockup: Available grey, Reserved blue, Seated green, Waiting orange, Late red */
 const statusFillLight: Record<FloorStatus, string> = {
-  free: "bg-emerald-500 text-white",
-  booked: "bg-white text-slate-700 ring-2 ring-slate-300",
-  seated: "bg-sky-500 text-white",
-  alert: "bg-rose-400 text-white",
+  free: "bg-[#9CA3AF] text-white",
+  booked: "bg-[#3B82F6] text-white",
+  seated: "bg-[#00A36C] text-white",
+  waiting: "bg-[#F59E0B] text-white",
+  alert: "bg-[#EF4444] text-white",
 };
 
-/** Hostess / FoH dark canvas — grey tables with white labels (mockup) */
 const statusFillDark: Record<FloorStatus, string> = {
-  free: "bg-[#5a6068] text-white",
-  booked: "bg-[#5a6068] text-white ring-1 ring-white/20",
-  seated: "bg-[#3d8b5a] text-white",
-  alert: "bg-[#8b4545] text-white",
+  free: "bg-[#6B7280] text-white",
+  booked: "bg-[#2563EB] text-white",
+  seated: "bg-[#059669] text-white",
+  waiting: "bg-[#D97706] text-white",
+  alert: "bg-[#DC2626] text-white",
 };
 
 /**
@@ -118,7 +120,7 @@ export function FloorPlan({
       }}
       className={cn(
         "relative overflow-hidden touch-none select-none",
-        light ? "bg-[#f4f6f8]" : "bg-[#22262c]",
+        light ? "bg-[#E8E4DC]" : "bg-[#1a1d22]",
         fill
           ? "h-full w-full rounded-none border-0"
           : light
@@ -151,12 +153,12 @@ export function FloorPlan({
               }
         }
       >
-        {/* subtle grid */}
+        {/* subtle wood / grid texture */}
         <div
-          className="pointer-events-none absolute inset-0 opacity-[0.06]"
+          className="pointer-events-none absolute inset-0 opacity-[0.07]"
           style={{
             backgroundImage: light
-              ? "linear-gradient(#94a3b8 1px, transparent 1px), linear-gradient(90deg, #94a3b8 1px, transparent 1px)"
+              ? "linear-gradient(#8B7355 1px, transparent 1px), linear-gradient(90deg, #8B7355 1px, transparent 1px)"
               : "linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)",
             backgroundSize: "48px 48px",
           }}
@@ -169,7 +171,7 @@ export function FloorPlan({
                 key={i}
                 className={cn(
                   "absolute -translate-x-1/2 -translate-y-1/2 leading-none select-none",
-                  light ? "text-emerald-500" : "text-emerald-400",
+                  light ? "text-emerald-600" : "text-emerald-400",
                 )}
                 style={{
                   left: pct(it.x, width),
@@ -187,7 +189,10 @@ export function FloorPlan({
             return (
               <div
                 key={i}
-                className="absolute -translate-x-1/2 bg-[#3a4049] flex flex-col items-center justify-end"
+                className={cn(
+                  "absolute -translate-x-1/2 flex flex-col items-center justify-end",
+                  light ? "bg-[#C4B8A8]" : "bg-[#3a4049]",
+                )}
                 style={{
                   left: pct(it.x, width),
                   top: pct(it.y, height),
@@ -197,7 +202,10 @@ export function FloorPlan({
               >
                 {it.arrow && (
                   <div
-                    className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-zinc-500"
+                    className={cn(
+                      "absolute -bottom-2 left-1/2 -translate-x-1/2",
+                      light ? "text-stone-400" : "text-zinc-500",
+                    )}
                     style={{ fontSize: compact ? 10 : 16 }}
                     aria-hidden
                   >
@@ -215,7 +223,12 @@ export function FloorPlan({
             return (
               <div
                 key={i}
-                className="absolute -translate-x-1/2 -translate-y-1/2 rounded-md bg-zinc-600/35 border border-zinc-500/20"
+                className={cn(
+                  "absolute -translate-x-1/2 -translate-y-1/2 rounded-md border",
+                  light
+                    ? "bg-stone-300/50 border-stone-400/30"
+                    : "bg-zinc-600/35 border-zinc-500/20",
+                )}
                 style={{
                   left: pct(it.x, width),
                   top: pct(it.y, height),
@@ -236,6 +249,7 @@ export function FloorPlan({
           const guest = it.guestLabel ?? it.guest;
           const canDrop = !!onDropParty && status !== "seated";
           const fillCls = (light ? statusFillLight : statusFillDark)[status];
+          const showInlineMeta = !!guest || !!it.time;
 
           return (
             <button
@@ -271,8 +285,8 @@ export function FloorPlan({
                 fillCls,
                 isSelected &&
                   (light
-                    ? "ring-2 ring-emerald-500 ring-offset-2 ring-offset-[#f4f6f8] scale-105"
-                    : "ring-2 ring-emerald-300 ring-offset-2 ring-offset-[#22262c] scale-105"),
+                    ? "ring-2 ring-[#00A36C] ring-offset-2 ring-offset-[#E8E4DC] scale-105"
+                    : "ring-2 ring-[#39D400] ring-offset-2 ring-offset-[#1a1d22] scale-105"),
                 onSelect && "cursor-pointer hover:brightness-110",
                 movable && "cursor-grab active:cursor-grabbing",
               )}
@@ -285,32 +299,31 @@ export function FloorPlan({
                 minHeight: fill ? 32 : compact ? 14 : 28,
                 fontSize: fill ? 12 : compact ? 9 : 11,
               }}
-              title={guest ? `${it.label ?? id} · ${guest}` : String(it.label ?? id)}
+              title={
+                guest
+                  ? `${it.label ?? id} · ${guest}${it.time ? ` · ${it.time}` : ""}`
+                  : String(it.label ?? id)
+              }
             >
               <span className="leading-none font-bold">{it.label ?? id}</span>
-              {guest && (
+              {showInlineMeta && (
                 <span
-                  className="mt-0.5 max-w-[90%] truncate px-0.5 opacity-90"
+                  className="mt-0.5 max-w-[92%] truncate px-0.5 opacity-95 leading-tight text-center"
                   style={{ fontSize: fill ? 9 : 8 }}
                 >
-                  {guest}
+                  {guest && it.time && status !== "seated"
+                    ? `${guest} · ${it.time}`
+                    : guest || it.time}
                 </span>
               )}
-              {!guest && (it.time || it.time2) && (
+              {!showInlineMeta && it.time2 && (
                 <div
                   className="absolute -bottom-5 left-1/2 -translate-x-1/2 flex flex-col items-center gap-0.5 pointer-events-none"
                   style={{ fontSize: 9 }}
                 >
-                  {it.time && (
-                    <span className="bg-black/80 text-white px-1.5 rounded-sm leading-tight whitespace-nowrap">
-                      {it.time}
-                    </span>
-                  )}
-                  {it.time2 && (
-                    <span className="bg-black/80 text-white px-1.5 rounded-sm leading-tight whitespace-nowrap">
-                      {it.time2}
-                    </span>
-                  )}
+                  <span className="bg-black/80 text-white px-1.5 rounded-sm leading-tight whitespace-nowrap">
+                    {it.time2}
+                  </span>
                 </div>
               )}
             </button>
@@ -319,6 +332,79 @@ export function FloorPlan({
       </div>
     </div>
   );
+}
+
+/**
+ * Fit table positions into the canvas so sparse DB layouts don't leave
+ * a huge empty band under a clustered top row.
+ */
+export function normalizeFloorLayout(
+  items: FloorItem[],
+  width = 1000,
+  height = 560,
+  padding = 56,
+): FloorItem[] {
+  const placed = items.filter(
+    (it): it is Extract<FloorItem, { kind: "round" | "rect" }> =>
+      (it.kind === "round" || it.kind === "rect") && it.id != null,
+  );
+  if (placed.length === 0) return items;
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const t of placed) {
+    const hw = t.kind === "round" ? (t.size ?? 64) / 2 : t.w / 2;
+    const hh = t.kind === "round" ? (t.size ?? 64) / 2 : t.h / 2;
+    minX = Math.min(minX, t.x - hw);
+    maxX = Math.max(maxX, t.x + hw);
+    minY = Math.min(minY, t.y - hh);
+    maxY = Math.max(maxY, t.y + hh);
+  }
+
+  const contentW = Math.max(40, maxX - minX);
+  const contentH = Math.max(40, maxY - minY);
+  const availW = Math.max(80, width - padding * 2);
+  const availH = Math.max(80, height - padding * 2);
+  // Fill the pane when tables are clustered; never shrink past reading size.
+  const scale = Math.min(availW / contentW, availH / contentH);
+  const usedW = contentW * scale;
+  const usedH = contentH * scale;
+  const originX = (width - usedW) / 2;
+  const originY = (height - usedH) / 2;
+
+  const mapPoint = (x: number, y: number) => ({
+    x: Math.round(originX + (x - minX) * scale),
+    y: Math.round(originY + (y - minY) * scale),
+  });
+
+  return items.map((it) => {
+    if (it.kind === "plant") {
+      const p = mapPoint(it.x, it.y);
+      return { ...it, x: p.x, y: p.y };
+    }
+    if (it.kind === "divider") {
+      const p = mapPoint(it.x, it.y);
+      return { ...it, x: p.x, y: p.y, h: Math.max(24, Math.round(it.h * scale)) };
+    }
+    if (it.kind === "round") {
+      const p = mapPoint(it.x, it.y);
+      const size = Math.max(36, Math.round((it.size ?? 64) * Math.min(scale, 1.25)));
+      return { ...it, x: p.x, y: p.y, size };
+    }
+    if (it.kind === "rect") {
+      const p = mapPoint(it.x, it.y);
+      return {
+        ...it,
+        x: p.x,
+        y: p.y,
+        w: Math.max(40, Math.round(it.w * Math.min(scale, 1.25))),
+        h: Math.max(36, Math.round(it.h * Math.min(scale, 1.25))),
+      };
+    }
+    return it;
+  });
 }
 
 /** Demo layout fallback when no saved table positions exist. */

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/Sidebar";
 import { Calendar, ChevronLeft, ChevronRight, Filter, Plus, CalendarDays, Users, Ban, UserX, ArrowUpDown, X, MapPin, Clock, Globe, Pencil, MoreHorizontal, User, Phone, Mail, StickyNote, Loader2, Check } from "lucide-react";
-import { useBookings, slugify, useCreateBooking, useUpdateBooking, useDashboardStats, type BookingStatus } from "@/lib/v2-data";
+import { useBookings, slugify, useCreateBooking, useUpdateBooking, useDashboardStats, localDateISO, type BookingStatus } from "@/lib/v2-data";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -73,7 +73,7 @@ const sectionKeyToLabel: Record<SectionKey, string> = {
   private: "Private Room",
 };
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => localDateISO();
 const prettyDate = (iso: string) => {
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -85,9 +85,8 @@ const statusLabel = (s: BookingStatus) =>
 type DateMode = "single" | "upcoming";
 
 const addDaysISO = (iso: string, days: number) => {
-  const d = new Date(iso + "T00:00:00");
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  const [y, m, d] = iso.split("-").map(Number);
+  return localDateISO(new Date(y, m - 1, d + days));
 };
 
 function BookingsPage() {
