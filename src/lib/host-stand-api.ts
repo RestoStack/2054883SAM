@@ -15,6 +15,8 @@ export type HostFloorTable = {
   table_number: string;
   section: string | null;
   capacity: number;
+  capacity_min?: number;
+  capacity_max?: number;
   shape: "round" | "square" | "rectangle";
   position_x: number | null;
   position_y: number | null;
