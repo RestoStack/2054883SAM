@@ -14,7 +14,6 @@ import {
 } from "@/components/onboarding/wizard";
 import {
   billingVerify,
-  onboardingBootstrapOwner,
   onboardingCheckSlug,
   onboardingComplete,
   onboardingGetV1,
@@ -50,7 +49,7 @@ export const Route = createFileRoute("/onboarding/$step")({
 function OnboardingStepPage() {
   const { step: stepParam } = Route.useParams();
   const step = stepFromParam(stepParam);
-  const { session, loading, org, needsPayment, subscriptionLive, refreshStaff, staff } = useAuth();
+  const { session, loading, org, subscriptionLive, refreshStaff, staff } = useAuth();
   const navigate = useNavigate();
 
   const [booting, setBooting] = useState(true);
@@ -59,7 +58,6 @@ function OnboardingStepPage() {
   const [orgId, setOrgId] = useState<string | null>(org.activeOrganizationId);
   const [locationId, setLocationId] = useState<string | null>(null);
   const [slugAvailable, setSlugAvailable] = useState<boolean | null>(null);
-  const [resumed, setResumed] = useState(false);
 
   const [restaurant, setRestaurant] = useState<RestaurantStepInput>({
     name: "",
@@ -104,25 +102,26 @@ function OnboardingStepPage() {
       navigate({ to: "/login", replace: true });
       return;
     }
-    // Do not billing-gate the wizard — owners must see onboarding first.
 
+    // One-shot boot — never re-run on staff/org churn (that loop froze the tab).
     let cancelled = false;
     (async () => {
-      const meta = (session.user.user_metadata as Record<string, unknown>) ?? {};
-      const seedName =
-        (meta.full_name as string) ||
-        (meta.name as string) ||
-        (session.user.email ?? "").split("@")[0] ||
-        "";
+      try {
+        const meta = (session.user.user_metadata as Record<string, unknown>) ?? {};
+        const seedName =
+          (meta.full_name as string) ||
+          (meta.name as string) ||
+          (session.user.email ?? "").split("@")[0] ||
+          "";
 
-      let id = orgId;
-      if (!id) {
-        // Legacy staff already has a restaurant — skip bootstrap/create (avoids hang/errors).
-        if (staff?.restaurant_id) {
+        if (staff?.restaurant_id || !orgId) {
+          // Legacy restaurant workspace: show wizard UI without bootstrap RPCs.
           if (!cancelled) {
             setRestaurant((r) => ({
               ...r,
-              name: r.name || (seedName ? `${seedName.split(/\s+/)[0]}'s restaurant` : "My restaurant"),
+              name:
+                r.name ||
+                (seedName ? `${seedName.split(/\s+/)[0]}'s restaurant` : "My restaurant"),
             }));
             setError(null);
             setBooting(false);
@@ -130,129 +129,42 @@ function OnboardingStepPage() {
           return;
         }
 
-        const boot = await onboardingBootstrapOwner(
-          seedName,
-          seedName ? `${seedName.split(/\s+/)[0]}'s restaurant` : "My restaurant",
-        );
-        if (!boot.ok) {
-          // Org schema / bootstrap RPC missing — fall back to legacy v2 signup.
-          const legacy = await createRestaurantForCurrentUser({
-            restaurantName: seedName ? `${seedName.split(/\s+/)[0]}'s restaurant` : "My restaurant",
-            fullName: seedName,
-            plan: readSelectedPlan(),
-          });
-          if (legacy.ok) {
-            await refreshStaff();
-            // Stay IN the wizard — do not jump to /app. Seed step-1 fields.
-            if (!cancelled) {
-              setRestaurant((r) => ({
-                ...r,
-                name: r.name || (seedName ? `${seedName.split(/\s+/)[0]}'s restaurant` : "My restaurant"),
-                slug: legacy.slug || r.slug,
-              }));
-              if (legacy.slug) setSlug(legacy.slug);
-              setError(null);
-              setBooting(false);
-            }
-            return;
-          }
-          if (!cancelled) {
-            // Still show the wizard UI so the owner isn't stuck on a blank/error screen.
-            setRestaurant((r) => ({
-              ...r,
-              name: r.name || (seedName ? `${seedName.split(/\s+/)[0]}'s restaurant` : "My restaurant"),
-            }));
-            setError(
-              legacy.needsMigration
-                ? `${legacy.error}\n\nOpen /onboarding/1 after running the SQL — the wizard will appear here.`
-                : boot.error || legacy.error,
-            );
-            setBooting(false);
-          }
-          return;
-        }
-        id = String(boot.organization_id);
-        setOrgId(id);
-        await refreshStaff();
-      }
-
-      if (!subscriptionLive && id) {
-        const verified = await billingVerify(id);
-        if (!verified.ok || !verified.live) {
-          navigate({ to: "/billing/setup", replace: true });
-          return;
-        }
-      }
-
-      const prog = await onboardingGetV1(id!);
-      if (cancelled) return;
-
-      if (prog.ok) {
-        // Do not auto-skip the wizard when completed_at is set during emergency signup.
-        // Only leave if the user explicitly finished (draft.completed) or asks via dashboard CTA.
-        if (prog.completed_at && (prog.draft as any)?.completed === true) {
-          navigate({ to: "/app", replace: true });
-          return;
-        }
-        if (prog.location_id) setLocationId(String(prog.location_id));
-        if (prog.public_slug) setSlug(String(prog.public_slug));
-
-        const loc = prog.location as Record<string, unknown> | null;
-        if (loc) {
-          setRestaurant((r) => ({
-            ...r,
-            name: String(loc.name ?? r.name),
-            address: String(loc.address ?? r.address ?? ""),
-            city: String(loc.city ?? r.city ?? ""),
-            phone: String(loc.phone ?? r.phone ?? ""),
-            website: String(loc.website ?? r.website ?? ""),
-            cuisine: String(loc.cuisine ?? r.cuisine ?? ""),
-            timezone: String(loc.timezone ?? r.timezone),
-            google_place_id: (loc.google_place_id as string) ?? null,
-            logo_url: (loc.logo_url as string) ?? null,
-            slug: String(loc.public_slug ?? r.slug ?? ""),
-          }));
-          if (!slug && loc.public_slug) setSlug(String(loc.public_slug));
-        }
-
-        const draft = (prog.draft as Record<string, unknown>) ?? {};
-        if (typeof draft.restaurant_name === "string" && draft.restaurant_name) {
-          setRestaurant((r) => ({ ...r, name: draft.restaurant_name as string }));
-        }
-        if (draft.menu && typeof draft.menu === "object") {
-          setMenu((m) => ({ ...m, ...(draft.menu as MenuStepInput) }));
-        }
-
-        const last = Number(prog.step) || 1;
-        if (!resumed && step !== last && last >= 1 && last <= 7) {
-          setResumed(true);
-          // Only auto-resume when landing on default step 1 from /onboarding redirect
-          if (stepParam === "1" || stepParam === "restaurant") {
-            navigate({
-              to: "/onboarding/$step",
-              params: { step: String(last) },
-              replace: true,
-            });
+        // Org mode path (only when we already have an org id).
+        if (!subscriptionLive && orgId) {
+          const verified = await billingVerify(orgId);
+          if (!verified.ok || !verified.live) {
+            navigate({ to: "/billing/setup", replace: true });
             return;
           }
         }
-      }
 
-      if (!restaurant.name && seedName) {
-        setRestaurant((r) => ({
-          ...r,
-          name: r.name || `${seedName.split(/\s+/)[0]}'s restaurant`,
-        }));
-      }
+        const prog = await onboardingGetV1(orgId);
+        if (cancelled) return;
 
-      setBooting(false);
+        if (prog.ok) {
+          if (prog.completed_at && (prog.draft as any)?.completed === true) {
+            navigate({ to: "/app", replace: true });
+            return;
+          }
+          if (prog.location_id) setLocationId(String(prog.location_id));
+          if (prog.public_slug) setSlug(String(prog.public_slug));
+        }
+
+        if (!cancelled) setBooting(false);
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Could not start onboarding");
+          setBooting(false);
+        }
+      }
     })();
 
     return () => {
       cancelled = true;
     };
+    // Intentionally run once after auth is ready — do not depend on staff/orgId churn.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, session, orgId, needsPayment, subscriptionLive, staff?.restaurant_id]);
+  }, [loading, !!session]);
 
   const requireOrg = () => {
     if (!orgId) {

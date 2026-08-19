@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -24,17 +24,11 @@ interface AuthCtx {
   loading: boolean;
   session: Session | null;
   staff: StaffUser | null;
-  /** Platform operator who can see every restaurant signup. */
   platformAdmin: boolean;
-  /** True when staff exists but restaurant onboarding is unfinished. */
   needsOnboarding: boolean;
-  /** Signed in but no org membership — needs invite or bootstrap. */
   needsInvite: boolean;
-  /** Org model context (empty/unavailable until Phase 0 migration applied). */
   org: OrgContext;
-  /** Owner needs fake (or Stripe) payment wall. */
   needsPayment: boolean;
-  /** Subscription allows app access (or legacy pre-migration). */
   subscriptionLive: boolean;
   signOut: () => Promise<void>;
   refreshStaff: () => Promise<void>;
@@ -61,8 +55,12 @@ async function loadStaffFor(authUserId: string): Promise<StaffUser | null> {
     .maybeSingle();
 
   if (!data) {
-    const { data: linked } = await supabase.rpc("v2_link_current_user_to_staff");
-    if (linked) data = linked as any;
+    try {
+      const { data: linked } = await supabase.rpc("v2_link_current_user_to_staff");
+      if (linked) data = linked as unknown as typeof data;
+    } catch {
+      /* ignore */
+    }
   }
   if (!data) return null;
 
@@ -78,17 +76,10 @@ async function loadStaffFor(authUserId: string): Promise<StaffUser | null> {
   };
 }
 
-/**
- * When org memberships exist but v2_users row is missing, synthesize a staff
- * view from membership + legacy_restaurant_id so existing screens keep working.
- */
 async function staffFromOrg(authUserId: string, org: OrgContext): Promise<StaffUser | null> {
   if (!org.available || !org.activeOrganizationId || !org.role) return null;
   const mem = org.memberships.find((m) => m.organization_id === org.activeOrganizationId);
   if (!mem?.legacy_restaurant_id) return null;
-
-  // Do NOT call supabase.auth.getUser() here — it deadlocks inside onAuthStateChange.
-  const meta: Record<string, unknown> = {};
 
   const { data: restaurant } = await supabase
     .from("v2_restaurants")
@@ -99,7 +90,7 @@ async function staffFromOrg(authUserId: string, org: OrgContext): Promise<StaffU
   return {
     id: authUserId,
     restaurant_id: mem.legacy_restaurant_id,
-    full_name: (meta.full_name as string) || "Team member",
+    full_name: "Team member",
     role: orgRoleToStaffRole(org.role),
     email: null,
     avatar_url: null,
@@ -126,9 +117,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const sessionRef = useRef<Session | null>(null);
   const hydratingRef = useRef(false);
+  const lastHydratedUser = useRef<string | null>(null);
 
-  const hydrate = async (authUserId: string) => {
+  const hydrate = async (authUserId: string, force = false) => {
     if (hydratingRef.current) return;
+    if (!force && lastHydratedUser.current === authUserId) return;
     hydratingRef.current = true;
     try {
       const [s, p, o] = await Promise.all([
@@ -138,11 +131,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ]);
       setOrg(o);
       setPlatformAdmin(p);
-      if (s) {
-        setStaff(s);
-      } else {
-        setStaff(await staffFromOrg(authUserId, o));
-      }
+      if (s) setStaff(s);
+      else setStaff(await staffFromOrg(authUserId, o));
+      lastHydratedUser.current = authUserId;
     } catch (e) {
       console.warn("auth hydrate failed", e);
     } finally {
@@ -156,23 +147,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStaff(null);
       setPlatformAdmin(false);
       setOrg(EMPTY_ORG);
+      lastHydratedUser.current = null;
       return;
     }
-    await hydrate(current.user.id);
+    await hydrate(current.user.id, true);
   };
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
       sessionRef.current = newSession;
       setSession(newSession);
+
       if (event === "SIGNED_OUT") {
         setStaff(null);
         setPlatformAdmin(false);
         setOrg(EMPTY_ORG);
-      } else if (newSession?.user) {
-        // Defer ALL supabase calls out of the auth callback (prevents mutex deadlock).
+        lastHydratedUser.current = null;
+        return;
+      }
+
+      // Only hydrate on real sign-in / initial session — never on TOKEN_REFRESHED
+      // (token refresh storms freeze the tab via repeated setState + RPC).
+      if (
+        newSession?.user &&
+        (event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "USER_UPDATED")
+      ) {
         setTimeout(() => {
-          void hydrate(newSession.user.id);
+          void hydrate(newSession.user.id, event === "SIGNED_IN");
         }, 0);
       }
     });
@@ -181,7 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionRef.current = data.session;
       setSession(data.session);
       if (data.session?.user) {
-        await hydrate(data.session.user.id);
+        await hydrate(data.session.user.id, true);
       }
       setLoading(false);
     });
@@ -192,10 +193,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    sessionRef.current = null;
     setStaff(null);
     setPlatformAdmin(false);
     setOrg(EMPTY_ORG);
     setSession(null);
+    lastHydratedUser.current = null;
   };
 
   const needsInvite =
@@ -205,16 +208,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     !staff &&
     !platformAdmin;
 
-  // New Google/email accounts (no staff row yet) must reach the wizard.
-  // Legacy staff with a restaurant always count as onboarded enough to leave invite limbo.
+  // Legacy v2 staff with a restaurant can use the app — do not trap them in the
+  // org-wizard loop (that freeze/crash cycle). Only force onboarding when there
+  // is truly no restaurant yet.
   const needsOnboarding =
     !!session &&
     !platformAdmin &&
-    (needsInvite ||
-      (!staff && org.available && org.memberships.length === 0) ||
-      (!!staff && !staff.onboarding_completed_at));
+    !staff?.restaurant_id &&
+    (needsInvite || (!staff && org.available && org.memberships.length === 0));
 
-  // No org yet → treat as live so AuthGate does not send people to /billing/locked.
   const subscriptionLive = !org.available
     ? true
     : !org.activeOrganizationId
@@ -231,25 +233,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       org.subscriptionStatus === "unpaid" ||
       org.subscriptionStatus === null);
 
-  return (
-    <Ctx.Provider
-      value={{
-        loading,
-        session,
-        staff,
-        platformAdmin,
-        needsOnboarding,
-        needsInvite,
-        org,
-        needsPayment,
-        subscriptionLive,
-        signOut,
-        refreshStaff,
-      }}
-    >
-      {children}
-    </Ctx.Provider>
+  const value = useMemo(
+    () => ({
+      loading,
+      session,
+      staff,
+      platformAdmin,
+      needsOnboarding,
+      needsInvite,
+      org,
+      needsPayment,
+      subscriptionLive,
+      signOut,
+      refreshStaff,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      loading,
+      session,
+      staff,
+      platformAdmin,
+      needsOnboarding,
+      needsInvite,
+      org,
+      needsPayment,
+      subscriptionLive,
+    ],
   );
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useAuth() {

@@ -1,5 +1,5 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -16,68 +16,76 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
-/** MVP: Google or email+password only — no staff PIN login (docs/DECISIONS.md). */
+function homeForStaff(role: string | undefined) {
+  const isMobile =
+    typeof window !== "undefined" &&
+    (window.matchMedia("(max-width: 768px)").matches ||
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+  if (isMobile) return "/app";
+  if (role === "hostess") return "/app/host";
+  return "/app/dashboard";
+}
+
 function LoginPage() {
-  const navigate = useNavigate();
-  const { session, staff, loading, needsOnboarding, needsInvite, needsPayment, subscriptionLive } =
-    useAuth();
+  const { session, staff, loading, needsOnboarding, needsInvite } = useAuth();
   const demo = isDemoAccessEnabled();
   const [email, setEmail] = useState(demo ? "admin@jukebox.com" : "");
   const [password, setPassword] = useState(demo ? "admin1234" : "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const redirected = useRef(false);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || redirected.current) return;
     if (!session) return;
-    // New accounts → wizard (never billing first).
+
+    // Prefer hard redirects after auth to avoid client-router + auth listener loops.
     if (needsInvite || needsOnboarding) {
-      navigate({ to: "/onboarding", replace: true });
+      redirected.current = true;
+      window.location.replace("/onboarding/1");
       return;
     }
-    if (needsPayment) {
-      navigate({ to: "/billing/setup", replace: true });
-      return;
-    }
-    if (!subscriptionLive) {
-      navigate({ to: "/billing/locked", replace: true });
-      return;
-    }
-    if (staff) {
+    if (staff?.restaurant_id) {
+      redirected.current = true;
       try {
         sessionStorage.setItem("restostack:portal", "restaurant");
       } catch {
         /* ignore */
       }
-      const isMobile =
-        typeof window !== "undefined" &&
-        (window.matchMedia("(max-width: 768px)").matches ||
-          /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
-      const home = isMobile
-        ? "/app"
-        : staff.role === "hostess"
-          ? "/host-stand"
-          : "/dashboard";
-      navigate({ to: home, replace: true });
+      window.location.replace(homeForStaff(staff.role));
     }
-  }, [
-    loading,
-    session,
-    staff,
-    needsOnboarding,
-    needsInvite,
-    needsPayment,
-    subscriptionLive,
-    navigate,
-  ]);
+  }, [loading, session, staff, needsOnboarding, needsInvite]);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setBusy(true);
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
-    setBusy(false);
-    if (err) setError(err.message);
+    try {
+      const { error: err } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (err) {
+        setError(err.message);
+        setBusy(false);
+        return;
+      }
+      // Yield auth lock, then hard-enter the app (staff hydrate runs in AuthProvider).
+      await new Promise((r) => setTimeout(r, 120));
+      const { data: staffRow } = await supabase
+        .from("v2_users")
+        .select("role, restaurant_id")
+        .limit(1)
+        .maybeSingle();
+      if (staffRow?.restaurant_id) {
+        window.location.replace(homeForStaff(staffRow.role));
+        return;
+      }
+      window.location.replace("/onboarding/1");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign in failed");
+      setBusy(false);
+    }
   };
 
   const handleGoogle = async () => {
