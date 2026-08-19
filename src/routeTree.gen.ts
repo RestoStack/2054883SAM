@@ -36,6 +36,7 @@ import { Route as PlatformRestaurantsRouteImport } from './routes/platform.resta
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as CustomersIdRouteImport } from './routes/customers_.$id'
 import { Route as BookSlugRouteImport } from './routes/book_.$slug'
+import { Route as BillingSetupRouteImport } from './routes/billing.setup'
 import { Route as BillingLockedRouteImport } from './routes/billing.locked'
 import { Route as BillingCheckoutRouteImport } from './routes/billing.checkout'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
@@ -175,6 +176,11 @@ const BookSlugRoute = BookSlugRouteImport.update({
   path: '/book/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BillingSetupRoute = BillingSetupRouteImport.update({
+  id: '/billing/setup',
+  path: '/billing/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BillingLockedRoute = BillingLockedRouteImport.update({
   id: '/billing/locked',
   path: '/billing/locked',
@@ -217,6 +223,7 @@ export interface FileRoutesByFullPath {
   '/auth/callback': typeof AuthCallbackRoute
   '/billing/checkout': typeof BillingCheckoutRoute
   '/billing/locked': typeof BillingLockedRoute
+  '/billing/setup': typeof BillingSetupRoute
   '/book/$slug': typeof BookSlugRoute
   '/customers/$id': typeof CustomersIdRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -249,6 +256,7 @@ export interface FileRoutesByTo {
   '/auth/callback': typeof AuthCallbackRoute
   '/billing/checkout': typeof BillingCheckoutRoute
   '/billing/locked': typeof BillingLockedRoute
+  '/billing/setup': typeof BillingSetupRoute
   '/book/$slug': typeof BookSlugRoute
   '/customers/$id': typeof CustomersIdRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -282,6 +290,7 @@ export interface FileRoutesById {
   '/auth/callback': typeof AuthCallbackRoute
   '/billing/checkout': typeof BillingCheckoutRoute
   '/billing/locked': typeof BillingLockedRoute
+  '/billing/setup': typeof BillingSetupRoute
   '/book_/$slug': typeof BookSlugRoute
   '/customers_/$id': typeof CustomersIdRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -316,6 +325,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/billing/checkout'
     | '/billing/locked'
+    | '/billing/setup'
     | '/book/$slug'
     | '/customers/$id'
     | '/invite/$token'
@@ -348,6 +358,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/billing/checkout'
     | '/billing/locked'
+    | '/billing/setup'
     | '/book/$slug'
     | '/customers/$id'
     | '/invite/$token'
@@ -380,6 +391,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/billing/checkout'
     | '/billing/locked'
+    | '/billing/setup'
     | '/book_/$slug'
     | '/customers_/$id'
     | '/invite/$token'
@@ -413,6 +425,7 @@ export interface RootRouteChildren {
   AuthCallbackRoute: typeof AuthCallbackRoute
   BillingCheckoutRoute: typeof BillingCheckoutRoute
   BillingLockedRoute: typeof BillingLockedRoute
+  BillingSetupRoute: typeof BillingSetupRoute
   BookSlugRoute: typeof BookSlugRoute
   CustomersIdRoute: typeof CustomersIdRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -611,6 +624,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BookSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/billing/setup': {
+      id: '/billing/setup'
+      path: '/billing/setup'
+      fullPath: '/billing/setup'
+      preLoaderRoute: typeof BillingSetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/billing/locked': {
       id: '/billing/locked'
       path: '/billing/locked'
@@ -661,6 +681,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthCallbackRoute: AuthCallbackRoute,
   BillingCheckoutRoute: BillingCheckoutRoute,
   BillingLockedRoute: BillingLockedRoute,
+  BillingSetupRoute: BillingSetupRoute,
   BookSlugRoute: BookSlugRoute,
   CustomersIdRoute: CustomersIdRoute,
   InviteTokenRoute: InviteTokenRoute,

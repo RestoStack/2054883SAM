@@ -77,7 +77,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         return;
       }
       if (needsPayment) {
-        navigate({ to: "/billing/checkout", replace: true });
+        navigate({ to: "/billing/setup", replace: true });
         return;
       }
       if (!subscriptionLive) {
@@ -104,7 +104,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
     // Subscription gate for restaurant app.
     if (needsPayment) {
-      navigate({ to: "/billing/checkout", replace: true });
+      navigate({ to: "/billing/setup", replace: true });
       return;
     }
     if (!subscriptionLive) {

@@ -62,7 +62,7 @@ function BillingLockedPage() {
         <div className="mt-6 flex flex-col gap-2">
           {needsPayment && (
             <Link
-              to="/billing/checkout"
+              to="/billing/setup"
               className="rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground"
             >
               Complete activation
