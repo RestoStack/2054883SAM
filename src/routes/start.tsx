@@ -21,8 +21,14 @@ function StartPaywallPage() {
   const [busy, setBusy] = useState<PlanId | "google" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Public plan picker only when env explicitly opens signup; otherwise invite funnel.
   if (!isPublicSignupEnabled()) {
-    return <InviteOnlyPanel />;
+    return (
+      <InviteOnlyPanel
+        title="Invite-only for now"
+        description="Self-serve trials are closed. Use your invite link, or request a demo and we’ll activate your restaurant."
+      />
+    );
   }
 
   const choosePlan = (plan: PlanId) => {

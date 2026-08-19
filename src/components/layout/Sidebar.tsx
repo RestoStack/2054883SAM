@@ -85,11 +85,15 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function RestaurantTile() {
-  const { staff } = useAuth();
+  const { staff, org, refreshStaff } = useAuth();
   const [info, setInfo] = useState<{ name: string; city: string | null; logo_url: string | null } | null>(null);
+  const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
-    if (!staff) { setInfo(null); return; }
+    if (!staff) {
+      setInfo(null);
+      return;
+    }
     (async () => {
       const { data } = await supabase
         .from("v2_restaurants")
@@ -100,22 +104,70 @@ function RestaurantTile() {
     })();
   }, [staff]);
 
-  const name = info?.name ?? (staff ? "Your restaurant" : "RestoStack");
+  const name =
+    org.memberships.find((m) => m.organization_id === org.activeOrganizationId)?.organization_name ??
+    info?.name ??
+    (staff ? "Your restaurant" : "RestoStack");
   const city = info?.city ?? (staff ? "—" : "");
+  const multi = org.available && org.memberships.length > 1;
+
+  const switchOrg = async (organizationId: string) => {
+    if (organizationId === org.activeOrganizationId) return;
+    setSwitching(true);
+    const mem = org.memberships.find((m) => m.organization_id === organizationId);
+    const { setActiveOrgContext } = await import("@/lib/org");
+    await setActiveOrgContext({
+      organizationId,
+      locationId: mem?.location_id ?? null,
+    });
+    await refreshStaff();
+    setSwitching(false);
+  };
 
   return (
-    <button className="flex w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-sidebar-accent/50 text-left">
-      {info?.logo_url ? (
-        <img src={info.logo_url} alt="" className="size-8 rounded-md object-cover shrink-0" />
-      ) : null}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-          <span className="truncate">{name}</span> <span className="size-1.5 rounded-full bg-success shrink-0" />
+    <div className="space-y-2">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-sidebar-accent/50 text-left"
+        disabled={switching}
+      >
+        {info?.logo_url ? (
+          <img src={info.logo_url} alt="" className="size-8 rounded-md object-cover shrink-0" />
+        ) : null}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+            <span className="truncate">{name}</span>{" "}
+            <span className="size-1.5 rounded-full bg-success shrink-0" />
+          </div>
+          <div className="text-xs text-muted-foreground truncate">
+            {org.role ? `${org.role} · ` : ""}
+            {city}
+          </div>
         </div>
-        <div className="text-xs text-muted-foreground truncate">{city}</div>
-      </div>
-      <ChevronRight className="size-4 text-muted-foreground shrink-0" />
-    </button>
+        <ChevronRight className="size-4 text-muted-foreground shrink-0" />
+      </button>
+      {multi && (
+        <div className="px-1 space-y-1">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground px-1">Switch org</div>
+          {org.memberships.map((m) => (
+            <button
+              key={m.organization_id}
+              type="button"
+              disabled={switching}
+              onClick={() => void switchOrg(m.organization_id)}
+              className={cn(
+                "w-full text-left rounded-md px-2 py-1.5 text-xs truncate",
+                m.organization_id === org.activeOrganizationId
+                  ? "bg-sidebar-accent font-semibold"
+                  : "hover:bg-sidebar-accent/50 text-muted-foreground",
+              )}
+            >
+              {m.organization_name ?? m.organization_id.slice(0, 8)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

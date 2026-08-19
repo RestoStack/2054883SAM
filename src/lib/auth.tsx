@@ -1,6 +1,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  loadOrgContext,
+  orgRoleToStaffRole,
+  subscriptionIsLive,
+  type OrgContext,
+} from "@/lib/org";
 
 export type StaffRole = "admin" | "hostess" | "server";
 
@@ -22,9 +28,26 @@ interface AuthCtx {
   platformAdmin: boolean;
   /** True when staff exists but restaurant onboarding is unfinished. */
   needsOnboarding: boolean;
+  /** Org model context (empty/unavailable until Phase 0 migration applied). */
+  org: OrgContext;
+  /** Owner needs fake (or Stripe) payment wall. */
+  needsPayment: boolean;
+  /** Subscription allows app access (or legacy pre-migration). */
+  subscriptionLive: boolean;
   signOut: () => Promise<void>;
   refreshStaff: () => Promise<void>;
 }
+
+const EMPTY_ORG: OrgContext = {
+  available: false,
+  memberships: [],
+  activeOrganizationId: null,
+  activeLocationId: null,
+  role: null,
+  subscriptionStatus: null,
+  billingProvider: null,
+  signupMode: null,
+};
 
 const Ctx = createContext<AuthCtx | null>(null);
 
@@ -53,8 +76,36 @@ async function loadStaffFor(authUserId: string): Promise<StaffUser | null> {
   };
 }
 
+/**
+ * When org memberships exist but v2_users row is missing, synthesize a staff
+ * view from membership + legacy_restaurant_id so existing screens keep working.
+ */
+async function staffFromOrg(authUserId: string, org: OrgContext): Promise<StaffUser | null> {
+  if (!org.available || !org.activeOrganizationId || !org.role) return null;
+  const mem = org.memberships.find((m) => m.organization_id === org.activeOrganizationId);
+  if (!mem?.legacy_restaurant_id) return null;
+
+  const { data: user } = await supabase.auth.getUser();
+  const meta = user.user?.user_metadata ?? {};
+
+  const { data: restaurant } = await supabase
+    .from("v2_restaurants")
+    .select("onboarding_completed_at")
+    .eq("id", mem.legacy_restaurant_id)
+    .maybeSingle();
+
+  return {
+    id: authUserId,
+    restaurant_id: mem.legacy_restaurant_id,
+    full_name: (meta.full_name as string) || user.user?.email || "Team member",
+    role: orgRoleToStaffRole(org.role),
+    email: user.user?.email ?? null,
+    avatar_url: null,
+    onboarding_completed_at: restaurant?.onboarding_completed_at ?? null,
+  };
+}
+
 async function loadPlatformAdmin(): Promise<boolean> {
-  // Claim from allowlist if eligible, then report status.
   const { data: claimed } = await supabase.rpc("v2_claim_platform_admin");
   if (claimed === true) return true;
   const { data } = await supabase.rpc("v2_is_platform_admin");
@@ -65,17 +116,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [staff, setStaff] = useState<StaffUser | null>(null);
   const [platformAdmin, setPlatformAdmin] = useState(false);
+  const [org, setOrg] = useState<OrgContext>(EMPTY_ORG);
   const [loading, setLoading] = useState(true);
+
+  const hydrate = async (authUserId: string) => {
+    const [s, p, o] = await Promise.all([
+      loadStaffFor(authUserId),
+      loadPlatformAdmin(),
+      loadOrgContext(authUserId),
+    ]);
+    setOrg(o);
+    setPlatformAdmin(p);
+    if (s) {
+      setStaff(s);
+    } else {
+      setStaff(await staffFromOrg(authUserId, o));
+    }
+  };
 
   const refreshStaff = async () => {
     if (!session?.user) {
       setStaff(null);
       setPlatformAdmin(false);
+      setOrg(EMPTY_ORG);
       return;
     }
-    const [s, p] = await Promise.all([loadStaffFor(session.user.id), loadPlatformAdmin()]);
-    setStaff(s);
-    setPlatformAdmin(p);
+    await hydrate(session.user.id);
   };
 
   useEffect(() => {
@@ -84,14 +150,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (event === "SIGNED_OUT") {
         setStaff(null);
         setPlatformAdmin(false);
+        setOrg(EMPTY_ORG);
       } else if (newSession?.user) {
-        setTimeout(async () => {
-          const [s, p] = await Promise.all([
-            loadStaffFor(newSession.user.id),
-            loadPlatformAdmin(),
-          ]);
-          setStaff(s);
-          setPlatformAdmin(p);
+        setTimeout(() => {
+          void hydrate(newSession.user.id);
         }, 0);
       }
     });
@@ -99,31 +161,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(async ({ data }) => {
       setSession(data.session);
       if (data.session?.user) {
-        const [s, p] = await Promise.all([
-          loadStaffFor(data.session.user.id),
-          loadPlatformAdmin(),
-        ]);
-        setStaff(s);
-        setPlatformAdmin(p);
+        await hydrate(data.session.user.id);
       }
       setLoading(false);
     });
 
     return () => sub.subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const signOut = async () => {
     await supabase.auth.signOut();
     setStaff(null);
     setPlatformAdmin(false);
+    setOrg(EMPTY_ORG);
     setSession(null);
   };
 
   const needsOnboarding = !!session && (!staff || !staff.onboarding_completed_at);
 
+  // Pre-migration: treat as live so existing tenants are not locked out.
+  const subscriptionLive = !org.available
+    ? true
+    : !org.activeOrganizationId
+      ? true
+      : subscriptionIsLive(org.subscriptionStatus);
+
+  const needsPayment =
+    !!session &&
+    org.available &&
+    !!org.activeOrganizationId &&
+    org.role === "owner" &&
+    (org.subscriptionStatus === "incomplete" ||
+      org.subscriptionStatus === "canceled" ||
+      org.subscriptionStatus === "unpaid" ||
+      org.subscriptionStatus === null);
+
   return (
     <Ctx.Provider
-      value={{ loading, session, staff, platformAdmin, needsOnboarding, signOut, refreshStaff }}
+      value={{
+        loading,
+        session,
+        staff,
+        platformAdmin,
+        needsOnboarding,
+        org,
+        needsPayment,
+        subscriptionLive,
+        signOut,
+        refreshStaff,
+      }}
     >
       {children}
     </Ctx.Provider>

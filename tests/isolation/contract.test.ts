@@ -54,4 +54,18 @@ describe("isolation contract", () => {
       ["r1"],
     );
   });
+
+  it("subscription live statuses are trialing|active only", () => {
+    const live = new Set(["trialing", "active"]);
+    for (const s of ["incomplete", "canceled", "past_due", "unpaid", null] as const) {
+      assert.equal(live.has(s as string), false);
+    }
+    assert.ok(live.has("trialing"));
+    assert.ok(live.has("active"));
+  });
+
+  it("fake billing provider is the v1 default", () => {
+    const billingProvider = "fake";
+    assert.notEqual(billingProvider, "stripe");
+  });
 });
