@@ -10,8 +10,8 @@ export type Role = "admin" | "hostess" | "server";
 
 export const ROLE_META: Record<Role, { label: string; icon: typeof Shield; home: string; desc: string }> = {
   admin:   { label: "Owner", icon: Shield,   home: "/dashboard",   desc: "Full restaurant access" },
-  hostess: { label: "Hostess",     icon: Users,    home: "/host-stand",  desc: "Floor, reservations, waitlist" },
-  server:  { label: "Server",      icon: Utensils, home: "/server-app",  desc: "Order pad with upsells" },
+  hostess: { label: "Host",        icon: Users,    home: "/host-stand",  desc: "Floor & reservations" },
+  server:  { label: "Host",        icon: Utensils, home: "/host-stand",  desc: "Floor & reservations" },
 };
 
 const STORAGE_KEY = "restostack:role";

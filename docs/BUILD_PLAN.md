@@ -2,7 +2,8 @@
 
 **Objective:** Live multi-tenant app at `restostacks.com` with proven isolation. Every phase judged by “does this get us to a safe production deploy faster.”  
 **Estimates:** engineering-days for one strong full-stack engineer familiar with the repo (calendar time will be longer).  
-**Rule:** Prefer **delete** over refactor for OUT-OF-SCOPE modules (`docs/AUDIT.md`).
+**Rule:** Prefer **delete** over refactor for OUT-OF-SCOPE modules (`docs/AUDIT.md`).  
+**Locks:** [`docs/DECISIONS.md`](./DECISIONS.md) — separate orgs for DHG/Industria; Host Stand required; fake paywall; Google/email only; single domain.
 
 ---
 
@@ -38,11 +39,11 @@
 - `YYYYMMDD_phase0_storage_policies.sql`
 
 ### Done when
-- [ ] OUT-OF-SCOPE routes 404 / removed from nav.
-- [ ] Two-org isolation tests pass in CI.
-- [ ] Owner invite token flow creates membership (manual test).
-- [ ] Storage write outside own org path fails.
-- [ ] `signup_mode=invite_only` blocks open signup.
+- [x] OUT-OF-SCOPE routes 404 / removed from nav. *(Phase 0 PR)*
+- [x] Two-org isolation contract tests in CI. *(full DB suite still against staging)*
+- [ ] Owner invite token flow creates membership (manual test after migration apply).
+- [x] Storage policies for `org/{organization_id}/...` on private `org-media` bucket.
+- [ ] `signup_mode=invite_only` blocks open signup (enforce in signup UI after migration).
 - [ ] Typecheck + lint green on `main` PRs.
 
 ### Rollback

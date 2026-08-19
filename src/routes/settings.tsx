@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/Sidebar";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Settings as SettingsIcon, Building2, CreditCard, Bell, Users, Lock, Globe, Copy, ExternalLink, Link as LinkIcon, LayoutGrid, Clock, Palette, UtensilsCrossed, Loader2 } from "lucide-react";
+import { Settings as SettingsIcon, Building2, CreditCard, Bell, Users, Lock, Globe, Copy, ExternalLink, Link as LinkIcon, LayoutGrid, Clock, Palette, Loader2 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,7 +22,7 @@ const sections = [
   { id: "restaurant", label: "Restaurant", icon: Building2 },
   { id: "hours", label: "Hours", icon: Clock },
   { id: "brand", label: "Brand & booking page", icon: Palette },
-  { id: "menu", label: "Menu & Floor plan", icon: UtensilsCrossed },
+  { id: "floor", label: "Floor plan", icon: LayoutGrid },
   { id: "billing", label: "Billing & Plan", icon: CreditCard },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "team", label: "Team Access", icon: Users },
@@ -93,22 +93,19 @@ function SettingsPage() {
                 <BrandSection />
               </div>
             )}
-            {active === "menu" && (
+            {active === "floor" && (
               <div className="space-y-3 max-w-2xl">
-                <h2 className="text-lg font-semibold">Menu & floor plan</h2>
-                <p className="text-sm text-muted-foreground">Manage them on their dedicated pages.</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-                  <Link to="/menu" className="rounded-xl border border-border p-4 hover:bg-muted/40 transition">
-                    <UtensilsCrossed className="size-5 text-success" />
-                    <div className="mt-2 font-semibold">Menu</div>
-                    <div className="text-xs text-muted-foreground">Categories, items, prices, availability.</div>
-                  </Link>
-                  <Link to="/floorplan" className="rounded-xl border border-border p-4 hover:bg-muted/40 transition">
-                    <LayoutGrid className="size-5 text-success" />
-                    <div className="mt-2 font-semibold">Floor plan</div>
-                    <div className="text-xs text-muted-foreground">Arrange tables the way your dining room is laid out.</div>
-                  </Link>
-                </div>
+                <h2 className="text-lg font-semibold">Floor plan</h2>
+                <p className="text-sm text-muted-foreground">
+                  Arrange tables to match your dining room. Structured menu is out of MVP scope.
+                </p>
+                <Link
+                  to="/floorplan"
+                  className="mt-2 inline-flex items-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-semibold hover:bg-muted/40"
+                >
+                  <LayoutGrid className="size-4" />
+                  Open floor plan designer
+                </Link>
               </div>
             )}
             {active === "billing" && <BillingSection />}

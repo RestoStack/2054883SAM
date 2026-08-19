@@ -295,12 +295,15 @@ function AddStaffDialog({
   const [role, setRole] = useState<"admin" | "hostess" | "server">("server");
   const [email, setEmail] = useState("");
   const [hourlyWage, setHourlyWage] = useState("");
-  const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     if (!fullName.trim()) {
       toast.error("Full name is required");
+      return;
+    }
+    if (!email.trim()) {
+      toast.error("Email is required (Google / email login — no staff PINs)");
       return;
     }
     const wage = hourlyWage.trim() ? parseFloat(hourlyWage) : undefined;
@@ -313,9 +316,8 @@ function AddStaffDialog({
       await onCreate.mutateAsync({
         full_name: fullName,
         role,
-        email: email || undefined,
+        email: email.trim(),
         hourly_wage: wage,
-        pin: pin || undefined,
       });
       toast.success("Staff member added");
       onClose();
@@ -346,17 +348,15 @@ function AddStaffDialog({
               <option value="server">Server</option>
             </select>
           </StaffField>
-          <StaffField label="Email">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="staff-input" placeholder="jane@restaurant.com" />
+          <StaffField label="Email *">
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="staff-input" placeholder="jane@restaurant.com" required />
           </StaffField>
-          <div className="grid grid-cols-2 gap-3">
-            <StaffField label="Hourly wage">
-              <input type="number" step="0.01" value={hourlyWage} onChange={(e) => setHourlyWage(e.target.value)} className="staff-input" placeholder="15.00" />
-            </StaffField>
-            <StaffField label="PIN">
-              <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} className="staff-input" placeholder="••••" maxLength={6} />
-            </StaffField>
-          </div>
+          <StaffField label="Hourly wage (optional)">
+            <input type="number" step="0.01" value={hourlyWage} onChange={(e) => setHourlyWage(e.target.value)} className="staff-input" placeholder="15.00" />
+          </StaffField>
+          <p className="text-xs text-muted-foreground">
+            Team signs in with Google or email/password. Staff PIN login is removed for MVP.
+          </p>
         </div>
         <div className="flex justify-end gap-2 p-4 border-t border-border">
           <button type="button" onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm">Cancel</button>

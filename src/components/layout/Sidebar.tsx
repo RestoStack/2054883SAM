@@ -1,9 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard, CalendarDays, ShoppingBag, Users, UtensilsCrossed,
-  Megaphone, Award, BarChart3, UserCog, Network, Settings, ChevronRight,
-  Sparkles, Mail, MessageSquare, UserPlus, Star, Tag, FileText, Share2, Wallet,
-  Calendar, LineChart, ClipboardList, Utensils, Trophy, Menu,
+  LayoutDashboard, CalendarDays, Users, BarChart3, UserCog, Settings, ChevronRight,
+  ClipboardList, Menu,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import logo from "@/assets/logo.png";
@@ -13,73 +11,40 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { isServerPadEnabled } from "@/lib/ship-mode";
 
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
 
-const ADMIN_NAV_BASE: NavItem[] = [
+/** MVP nav only — docs/ROUTES.md */
+const ADMIN_NAV: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/host-stand", label: "Host Stand", icon: ClipboardList },
-  { to: "/server-app", label: "Server Pad", icon: Utensils },
   { to: "/bookings", label: "Bookings", icon: CalendarDays },
-  { to: "/floorplan", label: "Floor Plan", icon: Network },
-  { to: "/calendar", label: "Calendar", icon: Calendar },
-  { to: "/orders", label: "Orders", icon: ShoppingBag },
-  { to: "/customers", label: "Customers", icon: Users },
-  { to: "/menu", label: "Menu", icon: UtensilsCrossed },
-  { to: "/product-analytics", label: "Product Analytics", icon: LineChart },
-  { to: "/marketing", label: "Marketing", icon: Megaphone },
-  { to: "/loyalty", label: "Loyalty", icon: Award },
+  { to: "/host-stand", label: "Host Stand", icon: ClipboardList },
+  { to: "/customers", label: "Guests", icon: Users },
   { to: "/reports", label: "Reports", icon: BarChart3 },
-  { to: "/staff", label: "Staff", icon: UserCog },
-  { to: "/leaderboard", label: "Leaderboard", icon: Trophy },
-  { to: "/payroll", label: "Payroll", icon: Wallet },
-  { to: "/integrations", label: "Integrations", icon: Network },
+  { to: "/staff", label: "Team", icon: UserCog },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
 const HOSTESS_NAV: NavItem[] = [
   { to: "/host-stand", label: "Host Stand", icon: ClipboardList },
   { to: "/bookings", label: "Reservations", icon: CalendarDays },
-  { to: "/calendar", label: "Calendar", icon: Calendar },
   { to: "/customers", label: "Guests", icon: Users },
 ];
 
-const SERVER_NAV_BASE: NavItem[] = [
-  { to: "/server-app", label: "Order Pad", icon: Utensils },
-  { to: "/menu", label: "Menu", icon: UtensilsCrossed },
-  { to: "/orders", label: "My Orders", icon: ShoppingBag },
+const SERVER_NAV: NavItem[] = [
+  { to: "/host-stand", label: "Host Stand", icon: ClipboardList },
+  { to: "/bookings", label: "Bookings", icon: CalendarDays },
 ];
 
 function navForRole(role: Role): NavItem[] {
-  const allowPad = isServerPadEnabled();
-  if (role === "admin") {
-    return allowPad
-      ? ADMIN_NAV_BASE
-      : ADMIN_NAV_BASE.filter((i) => i.to !== "/server-app");
-  }
+  if (role === "admin") return ADMIN_NAV;
   if (role === "hostess") return HOSTESS_NAV;
-  return allowPad
-    ? SERVER_NAV_BASE
-    : SERVER_NAV_BASE.filter((i) => i.to !== "/server-app");
+  return SERVER_NAV;
 }
-
-const marketingActions = [
-  { to: "/marketing/email", label: "Email Marketing", icon: Mail },
-  { to: "/marketing/sms", label: "Send SMS", icon: MessageSquare },
-  { to: "/marketing/catch-back", label: "Catch Back Relapsed", icon: UserPlus },
-  { to: "/marketing/creators", label: "Book a Creator", icon: Star },
-  { to: "/marketing/promotions", label: "Promotions & Offers", icon: Tag },
-  { to: "/marketing/landing", label: "Landing Pages", icon: FileText },
-  { to: "/marketing/reviews", label: "Review Management", icon: Star },
-  { to: "/marketing/referral", label: "Referral Program", icon: Share2 },
-];
-
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { role } = useRole();
   const nav = navForRole(role);
-  const showMarketing = role === "admin" && (pathname.startsWith("/marketing") || pathname.startsWith("/loyalty"));
 
   return (
     <>
@@ -110,50 +75,10 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             );
           })}
         </ul>
-
-        {showMarketing && (
-          <div className="mt-6 rounded-xl border border-sidebar-border p-3">
-            <div className="px-2 pb-2 text-xs font-semibold text-muted-foreground">Marketing Actions</div>
-            <ul className="space-y-0.5">
-              {marketingActions.map((item) => {
-                const Icon = item.icon;
-                const active = pathname === item.to;
-                return (
-                  <li key={item.to}>
-                    <Link
-                      to={item.to}
-                      onClick={onNavigate}
-                      className={`flex items-center gap-2.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
-                        active
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent/50"
-                      }`}
-                    >
-                      <Icon className="size-3.5" />
-                      {item.label}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
       </nav>
 
       <div className="border-t border-sidebar-border p-3 space-y-3 shrink-0">
         <RestaurantTile />
-
-        {role === "admin" && (
-          <div className="relative overflow-hidden rounded-xl bg-foreground text-background p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Sparkles className="size-4 text-success" />
-              <span className="font-semibold text-sm">Upgrade to Pro</span>
-            </div>
-            <p className="text-[11px] text-background/70 leading-snug mb-3">Unlock advanced analytics, smart automation and more.</p>
-            <button className="w-full rounded-lg bg-success py-2 text-xs font-semibold text-background hover:bg-success/90">Upgrade Now</button>
-            <Sparkles className="absolute -bottom-2 -right-2 size-12 text-success/30" />
-          </div>
-        )}
       </div>
     </>
   );
