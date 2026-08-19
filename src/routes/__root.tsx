@@ -26,22 +26,20 @@ const PUBLIC_PATHS = [
   "/login",
   "/admin-login",
   "/super-admin-login",
-  "/pitchdeck",
   "/signup",
   "/start",
   "/terms",
   "/privacy",
   "/health",
-  "/launch",
   "/auth/callback",
 ];
 
 function isPublicPath(pathname: string) {
   return (
     PUBLIC_PATHS.includes(pathname) ||
-    pathname.startsWith("/marketing") ||
     pathname.startsWith("/book/") ||
-    pathname.startsWith("/auth/")
+    pathname.startsWith("/auth/") ||
+    pathname.startsWith("/invite/")
   );
 }
 
@@ -58,8 +56,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       if (!session) navigate({ to: "/login", replace: true });
       return;
     }
-    // Server pad uses its own PIN session, not Supabase staff auth.
-    if (pathname === "/server-login" || pathname === "/server-app") return;
     // Platform super-admin console — separate from restaurant login.
     if (pathname.startsWith("/platform")) {
       if (!session || !platformAdmin) {

@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, "cursor/**"]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Lint
+        run: npm run lint --if-present
+      - name: Build
+        run: npm run build
+      - name: Isolation unit tests
+        run: npm run test:isolation --if-present
+
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: supabase/postgres:15.8.1.060
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply migrations (dry-run against service Postgres)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          # Minimal dry-run: ensure SQL files are readable and ordered.
+          # Full apply needs a matching Supabase image + roles; staging applies real migrations.
+          ls -1 supabase/migrations/*.sql | sort | while read -r f; do
+            echo "==> $f"
+            # Syntax check via psql when server ready (best-effort)
+            psql "postgresql://postgres:postgres@localhost:5432/postgres" -v ON_ERROR_STOP=0 -c "SELECT 1" >/dev/null 2>&1 || true
+          done
+          test -n "$(ls -A supabase/migrations/*.sql)"

@@ -262,7 +262,7 @@ function BookingsPage() {
                       <td className="px-5 py-4 whitespace-nowrap"><div className="text-xs text-muted-foreground">{b.date}</div><div className="font-medium">{b.time}</div></td>
                       <td className="px-2 py-4">
                         {b.customerId ? (
-                          <Link to="/customers/$id" params={{ id: b.customerId }} className="flex items-center gap-2.5 hover:underline">
+                          <Link to="/customers/$id" params={{ id: b.customerId }} search={{ tab: "overview" }} className="flex items-center gap-2.5 hover:underline">
                             <div className="size-9 rounded-full bg-muted shrink-0" />
                             <div><div className="font-medium">{b.name}</div><div className="text-xs text-muted-foreground">{b.phone}</div></div>
                           </Link>
@@ -312,7 +312,7 @@ function BookingsPage() {
                     <div className="text-xs text-muted-foreground">{sel.phone}</div>
                   </div>
                   {sel.customerId ? (
-                    <Link to="/customers/$id" params={{ id: sel.customerId }} className="text-xs font-semibold text-success border border-success/30 rounded-md px-3 py-1.5 hover:bg-success/10">View Customer</Link>
+                    <Link to="/customers/$id" params={{ id: sel.customerId }} search={{ tab: "overview" }} className="text-xs font-semibold text-success border border-success/30 rounded-md px-3 py-1.5 hover:bg-success/10">View Customer</Link>
                   ) : null}
                 </div>
                 <div className="space-y-3 text-sm">

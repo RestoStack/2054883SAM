@@ -323,7 +323,7 @@ function HostStandPage() {
       {
         id: `staff-${Date.now()}`,
         text: `Staff note → ${target.name}: ${staffMessage.trim()}`,
-        tone: "info",
+        tone: "info" as const,
       },
       ...prev,
     ].slice(0, 12));

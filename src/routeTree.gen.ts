@@ -15,22 +15,10 @@ import { Route as StartRouteImport } from './routes/start'
 import { Route as StaffRouteImport } from './routes/staff'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as ServerLoginRouteImport } from './routes/server-login'
-import { Route as ServerAppRouteImport } from './routes/server-app'
 import { Route as ReportsRouteImport } from './routes/reports'
-import { Route as ProductAnalyticsRouteImport } from './routes/product-analytics'
 import { Route as PrivacyRouteImport } from './routes/privacy'
-import { Route as PitchdeckRouteImport } from './routes/pitchdeck'
-import { Route as PayrollRouteImport } from './routes/payroll'
-import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
-import { Route as MenuRouteImport } from './routes/menu'
-import { Route as MarketingRouteImport } from './routes/marketing'
-import { Route as LoyaltyRouteImport } from './routes/loyalty'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as LeaderboardRouteImport } from './routes/leaderboard'
-import { Route as LaunchRouteImport } from './routes/launch'
-import { Route as IntegrationsRouteImport } from './routes/integrations'
 import { Route as HostStandRouteImport } from './routes/host-stand'
 import { Route as HealthRouteImport } from './routes/health'
 import { Route as FloorplanRouteImport } from './routes/floorplan'
@@ -45,14 +33,7 @@ import { Route as AdminLoginRouteImport } from './routes/admin-login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlatformIndexRouteImport } from './routes/platform.index'
 import { Route as PlatformRestaurantsRouteImport } from './routes/platform.restaurants'
-import { Route as MarketingSmsRouteImport } from './routes/marketing.sms'
-import { Route as MarketingReviewsRouteImport } from './routes/marketing.reviews'
-import { Route as MarketingReferralRouteImport } from './routes/marketing.referral'
-import { Route as MarketingPromotionsRouteImport } from './routes/marketing.promotions'
-import { Route as MarketingLandingRouteImport } from './routes/marketing.landing'
-import { Route as MarketingEmailRouteImport } from './routes/marketing.email'
-import { Route as MarketingCreatorsRouteImport } from './routes/marketing.creators'
-import { Route as MarketingCatchBackRouteImport } from './routes/marketing.catch-back'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as CustomersIdRouteImport } from './routes/customers_.$id'
 import { Route as BookSlugRouteImport } from './routes/book_.$slug'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
@@ -87,24 +68,9 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ServerLoginRoute = ServerLoginRouteImport.update({
-  id: '/server-login',
-  path: '/server-login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ServerAppRoute = ServerAppRouteImport.update({
-  id: '/server-app',
-  path: '/server-app',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProductAnalyticsRoute = ProductAnalyticsRouteImport.update({
-  id: '/product-analytics',
-  path: '/product-analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PrivacyRoute = PrivacyRouteImport.update({
@@ -112,59 +78,14 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PitchdeckRoute = PitchdeckRouteImport.update({
-  id: '/pitchdeck',
-  path: '/pitchdeck',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PayrollRoute = PayrollRouteImport.update({
-  id: '/payroll',
-  path: '/payroll',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OrdersRoute = OrdersRouteImport.update({
-  id: '/orders',
-  path: '/orders',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MenuRoute = MenuRouteImport.update({
-  id: '/menu',
-  path: '/menu',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MarketingRoute = MarketingRouteImport.update({
-  id: '/marketing',
-  path: '/marketing',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoyaltyRoute = LoyaltyRouteImport.update({
-  id: '/loyalty',
-  path: '/loyalty',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LeaderboardRoute = LeaderboardRouteImport.update({
-  id: '/leaderboard',
-  path: '/leaderboard',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LaunchRoute = LaunchRouteImport.update({
-  id: '/launch',
-  path: '/launch',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const IntegrationsRoute = IntegrationsRouteImport.update({
-  id: '/integrations',
-  path: '/integrations',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HostStandRoute = HostStandRouteImport.update({
@@ -237,45 +158,10 @@ const PlatformRestaurantsRoute = PlatformRestaurantsRouteImport.update({
   path: '/platform/restaurants',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MarketingSmsRoute = MarketingSmsRouteImport.update({
-  id: '/sms',
-  path: '/sms',
-  getParentRoute: () => MarketingRoute,
-} as any)
-const MarketingReviewsRoute = MarketingReviewsRouteImport.update({
-  id: '/reviews',
-  path: '/reviews',
-  getParentRoute: () => MarketingRoute,
-} as any)
-const MarketingReferralRoute = MarketingReferralRouteImport.update({
-  id: '/referral',
-  path: '/referral',
-  getParentRoute: () => MarketingRoute,
-} as any)
-const MarketingPromotionsRoute = MarketingPromotionsRouteImport.update({
-  id: '/promotions',
-  path: '/promotions',
-  getParentRoute: () => MarketingRoute,
-} as any)
-const MarketingLandingRoute = MarketingLandingRouteImport.update({
-  id: '/landing',
-  path: '/landing',
-  getParentRoute: () => MarketingRoute,
-} as any)
-const MarketingEmailRoute = MarketingEmailRouteImport.update({
-  id: '/email',
-  path: '/email',
-  getParentRoute: () => MarketingRoute,
-} as any)
-const MarketingCreatorsRoute = MarketingCreatorsRouteImport.update({
-  id: '/creators',
-  path: '/creators',
-  getParentRoute: () => MarketingRoute,
-} as any)
-const MarketingCatchBackRoute = MarketingCatchBackRouteImport.update({
-  id: '/catch-back',
-  path: '/catch-back',
-  getParentRoute: () => MarketingRoute,
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const CustomersIdRoute = CustomersIdRouteImport.update({
   id: '/customers_/$id',
@@ -306,22 +192,10 @@ export interface FileRoutesByFullPath {
   '/floorplan': typeof FloorplanRoute
   '/health': typeof HealthRoute
   '/host-stand': typeof HostStandRoute
-  '/integrations': typeof IntegrationsRoute
-  '/launch': typeof LaunchRoute
-  '/leaderboard': typeof LeaderboardRoute
   '/login': typeof LoginRoute
-  '/loyalty': typeof LoyaltyRoute
-  '/marketing': typeof MarketingRouteWithChildren
-  '/menu': typeof MenuRoute
   '/onboarding': typeof OnboardingRoute
-  '/orders': typeof OrdersRoute
-  '/payroll': typeof PayrollRoute
-  '/pitchdeck': typeof PitchdeckRoute
   '/privacy': typeof PrivacyRoute
-  '/product-analytics': typeof ProductAnalyticsRoute
   '/reports': typeof ReportsRoute
-  '/server-app': typeof ServerAppRoute
-  '/server-login': typeof ServerLoginRoute
   '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
@@ -331,14 +205,7 @@ export interface FileRoutesByFullPath {
   '/auth/callback': typeof AuthCallbackRoute
   '/book/$slug': typeof BookSlugRoute
   '/customers/$id': typeof CustomersIdRoute
-  '/marketing/catch-back': typeof MarketingCatchBackRoute
-  '/marketing/creators': typeof MarketingCreatorsRoute
-  '/marketing/email': typeof MarketingEmailRoute
-  '/marketing/landing': typeof MarketingLandingRoute
-  '/marketing/promotions': typeof MarketingPromotionsRoute
-  '/marketing/referral': typeof MarketingReferralRoute
-  '/marketing/reviews': typeof MarketingReviewsRoute
-  '/marketing/sms': typeof MarketingSmsRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
   '/platform/': typeof PlatformIndexRoute
 }
@@ -355,22 +222,10 @@ export interface FileRoutesByTo {
   '/floorplan': typeof FloorplanRoute
   '/health': typeof HealthRoute
   '/host-stand': typeof HostStandRoute
-  '/integrations': typeof IntegrationsRoute
-  '/launch': typeof LaunchRoute
-  '/leaderboard': typeof LeaderboardRoute
   '/login': typeof LoginRoute
-  '/loyalty': typeof LoyaltyRoute
-  '/marketing': typeof MarketingRouteWithChildren
-  '/menu': typeof MenuRoute
   '/onboarding': typeof OnboardingRoute
-  '/orders': typeof OrdersRoute
-  '/payroll': typeof PayrollRoute
-  '/pitchdeck': typeof PitchdeckRoute
   '/privacy': typeof PrivacyRoute
-  '/product-analytics': typeof ProductAnalyticsRoute
   '/reports': typeof ReportsRoute
-  '/server-app': typeof ServerAppRoute
-  '/server-login': typeof ServerLoginRoute
   '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
@@ -380,14 +235,7 @@ export interface FileRoutesByTo {
   '/auth/callback': typeof AuthCallbackRoute
   '/book/$slug': typeof BookSlugRoute
   '/customers/$id': typeof CustomersIdRoute
-  '/marketing/catch-back': typeof MarketingCatchBackRoute
-  '/marketing/creators': typeof MarketingCreatorsRoute
-  '/marketing/email': typeof MarketingEmailRoute
-  '/marketing/landing': typeof MarketingLandingRoute
-  '/marketing/promotions': typeof MarketingPromotionsRoute
-  '/marketing/referral': typeof MarketingReferralRoute
-  '/marketing/reviews': typeof MarketingReviewsRoute
-  '/marketing/sms': typeof MarketingSmsRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
   '/platform': typeof PlatformIndexRoute
 }
@@ -405,22 +253,10 @@ export interface FileRoutesById {
   '/floorplan': typeof FloorplanRoute
   '/health': typeof HealthRoute
   '/host-stand': typeof HostStandRoute
-  '/integrations': typeof IntegrationsRoute
-  '/launch': typeof LaunchRoute
-  '/leaderboard': typeof LeaderboardRoute
   '/login': typeof LoginRoute
-  '/loyalty': typeof LoyaltyRoute
-  '/marketing': typeof MarketingRouteWithChildren
-  '/menu': typeof MenuRoute
   '/onboarding': typeof OnboardingRoute
-  '/orders': typeof OrdersRoute
-  '/payroll': typeof PayrollRoute
-  '/pitchdeck': typeof PitchdeckRoute
   '/privacy': typeof PrivacyRoute
-  '/product-analytics': typeof ProductAnalyticsRoute
   '/reports': typeof ReportsRoute
-  '/server-app': typeof ServerAppRoute
-  '/server-login': typeof ServerLoginRoute
   '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
@@ -430,14 +266,7 @@ export interface FileRoutesById {
   '/auth/callback': typeof AuthCallbackRoute
   '/book_/$slug': typeof BookSlugRoute
   '/customers_/$id': typeof CustomersIdRoute
-  '/marketing/catch-back': typeof MarketingCatchBackRoute
-  '/marketing/creators': typeof MarketingCreatorsRoute
-  '/marketing/email': typeof MarketingEmailRoute
-  '/marketing/landing': typeof MarketingLandingRoute
-  '/marketing/promotions': typeof MarketingPromotionsRoute
-  '/marketing/referral': typeof MarketingReferralRoute
-  '/marketing/reviews': typeof MarketingReviewsRoute
-  '/marketing/sms': typeof MarketingSmsRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
   '/platform/': typeof PlatformIndexRoute
 }
@@ -456,22 +285,10 @@ export interface FileRouteTypes {
     | '/floorplan'
     | '/health'
     | '/host-stand'
-    | '/integrations'
-    | '/launch'
-    | '/leaderboard'
     | '/login'
-    | '/loyalty'
-    | '/marketing'
-    | '/menu'
     | '/onboarding'
-    | '/orders'
-    | '/payroll'
-    | '/pitchdeck'
     | '/privacy'
-    | '/product-analytics'
     | '/reports'
-    | '/server-app'
-    | '/server-login'
     | '/settings'
     | '/signup'
     | '/staff'
@@ -481,14 +298,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/book/$slug'
     | '/customers/$id'
-    | '/marketing/catch-back'
-    | '/marketing/creators'
-    | '/marketing/email'
-    | '/marketing/landing'
-    | '/marketing/promotions'
-    | '/marketing/referral'
-    | '/marketing/reviews'
-    | '/marketing/sms'
+    | '/invite/$token'
     | '/platform/restaurants'
     | '/platform/'
   fileRoutesByTo: FileRoutesByTo
@@ -505,22 +315,10 @@ export interface FileRouteTypes {
     | '/floorplan'
     | '/health'
     | '/host-stand'
-    | '/integrations'
-    | '/launch'
-    | '/leaderboard'
     | '/login'
-    | '/loyalty'
-    | '/marketing'
-    | '/menu'
     | '/onboarding'
-    | '/orders'
-    | '/payroll'
-    | '/pitchdeck'
     | '/privacy'
-    | '/product-analytics'
     | '/reports'
-    | '/server-app'
-    | '/server-login'
     | '/settings'
     | '/signup'
     | '/staff'
@@ -530,14 +328,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/book/$slug'
     | '/customers/$id'
-    | '/marketing/catch-back'
-    | '/marketing/creators'
-    | '/marketing/email'
-    | '/marketing/landing'
-    | '/marketing/promotions'
-    | '/marketing/referral'
-    | '/marketing/reviews'
-    | '/marketing/sms'
+    | '/invite/$token'
     | '/platform/restaurants'
     | '/platform'
   id:
@@ -554,22 +345,10 @@ export interface FileRouteTypes {
     | '/floorplan'
     | '/health'
     | '/host-stand'
-    | '/integrations'
-    | '/launch'
-    | '/leaderboard'
     | '/login'
-    | '/loyalty'
-    | '/marketing'
-    | '/menu'
     | '/onboarding'
-    | '/orders'
-    | '/payroll'
-    | '/pitchdeck'
     | '/privacy'
-    | '/product-analytics'
     | '/reports'
-    | '/server-app'
-    | '/server-login'
     | '/settings'
     | '/signup'
     | '/staff'
@@ -579,14 +358,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/book_/$slug'
     | '/customers_/$id'
-    | '/marketing/catch-back'
-    | '/marketing/creators'
-    | '/marketing/email'
-    | '/marketing/landing'
-    | '/marketing/promotions'
-    | '/marketing/referral'
-    | '/marketing/reviews'
-    | '/marketing/sms'
+    | '/invite/$token'
     | '/platform/restaurants'
     | '/platform/'
   fileRoutesById: FileRoutesById
@@ -604,22 +376,10 @@ export interface RootRouteChildren {
   FloorplanRoute: typeof FloorplanRoute
   HealthRoute: typeof HealthRoute
   HostStandRoute: typeof HostStandRoute
-  IntegrationsRoute: typeof IntegrationsRoute
-  LaunchRoute: typeof LaunchRoute
-  LeaderboardRoute: typeof LeaderboardRoute
   LoginRoute: typeof LoginRoute
-  LoyaltyRoute: typeof LoyaltyRoute
-  MarketingRoute: typeof MarketingRouteWithChildren
-  MenuRoute: typeof MenuRoute
   OnboardingRoute: typeof OnboardingRoute
-  OrdersRoute: typeof OrdersRoute
-  PayrollRoute: typeof PayrollRoute
-  PitchdeckRoute: typeof PitchdeckRoute
   PrivacyRoute: typeof PrivacyRoute
-  ProductAnalyticsRoute: typeof ProductAnalyticsRoute
   ReportsRoute: typeof ReportsRoute
-  ServerAppRoute: typeof ServerAppRoute
-  ServerLoginRoute: typeof ServerLoginRoute
   SettingsRoute: typeof SettingsRoute
   SignupRoute: typeof SignupRoute
   StaffRoute: typeof StaffRoute
@@ -629,6 +389,7 @@ export interface RootRouteChildren {
   AuthCallbackRoute: typeof AuthCallbackRoute
   BookSlugRoute: typeof BookSlugRoute
   CustomersIdRoute: typeof CustomersIdRoute
+  InviteTokenRoute: typeof InviteTokenRoute
   PlatformRestaurantsRoute: typeof PlatformRestaurantsRoute
   PlatformIndexRoute: typeof PlatformIndexRoute
 }
@@ -677,32 +438,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/server-login': {
-      id: '/server-login'
-      path: '/server-login'
-      fullPath: '/server-login'
-      preLoaderRoute: typeof ServerLoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/server-app': {
-      id: '/server-app'
-      path: '/server-app'
-      fullPath: '/server-app'
-      preLoaderRoute: typeof ServerAppRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/reports': {
       id: '/reports'
       path: '/reports'
       fullPath: '/reports'
       preLoaderRoute: typeof ReportsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/product-analytics': {
-      id: '/product-analytics'
-      path: '/product-analytics'
-      fullPath: '/product-analytics'
-      preLoaderRoute: typeof ProductAnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/privacy': {
@@ -712,27 +452,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/pitchdeck': {
-      id: '/pitchdeck'
-      path: '/pitchdeck'
-      fullPath: '/pitchdeck'
-      preLoaderRoute: typeof PitchdeckRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/payroll': {
-      id: '/payroll'
-      path: '/payroll'
-      fullPath: '/payroll'
-      preLoaderRoute: typeof PayrollRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/orders': {
-      id: '/orders'
-      path: '/orders'
-      fullPath: '/orders'
-      preLoaderRoute: typeof OrdersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/onboarding': {
       id: '/onboarding'
       path: '/onboarding'
@@ -740,53 +459,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/menu': {
-      id: '/menu'
-      path: '/menu'
-      fullPath: '/menu'
-      preLoaderRoute: typeof MenuRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/marketing': {
-      id: '/marketing'
-      path: '/marketing'
-      fullPath: '/marketing'
-      preLoaderRoute: typeof MarketingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/loyalty': {
-      id: '/loyalty'
-      path: '/loyalty'
-      fullPath: '/loyalty'
-      preLoaderRoute: typeof LoyaltyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/leaderboard': {
-      id: '/leaderboard'
-      path: '/leaderboard'
-      fullPath: '/leaderboard'
-      preLoaderRoute: typeof LeaderboardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/launch': {
-      id: '/launch'
-      path: '/launch'
-      fullPath: '/launch'
-      preLoaderRoute: typeof LaunchRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/integrations': {
-      id: '/integrations'
-      path: '/integrations'
-      fullPath: '/integrations'
-      preLoaderRoute: typeof IntegrationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/host-stand': {
@@ -887,61 +564,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlatformRestaurantsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/marketing/sms': {
-      id: '/marketing/sms'
-      path: '/sms'
-      fullPath: '/marketing/sms'
-      preLoaderRoute: typeof MarketingSmsRouteImport
-      parentRoute: typeof MarketingRoute
-    }
-    '/marketing/reviews': {
-      id: '/marketing/reviews'
-      path: '/reviews'
-      fullPath: '/marketing/reviews'
-      preLoaderRoute: typeof MarketingReviewsRouteImport
-      parentRoute: typeof MarketingRoute
-    }
-    '/marketing/referral': {
-      id: '/marketing/referral'
-      path: '/referral'
-      fullPath: '/marketing/referral'
-      preLoaderRoute: typeof MarketingReferralRouteImport
-      parentRoute: typeof MarketingRoute
-    }
-    '/marketing/promotions': {
-      id: '/marketing/promotions'
-      path: '/promotions'
-      fullPath: '/marketing/promotions'
-      preLoaderRoute: typeof MarketingPromotionsRouteImport
-      parentRoute: typeof MarketingRoute
-    }
-    '/marketing/landing': {
-      id: '/marketing/landing'
-      path: '/landing'
-      fullPath: '/marketing/landing'
-      preLoaderRoute: typeof MarketingLandingRouteImport
-      parentRoute: typeof MarketingRoute
-    }
-    '/marketing/email': {
-      id: '/marketing/email'
-      path: '/email'
-      fullPath: '/marketing/email'
-      preLoaderRoute: typeof MarketingEmailRouteImport
-      parentRoute: typeof MarketingRoute
-    }
-    '/marketing/creators': {
-      id: '/marketing/creators'
-      path: '/creators'
-      fullPath: '/marketing/creators'
-      preLoaderRoute: typeof MarketingCreatorsRouteImport
-      parentRoute: typeof MarketingRoute
-    }
-    '/marketing/catch-back': {
-      id: '/marketing/catch-back'
-      path: '/catch-back'
-      fullPath: '/marketing/catch-back'
-      preLoaderRoute: typeof MarketingCatchBackRouteImport
-      parentRoute: typeof MarketingRoute
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/customers_/$id': {
       id: '/customers_/$id'
@@ -967,32 +595,6 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface MarketingRouteChildren {
-  MarketingCatchBackRoute: typeof MarketingCatchBackRoute
-  MarketingCreatorsRoute: typeof MarketingCreatorsRoute
-  MarketingEmailRoute: typeof MarketingEmailRoute
-  MarketingLandingRoute: typeof MarketingLandingRoute
-  MarketingPromotionsRoute: typeof MarketingPromotionsRoute
-  MarketingReferralRoute: typeof MarketingReferralRoute
-  MarketingReviewsRoute: typeof MarketingReviewsRoute
-  MarketingSmsRoute: typeof MarketingSmsRoute
-}
-
-const MarketingRouteChildren: MarketingRouteChildren = {
-  MarketingCatchBackRoute: MarketingCatchBackRoute,
-  MarketingCreatorsRoute: MarketingCreatorsRoute,
-  MarketingEmailRoute: MarketingEmailRoute,
-  MarketingLandingRoute: MarketingLandingRoute,
-  MarketingPromotionsRoute: MarketingPromotionsRoute,
-  MarketingReferralRoute: MarketingReferralRoute,
-  MarketingReviewsRoute: MarketingReviewsRoute,
-  MarketingSmsRoute: MarketingSmsRoute,
-}
-
-const MarketingRouteWithChildren = MarketingRoute._addFileChildren(
-  MarketingRouteChildren,
-)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminLoginRoute: AdminLoginRoute,
@@ -1006,22 +608,10 @@ const rootRouteChildren: RootRouteChildren = {
   FloorplanRoute: FloorplanRoute,
   HealthRoute: HealthRoute,
   HostStandRoute: HostStandRoute,
-  IntegrationsRoute: IntegrationsRoute,
-  LaunchRoute: LaunchRoute,
-  LeaderboardRoute: LeaderboardRoute,
   LoginRoute: LoginRoute,
-  LoyaltyRoute: LoyaltyRoute,
-  MarketingRoute: MarketingRouteWithChildren,
-  MenuRoute: MenuRoute,
   OnboardingRoute: OnboardingRoute,
-  OrdersRoute: OrdersRoute,
-  PayrollRoute: PayrollRoute,
-  PitchdeckRoute: PitchdeckRoute,
   PrivacyRoute: PrivacyRoute,
-  ProductAnalyticsRoute: ProductAnalyticsRoute,
   ReportsRoute: ReportsRoute,
-  ServerAppRoute: ServerAppRoute,
-  ServerLoginRoute: ServerLoginRoute,
   SettingsRoute: SettingsRoute,
   SignupRoute: SignupRoute,
   StaffRoute: StaffRoute,
@@ -1031,6 +621,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthCallbackRoute: AuthCallbackRoute,
   BookSlugRoute: BookSlugRoute,
   CustomersIdRoute: CustomersIdRoute,
+  InviteTokenRoute: InviteTokenRoute,
   PlatformRestaurantsRoute: PlatformRestaurantsRoute,
   PlatformIndexRoute: PlatformIndexRoute,
 }
