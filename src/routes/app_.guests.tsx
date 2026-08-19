@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/Sidebar";
@@ -47,6 +47,7 @@ type SavedSegment = {
 };
 
 function GuestsPage() {
+  const navigate = useNavigate();
   const { org, staff } = useAuth();
   const orgId = org.activeOrganizationId;
   const restaurantId = staff?.restaurant_id ?? null;
@@ -137,6 +138,10 @@ function GuestsPage() {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast.success(`Exported ${guests.length} guest${guests.length === 1 ? "" : "s"}`);
+  };
+
+  const openGuest = (guestId: string) => {
+    void navigate({ to: "/app/guests/$id", params: { id: guestId } });
   };
 
   return (
@@ -242,40 +247,46 @@ function GuestsPage() {
               )}
               {!loading &&
                 guests.map((g) => (
-                  <tr key={g.id} className="border-b border-border last:border-0 hover:bg-muted/40">
-                    <td className="px-5 py-4" colSpan={6}>
-                      <Link
-                        to="/app/guests/$id"
-                        params={{ id: g.id }}
-                        className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-2 -mx-5 -my-4 px-5 py-4"
+                  <tr
+                    key={g.id}
+                    role="link"
+                    tabIndex={0}
+                    onClick={() => openGuest(g.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openGuest(g.id);
+                      }
+                    }}
+                    className="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer"
+                  >
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3 font-medium">
+                        <div className="size-9 rounded-full bg-gradient-to-br from-accent to-primary/30 shrink-0" />
+                        {g.full_name}
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-muted-foreground">{g.email ?? "—"}</td>
+                    <td className="px-5 py-4 text-muted-foreground">
+                      {g.phone_e164 ?? g.phone ?? "—"}
+                    </td>
+                    <td className="px-5 py-4">
+                      <Badge
+                        variant={g.marketing_opt_in ? "default" : "outline"}
+                        className={
+                          g.marketing_opt_in
+                            ? "bg-success/15 text-success border-transparent"
+                            : "text-muted-foreground"
+                        }
                       >
-                        <span className="flex items-center gap-3 font-medium min-w-0">
-                          <span className="size-9 rounded-full bg-gradient-to-br from-accent to-primary/30 shrink-0" />
-                          <span className="truncate">{g.full_name}</span>
-                        </span>
-                        <span className="text-muted-foreground truncate">{g.email ?? "—"}</span>
-                        <span className="text-muted-foreground truncate">
-                          {g.phone_e164 ?? g.phone ?? "—"}
-                        </span>
-                        <span>
-                          <Badge
-                            variant={g.marketing_opt_in ? "default" : "outline"}
-                            className={
-                              g.marketing_opt_in
-                                ? "bg-success/15 text-success border-transparent"
-                                : "text-muted-foreground"
-                            }
-                          >
-                            {g.marketing_opt_in ? "Opted in" : "Opted out"}
-                          </Badge>
-                        </span>
-                        <span className="text-muted-foreground truncate">
-                          {(g.tags ?? []).length > 0 ? g.tags!.join(", ") : "—"}
-                        </span>
-                        <span className="text-muted-foreground">
-                          {new Date(g.created_at).toLocaleDateString()}
-                        </span>
-                      </Link>
+                        {g.marketing_opt_in ? "Opted in" : "Opted out"}
+                      </Badge>
+                    </td>
+                    <td className="px-5 py-4 text-muted-foreground">
+                      {(g.tags ?? []).length > 0 ? g.tags!.join(", ") : "—"}
+                    </td>
+                    <td className="px-5 py-4 text-muted-foreground">
+                      {new Date(g.created_at).toLocaleDateString()}
                     </td>
                   </tr>
                 ))}

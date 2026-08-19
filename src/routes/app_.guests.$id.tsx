@@ -98,7 +98,7 @@ const statusStyle = (s: string) =>
 function GuestDetail() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
-  const { org, staff } = useAuth();
+  const { org, staff, loading: authLoading } = useAuth();
   const orgId = org.activeOrganizationId;
   const restaurantId = staff?.restaurant_id ?? null;
   const tenantReady = Boolean(orgId || restaurantId);
@@ -121,34 +121,72 @@ function GuestDetail() {
   const [anonymizing, setAnonymizing] = useState(false);
 
   const refresh = async () => {
-    if (!tenantReady) return;
-    setLoading(true);
-    const [g, h] = await Promise.all([getGuest(orgId, id), getGuestHistory(orgId, id)]);
-    if (!g.ok) {
-      toast.error(g.error);
+    if (authLoading) return;
+    if (!tenantReady) {
       setGuest(null);
-    } else {
-      setGuest(g.guest);
-    }
-    if (h.ok) setHistory(h.rows as HistoryRow[]);
-
-    if (orgId) {
-      const [s, n] = await Promise.all([getGuestStats(id), getGuestNotes(id)]);
-      if (s.ok) setStats(s.stats as LocationStat[]);
-      else setStats([]);
-      if (n.ok) setNotes(n.notes as NoteRow[]);
-      else setNotes([]);
-    } else {
+      setHistory([]);
       setStats([]);
       setNotes([]);
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+    setLoading(true);
+    try {
+      const g = await getGuest(orgId, id, restaurantId);
+      if (!g.ok) {
+        toast.error(g.error);
+        setGuest(null);
+        setHistory([]);
+        setStats([]);
+        setNotes([]);
+        return;
+      }
+      setGuest(g.guest);
+
+      const h = await getGuestHistory(orgId, id, restaurantId, {
+        email: g.guest.email,
+        phone: g.guest.phone ?? g.guest.phone_e164,
+        full_name: g.guest.full_name,
+      });
+      if (h.ok) setHistory(h.rows as HistoryRow[]);
+      else setHistory([]);
+
+      if (orgId) {
+        const [s, n] = await Promise.all([getGuestStats(id), getGuestNotes(id)]);
+        if (s.ok) setStats(s.stats as LocationStat[]);
+        else setStats([]);
+        if (n.ok) setNotes(n.notes as NoteRow[]);
+        else setNotes([]);
+      } else {
+        // Build a simple stats card from legacy customer fields / history.
+        const visits = Number(g.guest.visit_count ?? h.rows?.length ?? 0);
+        const noShows = (h.rows ?? []).filter((r: any) => r.status === "no_show").length;
+        const cancels = (h.rows ?? []).filter((r: any) => r.status === "cancelled").length;
+        setStats([
+          {
+            guest_id: id,
+            location_id: "primary",
+            visits,
+            no_shows: noShows,
+            cancellations: cancels,
+            first_visit: null,
+            last_visit: (g.guest.last_visit as string | null) ?? null,
+          },
+        ]);
+        setNotes([]);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load guest");
+      setGuest(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, restaurantId, tenantReady, id]);
+  }, [authLoading, orgId, restaurantId, tenantReady, id]);
 
   useEffect(() => {
     if (!orgId || !mergeQuery.trim()) {
@@ -207,21 +245,21 @@ function GuestDetail() {
     navigate({ to: "/app/guests" });
   };
 
-  if (!tenantReady) {
+  if (authLoading || loading) {
     return (
       <AppShell>
         <div className="p-10 text-center text-muted-foreground">
-          No restaurant workspace found.
+          <Loader2 className="size-5 animate-spin inline mr-2" /> Loading guest…
         </div>
       </AppShell>
     );
   }
 
-  if (loading) {
+  if (!tenantReady) {
     return (
       <AppShell>
         <div className="p-10 text-center text-muted-foreground">
-          <Loader2 className="size-5 animate-spin inline mr-2" /> Loading guest…
+          No restaurant workspace found.
         </div>
       </AppShell>
     );
@@ -338,6 +376,30 @@ function GuestDetail() {
                 ["Full name", guest.full_name],
                 ["Email", guest.email ?? "—"],
                 ["Phone", (guest.phone_e164 ?? guest.phone ?? "—") as string],
+                [
+                  "Visits",
+                  String(
+                    guest.visit_count ??
+                      stats.reduce((s, x) => s + (x.visits ?? 0), 0) ??
+                      history.length,
+                  ),
+                ],
+                [
+                  "Loyalty points",
+                  guest.loyalty_points != null ? String(guest.loyalty_points) : "—",
+                ],
+                [
+                  "Total spent",
+                  guest.total_spent != null
+                    ? `$${Number(guest.total_spent).toFixed(2)}`
+                    : "—",
+                ],
+                [
+                  "Last visit",
+                  guest.last_visit
+                    ? new Date(String(guest.last_visit)).toLocaleDateString()
+                    : "—",
+                ],
                 ["Marketing opt-in source", (guest.marketing_opt_in_source as string) ?? "—"],
                 [
                   "Opted in at",
@@ -352,7 +414,7 @@ function GuestDetail() {
                 ],
               ].map(([k, v]) => (
                 <div key={k as string} className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">{k}</dt>
+                  <dt className="text-muted-foreground shrink-0">{k}</dt>
                   <dd className="font-medium text-right whitespace-pre-wrap">{v as string}</dd>
                 </div>
               ))}

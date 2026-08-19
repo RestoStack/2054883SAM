@@ -14,6 +14,13 @@ export type GuestRow = {
   tags: string[] | null;
   anonymized_at: string | null;
   created_at: string;
+  /** Legacy v2_customers fields */
+  notes?: string | null;
+  visit_count?: number | null;
+  loyalty_points?: number | null;
+  total_spent?: number | null;
+  last_visit?: string | null;
+  restaurant_id?: string | null;
 };
 
 export type GuestFilters = {
@@ -21,6 +28,29 @@ export type GuestFilters = {
   optIn?: "yes" | "no";
   hasPhone?: boolean;
 };
+
+function mapLegacyCustomer(c: Record<string, unknown>): GuestRow & Record<string, unknown> {
+  return {
+    id: String(c.id),
+    full_name: String(c.full_name ?? ""),
+    email: (c.email as string | null) ?? null,
+    phone: (c.phone as string | null) ?? null,
+    phone_e164: (c.phone as string | null) ?? null,
+    email_normalized: (c.email as string | null) ?? null,
+    marketing_opt_in: false,
+    marketing_opt_in_at: null,
+    marketing_opt_in_source: null,
+    tags: null,
+    anonymized_at: null,
+    created_at: String(c.created_at ?? new Date().toISOString()),
+    notes: (c.notes as string | null) ?? null,
+    visit_count: Number(c.visit_count ?? 0),
+    loyalty_points: Number(c.loyalty_points ?? 0),
+    total_spent: Number(c.total_spent ?? 0),
+    last_visit: (c.last_visit as string | null) ?? null,
+    restaurant_id: (c.restaurant_id as string | null) ?? null,
+  };
+}
 
 export async function listGuests(
   organizationId: string | null,
@@ -115,7 +145,9 @@ export async function listGuests(
 
   let cq = (supabase as any)
     .from("v2_customers")
-    .select("id, full_name, email, phone, notes, created_at, restaurant_id")
+    .select(
+      "id, full_name, email, phone, notes, created_at, restaurant_id, visit_count, loyalty_points, total_spent, last_visit",
+    )
     .eq("restaurant_id", rid)
     .order("full_name")
     .limit(500);
@@ -129,26 +161,19 @@ export async function listGuests(
   const { data, error } = await cq;
   if (error) return { ok: false as const, error: error.message, guests: [] as GuestRow[] };
 
-  const guests: GuestRow[] = ((data ?? []) as Array<Record<string, unknown>>).map((c) => ({
-    id: String(c.id),
-    full_name: String(c.full_name ?? ""),
-    email: (c.email as string | null) ?? null,
-    phone: (c.phone as string | null) ?? null,
-    phone_e164: (c.phone as string | null) ?? null,
-    email_normalized: (c.email as string | null) ?? null,
-    marketing_opt_in: false,
-    marketing_opt_in_at: null,
-    marketing_opt_in_source: null,
-    tags: null,
-    anonymized_at: null,
-    created_at: String(c.created_at ?? new Date().toISOString()),
-  }));
+  const guests: GuestRow[] = ((data ?? []) as Array<Record<string, unknown>>).map(mapLegacyCustomer);
 
   if (filters?.optIn === "yes") return { ok: true as const, guests: [] as GuestRow[] };
   return { ok: true as const, guests };
 }
 
-export async function getGuest(organizationId: string | null, guestId: string) {
+export async function getGuest(
+  organizationId: string | null,
+  guestId: string,
+  restaurantId?: string | null,
+) {
+  if (!guestId) return { ok: false as const, error: "Missing guest id" };
+
   if (organizationId) {
     const { data, error } = await (supabase as any)
       .from("guests")
@@ -159,36 +184,29 @@ export async function getGuest(organizationId: string | null, guestId: string) {
     if (!error && data) {
       return { ok: true as const, guest: data as GuestRow & Record<string, unknown> };
     }
-    if (error && !isMissingDbObject(error)) {
-      return { ok: false as const, error: error.message };
-    }
+    // Fall through to v2_customers for legacy tenants even if org query errors.
   }
 
-  const { data, error } = await (supabase as any)
-    .from("v2_customers")
-    .select("*")
-    .eq("id", guestId)
-    .maybeSingle();
+  const rid = await resolveRestaurantId(restaurantId);
+  let query = (supabase as any).from("v2_customers").select("*").eq("id", guestId);
+  if (rid) query = query.eq("restaurant_id", rid);
+  const { data, error } = await query.maybeSingle();
   if (error) return { ok: false as const, error: error.message };
-  if (!data) return { ok: false as const, error: "Not found" };
-  return {
-    ok: true as const,
-    guest: {
-      id: data.id,
-      full_name: data.full_name,
-      email: data.email,
-      phone: data.phone,
-      phone_e164: data.phone,
-      email_normalized: data.email,
-      marketing_opt_in: false,
-      marketing_opt_in_at: null,
-      marketing_opt_in_source: null,
-      tags: null,
-      anonymized_at: null,
-      created_at: data.created_at,
-      notes: data.notes,
-    } as GuestRow & Record<string, unknown>,
-  };
+  if (!data) {
+    // Retry without restaurant filter in case RLS already scopes rows.
+    if (rid) {
+      const retry = await (supabase as any)
+        .from("v2_customers")
+        .select("*")
+        .eq("id", guestId)
+        .maybeSingle();
+      if (!retry.error && retry.data) {
+        return { ok: true as const, guest: mapLegacyCustomer(retry.data as Record<string, unknown>) };
+      }
+    }
+    return { ok: false as const, error: "Not found" };
+  }
+  return { ok: true as const, guest: mapLegacyCustomer(data as Record<string, unknown>) };
 }
 
 export async function getGuestStats(guestId: string) {
@@ -228,7 +246,12 @@ export async function addGuestNote(
   return { ok: true as const };
 }
 
-export async function getGuestHistory(organizationId: string | null, guestId: string) {
+export async function getGuestHistory(
+  organizationId: string | null,
+  guestId: string,
+  restaurantId?: string | null,
+  guest?: { email?: string | null; phone?: string | null; full_name?: string | null } | null,
+) {
   if (organizationId) {
     const { data, error } = await (supabase as any)
       .from("reservations")
@@ -245,24 +268,60 @@ export async function getGuestHistory(organizationId: string | null, guestId: st
     }
   }
 
+  const mapRows = (data: Array<Record<string, unknown>> | null) =>
+    (data ?? []).map((b) => ({
+      id: b.id,
+      reserved_date: b.date,
+      reserved_time: b.time,
+      party_size: b.party_size,
+      status: b.status,
+      source: b.source,
+      table_number: b.table_number,
+      location_id: null,
+      guest_name: b.guest_name ?? null,
+      guest_email: b.guest_email ?? null,
+      guest_phone: b.guest_phone ?? null,
+    }));
+
   const { data, error } = await (supabase as any)
     .from("v2_bookings")
-    .select("id, date, time, party_size, status, source, table_number, customer_id")
+    .select(
+      "id, date, time, party_size, status, source, table_number, customer_id, guest_name, guest_email, guest_phone, restaurant_id",
+    )
     .eq("customer_id", guestId)
     .order("date", { ascending: false })
     .limit(50);
   if (error) return { ok: false as const, error: error.message, rows: [] };
-  const rows = (data ?? []).map((b: Record<string, unknown>) => ({
-    id: b.id,
-    reserved_date: b.date,
-    reserved_time: b.time,
-    party_size: b.party_size,
-    status: b.status,
-    source: b.source,
-    table_number: b.table_number,
-    location_id: null,
-  }));
-  return { ok: true as const, rows };
+  if ((data ?? []).length > 0) return { ok: true as const, rows: mapRows(data) };
+
+  // Fallback: match bookings by contact/name when customer_id was never linked.
+  const rid = await resolveRestaurantId(restaurantId);
+  let bq = (supabase as any)
+    .from("v2_bookings")
+    .select(
+      "id, date, time, party_size, status, source, table_number, customer_id, guest_name, guest_email, guest_phone, restaurant_id",
+    )
+    .order("date", { ascending: false })
+    .limit(200);
+  if (rid) bq = bq.eq("restaurant_id", rid);
+  const { data: all, error: allErr } = await bq;
+  if (allErr) return { ok: true as const, rows: [] };
+
+  const email = guest?.email?.trim().toLowerCase() || null;
+  const phone = guest?.phone?.trim() || null;
+  const name = guest?.full_name?.trim().toLowerCase() || null;
+  const matched = ((all ?? []) as Array<Record<string, unknown>>).filter((b) => {
+    if (String(b.customer_id ?? "") === guestId) return true;
+    const bEmail = String(b.guest_email ?? "").trim().toLowerCase();
+    const bPhone = String(b.guest_phone ?? "").trim();
+    const bName = String(b.guest_name ?? "").trim().toLowerCase();
+    if (email && bEmail && bEmail === email) return true;
+    if (phone && bPhone && bPhone === phone) return true;
+    if (name && bName && bName === name) return true;
+    return false;
+  }).slice(0, 50);
+
+  return { ok: true as const, rows: mapRows(matched) };
 }
 
 export async function listSegments(organizationId: string | null) {
