@@ -12,7 +12,7 @@
 **Reasoning:**
 - Cost — one project, one migration path, one backup/PITR story.
 - Ops — platform admin can support tenants without N databases.
-- Product — multi-location and multi-org memberships (e.g. DHG across brands) fit naturally.
+- Product — multi-location within an org, and multi-org memberships (users on several brands). **First production customers (DHG, Industria) are separate organizations** — see `docs/DECISIONS.md`.
 - Future — a dedicated-instance enterprise tier can be forked later because **all app queries are already org-scoped**; only connection string + project split change.
 
 **Rejected for v1:** schema-per-tenant, database-per-tenant.
@@ -158,7 +158,7 @@ erDiagram
 | `users` | Profile mapped to `auth.users` | `id` (= auth uid), `email`, `full_name` |
 | `user_active_context` | Last selected org/location (**hint only**) | `user_id`, `organization_id`, `location_id` — RLS still checks membership |
 | `platform_admins` | Internal ops | `user_id` |
-| `platform_settings` | Global flags | `signup_mode` (`invite_only` \| `open`) |
+| `platform_settings` | Global flags | `signup_mode` (`invite_only` \| `open`); `billing_provider` (`fake` \| `stripe`) |
 
 ### Tenant core
 
@@ -168,7 +168,7 @@ erDiagram
 | `locations` | NOT NULL FK idx | PK | Globally unique `public_slug` for `/book/{slug}` |
 | `organization_memberships` | NOT NULL idx | — | Roles: `owner` \| `manager` \| `host` |
 | `location_memberships` | NOT NULL | NOT NULL | Optional scope for hosts |
-| `subscriptions` | NOT NULL UK | — | Stripe mirror; webhook-updated |
+| `subscriptions` | NOT NULL UK | — | Entitlement mirror; **v1 written by fake paywall**; later by Stripe webhooks |
 | `invitations` | NOT NULL | nullable | `kind`: `owner_onboarding` \| `team`; store **token_hash** only; expiry; single-use |
 | `guests` | NOT NULL idx | — | Org-level CRM |
 | `guest_location_stats` | NOT NULL | NOT NULL | visits, last_visit, no_shows, cancellations |
@@ -186,16 +186,23 @@ erDiagram
 
 **Slug rules:** reserved words blocked (`app`, `api`, `admin`, `invite`, `billing`, `login`, `book`, `health`, …). Owner may change slug; keep `slug_redirects`.
 
-### Stripe mirror (`subscriptions`)
+### Subscriptions & billing provider
 
 | Column | Notes |
 |--------|-------|
-| `stripe_customer_id` / `stripe_subscription_id` | Also denormalize customer on org |
+| `stripe_customer_id` / `stripe_subscription_id` | Nullable while `billing_provider=fake` |
 | `status` | `trialing` \| `active` \| `past_due` \| `canceled` \| `incomplete` \| … |
-| `price_id` | Stripe Price |
-| `trial_end`, `current_period_end` | |
+| `price_id` / `plan_id` | Internal plan slug for fake wall; Stripe Price when live |
+| `trial_end`, `current_period_end` | Optional |
+| `activated_via` | `fake_checkout` \| `stripe` \| `platform_grant` |
 
 **App gate:** allow only `trialing` \| `active`; else redirect `/billing/locked`.
+
+**v1 launch (`docs/DECISIONS.md`):** `platform_settings.billing_provider = fake`.  
+`/billing/checkout` shows a payment wall UI; on confirm, RPC `app_activate_fake_subscription` sets `status=active` (no card charged). Team invites skip this step.  
+When flipping to Stripe later: implement Edge `stripe-webhook` / checkout; set `billing_provider=stripe`; do not change tenancy model.
+
+Stripe secrets **only** in Edge Function secrets when enabled — never `VITE_*`.
 
 ### Reservations
 
@@ -248,7 +255,8 @@ For every tenant table `T`:
 | Name | Security definer? | Rate limit | Purpose |
 |------|-------------------|------------|---------|
 | `app_accept_invite(token)` | yes | per-IP + token | Accept invite → membership |
-| `app_complete_onboarding(...)` | yes | per-user | Org + first location after paid |
+| `app_activate_fake_subscription(...)` | yes | per-user | Fake paywall success → `subscriptions.status=active` (only if `billing_provider=fake`) |
+| `app_complete_onboarding(...)` | yes | per-user | Org + first location after paid/activated |
 | `app_set_active_context(org, loc)` | yes | — | Hint row after membership check |
 | `public_get_location_by_slug(slug)` | yes | per-IP | Safe public bootstrap |
 | `public_get_availability(slug, date)` | yes | per-IP | Slots |
@@ -259,7 +267,7 @@ For every tenant table `T`:
 | `staff_create_walk_in(...)` | yes | — | Walk-in |
 | `reports_reservation_metrics(...)` | yes | — | Dashboard/reports aggregates |
 
-**Edge Functions:** `stripe-webhook` (idempotent, signature-verified), `stripe-checkout` / portal, `invite-create`. Stripe keys **only** in Edge secrets.
+**Edge Functions:** `invite-create` (required). `stripe-webhook` / `stripe-checkout` **deferred** until `billing_provider=stripe`.
 
 ---
 
@@ -274,7 +282,7 @@ For every tenant table `T`:
 | `v2_tables` | → `tables` (+ org_id) |
 | `v2_orders*`, `v2_menu_*`, `v2_loyalty*`, `v2_shifts`, `v2_waitlist` | **Drop** after code removal |
 | `v2_platform_settings` | Keep; add `signup_mode` |
-| Plan on restaurant | → `subscriptions` + Stripe |
+| Plan on restaurant | → `subscriptions` (+ fake activation now; Stripe later) |
 
 Never edit applied migrations; additive + backfill + cutover migrations only.
 

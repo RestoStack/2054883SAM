@@ -4,9 +4,11 @@
 **Branch audited:** `cursor/saas-independence-3a05` (full-app tip)  
 **Goal of this audit:** map every major module to **keep / refactor / delete** against the strict MVP, and list security / multi-tenancy issues that block a safe production deploy at `restostacks.com`.
 
-**MVP pillars (only):** Invite→auth→Stripe→onboard · Online booking · Dashboard (reservation metrics) · Reports · Guest CRM · Host Stand · Menu asset upload · Settings.
+**MVP pillars (only):** Invite→auth→**payment wall (fake now; Stripe later)**→onboard · Online booking · Dashboard (reservation metrics) · Reports · Guest CRM · Host Stand · Menu asset upload · Settings.
 
-**Explicitly OUT:** POS, Server Pad, orders, revenue/ticket, inventory, payroll/leaderboard, marketing, loyalty, integrations stubs, AI, public marketing site, structured menu items, Upgrade to Pro, waitlist SMS, deposits, reviews.
+**Explicitly OUT:** POS, Server Pad, orders, revenue/ticket, inventory, payroll/leaderboard, marketing, loyalty, integrations stubs, AI, public marketing site, structured menu items, Upgrade to Pro, waitlist SMS, deposits, reviews, **staff PIN login**.
+
+**Stakeholder locks:** see [`docs/DECISIONS.md`](./DECISIONS.md) (separate orgs for DHG/Industria; Host Stand required day-1; `restostacks.com` only; fake paywall; Google/email auth).
 
 ---
 
@@ -16,12 +18,12 @@
 |----------|---------|
 | **P0** | Tenancy is flat `restaurant_id` only — no `organizations` / `locations` / memberships. One auth user → one restaurant (`v2_current_restaurant_id` LIMIT 1). No org switcher. |
 | **P0** | RLS is **not role-aware** — any authenticated staff with a session can CRUD all tenant tables. |
-| **P0** | **No Stripe** — billing UI is mailto/sales; `/start` is a fake paywall; no subscription gate. |
+| **P0** | **No real Stripe yet (by design for v1)** — use **fake payment wall** that sets subscription active; keep schema Stripe-ready. Current `/start` is not wired to org gate. |
 | **P0** | Invites are a **shared env/DB code**, not single-use tokens with expiry. Client can see `VITE_INVITE_CODE`. |
 | **P0** | Storage `restaurant-media`: public read + any authenticated write (no path tenancy). |
 | **P0** | Large OUT-OF-SCOPE surface still in nav and schema (`v2_orders`, loyalty, payroll, marketing, Server Pad). |
 | **P1** | Dashboard/Reports include **revenue / avg ticket / orders** — must strip for MVP. |
-| **P1** | Plaintext staff PINs; demo passwords in client bundle. |
+| **P1** | Plaintext staff PINs still in schema/UI — **MVP removes PIN auth** (Google/email only). |
 | **P1** | Public booking RPCs have **no rate limits**. |
 | **P1** | `main` is nearly empty; production trunk discipline not established. |
 | **P2** | Generated types drift (`types.ts` missing newer tables). |
@@ -38,8 +40,8 @@
 | `src/routes/admin-login.tsx` | **delete** (prod) / quarantine | Demo one-click — not production. Seed demo tenant via script instead. |
 | `src/routes/demo.tsx` | **delete** (prod) / quarantine | Demo mode entry — sales URL only, not MVP product. |
 | `src/routes/signup.tsx` | **refactor** | Become post-invite auth step; drop shared invite code UX. |
-| `src/routes/start.tsx` | **refactor → delete UI** | Replace with `/invite/{token}` → auth → `/billing/checkout` Stripe. |
-| `src/routes/onboarding.tsx` | **refactor** | Keep wizard; create **organization + location + owner membership**; after Stripe. |
+| `src/routes/start.tsx` | **refactor → delete UI** | Replace with `/invite/{token}` → auth → `/billing/checkout` (**fake wall** now). |
+| `src/routes/onboarding.tsx` | **refactor** | Keep wizard; create **organization + location + owner membership**; after payment wall. |
 | `src/routes/auth.callback.tsx` | **keep** | Native Supabase OAuth callback. |
 | `src/routes/invite.$token.tsx` | **add** | Missing — required for owner/team invites. |
 | `src/routes/billing.*` | **add** | Checkout, portal return, `/billing/locked`. |
@@ -52,7 +54,7 @@
 | `src/routes/customers.tsx` | **keep / refactor** | Guest CRM list — org-level guests, location stats, tags, opt-in. |
 | `src/routes/customers_.$id.tsx` | **keep / refactor** | Guest detail — CASL / Loi 25 fields. |
 | `src/routes/reports.tsx` | **refactor** | Reservation metrics only; groupable; CSV; presets; owner/manager. |
-| `src/routes/settings.tsx` | **refactor** | Profile, hours, locations, tables, booking rules, team, Billing (Stripe Portal). Drop fake toggles. |
+| `src/routes/settings.tsx` | **refactor** | Profile, hours, locations, tables, booking rules, team, Billing (fake status now; Stripe Portal later). Drop fake toggles / PIN management. |
 | `src/routes/floorplan.tsx` | **refactor** | Move under Settings → Tables (route `/app/settings/tables`). |
 | `src/routes/staff.tsx` | **refactor** | Become Settings → Team (roles, invites); remove payroll/clock as primary. |
 | `src/routes/menu.tsx` | **delete** | Structured menu items OUT — replace with Settings → Menu assets. |
@@ -81,7 +83,7 @@
 | `src/lib/pos.functions.ts` | **delete** | POS OUT. |
 | `src/lib/server-auth*.ts` | **delete** | Server Pad OUT. |
 | `src/lib/ship-mode.ts` | **refactor** | Replace with DB `signup_mode` + subscription gate; remove Server Pad flags. |
-| `src/lib/plans.ts` | **refactor** | Map to Stripe Price IDs; no fake Pro upsell. |
+| `src/lib/plans.ts` | **refactor** | Plan labels for fake wall; later map to Stripe Price IDs. No Upgrade to Pro upsell. |
 | `src/lib/oauth.ts` | **keep** | Native Supabase Google. |
 | `src/lib/auth.tsx` | **refactor** | Memberships + active org/location from server, not localStorage SoT. |
 | `src/lib/auth-bootstrap.functions.ts` | **delete** (prod) | Demo credential bootstrap. |
@@ -155,18 +157,20 @@
 | `organizations` → `locations` | Flat restaurants |
 | `organization_id` + `location_id` on all tenant tables | Only `restaurant_id` |
 | Memberships + switcher | Single restaurant per user |
-| Stripe subscriptions + webhook mirror | None |
+| Subscription gate + fake paywall (Stripe later) | No org subscription enforcement |
 | `/invite/{token}` single-use | Shared code |
 | Role-aware RLS (owner/manager/host) | Flat authenticated policies |
+| Google/email only (no PINs) | PIN tiles + plaintext pins remain |
 | Cross-tenant automated tests | None |
 | Dashboard reservation-only metrics | Revenue/orders mixed in |
 | Menu = PDF/image assets | Structured `v2_menu_items` |
-| Frontend Vercel + separate Supabase envs | Ad-hoc / Lovable history |
+| Frontend Vercel + `restostacks.com` + separate Supabase envs | Ad-hoc / Lovable history |
+| First tenants = **separate orgs** (DHG, Industria) | Demo single restaurant |
 
 ---
 
 ## 7. Recommendation
 
-**Stop feature work.** Execute Phase 0 (cleanup + tenancy + RLS + invites + CI) before any new Host Stand polish. Production deploy is blocked primarily by **isolation model + billing + invite security**, not by missing UI chrome.
+**Stop feature work.** Execute Phase 0, then Phase 1 (fake paywall), 2 (booking), **3 (Host Stand — required for go-live)**, then Phase 6. See [`docs/DECISIONS.md`](./DECISIONS.md).
 
 See: `docs/DATA_MODEL.md`, `docs/BUILD_PLAN.md`, `docs/ROUTES.md`.

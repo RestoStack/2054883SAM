@@ -8,63 +8,63 @@ Production multi-tenant restaurant SaaS at **restostacks.com**: unrelated restau
 
 **Stack (fixed):** React + TypeScript + Vite + TanStack Router + Tailwind + shadcn/ui · Supabase (Postgres, Auth, RLS, Storage, Edge Functions) · GitHub trunk-based · migrations in `supabase/migrations/` (one file per change; never edit applied migrations).
 
+## Stakeholder locks
+
+See [`docs/DECISIONS.md`](docs/DECISIONS.md):
+
+1. First customers (DHG, Industria) = **separate organizations**
+2. **Host Stand required** for day-1 go-live
+3. Single domain **`restostacks.com`**
+4. **Fake payment wall** now (Stripe later; schema ready)
+5. Auth = **Google + email/password only** (no PINs)
+
 ## MVP scope (ONLY)
 
-1. Invite → auth (Google or email/password) → Stripe pay → onboard → `/app`
+1. Invite → auth → payment wall → onboard → `/app`
 2. Online booking `/book/{slug}` + staff reservation management
 3. Dashboard — reservation metrics only (no revenue/orders/staff KPIs)
 4. Reports — same metrics, groupable, CSV, presets (owner/manager)
 5. Guest CRM — org-level guests, tags, notes, CASL/Loi 25 opt-in
 6. Host Stand — floor plan, seat/unseat, walk-ins, live list
 7. Menu upload — PDF/image assets only (no item parsing)
-8. Settings — profile, hours, locations, tables, booking rules, team, Billing (Stripe Portal)
+8. Settings — profile, hours, locations, tables, booking rules, team, Billing
 
 ## Explicitly OUT (delete / do not extend)
 
-POS, Server Pad, orders, guest payments/deposits, revenue/ticket metrics, inventory, payroll/leaderboard, product analytics, marketing, loyalty, integrations, Upgrade to Pro, waitlist SMS, reviews, AI, public marketing site, structured menu items. Merge Calendar into Bookings; Floor Plan under Settings → Tables.
+POS, Server Pad, orders, guest payments/deposits, revenue/ticket metrics, inventory, payroll/leaderboard, product analytics, marketing, loyalty, integrations, Upgrade to Pro, waitlist SMS, reviews, AI, public marketing site, structured menu items, **staff PIN login**. Merge Calendar into Bookings; Floor Plan under Settings → Tables.
 
 ## Non-negotiable rules
 
-1. **Isolation (ADR-001):** shared Postgres; logical isolation via `organization_id` (+ `location_id`) + RLS. Documented in `docs/DATA_MODEL.md`. Dedicated-instance tier can fork later.
-2. **Tenancy is architecture:** `organizations` → `locations` → everything else. Every tenant table has `organization_id` NOT NULL (and `location_id` where relevant), FK, indexed. No tenant data in global tables. Active org/location from **memberships**, verified by RLS — never localStorage as SoT. Users may belong to multiple orgs (switcher).
-3. **Isolation tests gate PRs:** two orgs; assert tables, RPCs, storage paths, realtime channels are invisible cross-tenant.
-4. **Per-tenant config in DB** (branding, slug, timezone, currency, locale, booking rules) — not env/code.
-5. **Security in Postgres:** role-aware RLS (`owner` / `manager` / `host`). Public booking = SECURITY DEFINER RPCs + rate limits; anon never touches tenant tables directly.
-6. **No secrets in client:** no plaintext PINs/invite codes in the bundle. Invites = single-use hashed tokens with expiry, server-generated.
+1. **Isolation (ADR-001):** shared Postgres; logical isolation via `organization_id` (+ `location_id`) + RLS. Documented in `docs/DATA_MODEL.md`.
+2. **Tenancy is architecture:** `organizations` → `locations` → everything else. Active org/location from **memberships**, verified by RLS — never localStorage as SoT.
+3. **Isolation tests gate PRs.**
+4. **Per-tenant config in DB** — not env/code.
+5. **Security in Postgres:** role-aware RLS (`owner` / `manager` / `host`). Public booking = SECURITY DEFINER RPCs + rate limits.
+6. **No secrets / PINs / invite codes in the client bundle.** Invites = single-use hashed tokens.
 7. **Storage private by default;** menu via signed URLs or scoped paths per org.
 8. **Defaults:** CAD, `America/Toronto`, `en-CA` (fr-CA keys ready).
 9. **TypeScript strict**, generated Supabase types, no `any`; Zod at boundaries.
-10. **Billing:** Stripe is SoT. `organizations.stripe_customer_id` + `subscriptions` mirrored by Edge `stripe-webhook` (signature-verified, idempotent). App routes require `subscription_status ∈ {trialing, active}` else `/billing/locked`. Stripe keys only in Edge secrets.
+10. **Billing:** `subscriptions` gate (`trialing`\|`active`). v1 uses **fake checkout** (`billing_provider=fake`). Stripe Edge webhooks later — keys never in `VITE_*`.
 
 ## Authoritative docs
 
 | Doc | Purpose |
 |-----|---------|
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Stakeholder locks |
 | [docs/AUDIT.md](docs/AUDIT.md) | keep / refactor / delete map |
 | [docs/DATA_MODEL.md](docs/DATA_MODEL.md) | ADR-001 + target schema |
 | [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) | Phases 0–6 |
 | [docs/ROUTES.md](docs/ROUTES.md) | Route + role map |
-| [INDEPENDENCE.md](INDEPENDENCE.md) | Own hosting (no Lovable required) |
 
 ## Working rules for agents
 
-1. **Do not start OUT-OF-SCOPE features.** If asked, refuse and point to MVP list.
+1. **Do not start OUT-OF-SCOPE features** (including real Stripe until `billing_provider` flip is requested).
 2. Prefer **deleting** out-of-scope modules over refactoring them.
 3. New schema = **new migration file** only.
-4. `main` is protected trunk after Phase 0; until then work on feature branches `cursor/<name>-3a05` and open PRs.
-5. Never commit service role or Stripe secret keys.
-6. Design: keep existing green-accent admin shell; no drive-by redesigns.
-7. Lovable publish is **not** required — deploy via GitHub → Vercel / configured host (`docs/BUILD_PLAN.md` Phase 6).
+4. Never commit service role or Stripe secret keys.
+5. Design: keep existing green-accent admin shell; no drive-by redesigns.
+6. Deploy via GitHub → Vercel on `restostacks.com` (Phase 6). Lovable not required.
 
-## Current code reality (pre–Phase 0)
+## Critical path
 
-- Tenancy today is flat `restaurant_id` on `v2_*` — **must migrate** to org/location (Phase 0).
-- Large OUT-OF-SCOPE surface still present — see `docs/AUDIT.md`.
-- Stripe not implemented yet — Phase 1.
-
-## Quick paths
-
-- Routes: `src/routes/`
-- Data: `src/lib/v2-data.ts` (to be split/replaced in Phase 0–2)
-- Auth: `src/lib/auth.tsx`, `src/lib/oauth.ts`
-- Migrations: `supabase/migrations/`
+**Phase 0 → 1 → 2 → 3 (Host Stand) → 6** for first production invites.

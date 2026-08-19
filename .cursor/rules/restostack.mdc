@@ -9,29 +9,32 @@ Goal: safe production multi-tenant app at restostacks.com. Judge every change by
 
 ## Before coding
 
-- Read `AGENTS.md`, `docs/AUDIT.md`, `docs/DATA_MODEL.md`, `docs/BUILD_PLAN.md`, `docs/ROUTES.md`.
-- Do **not** implement OUT-OF-SCOPE features (POS, Server Pad, orders, revenue metrics, payroll, marketing, loyalty, AI, public marketing site, structured menu items, waitlist SMS, Upgrade to Pro).
+- Read `AGENTS.md`, `docs/DECISIONS.md`, `docs/AUDIT.md`, `docs/DATA_MODEL.md`, `docs/BUILD_PLAN.md`, `docs/ROUTES.md`.
+- Do **not** implement OUT-OF-SCOPE features (POS, Server Pad, orders, revenue metrics, payroll, marketing, loyalty, AI, public marketing site, structured menu items, waitlist SMS, Upgrade to Pro, **staff PIN login**, real Stripe until asked).
 - Prefer **delete** over refactor for out-of-scope modules.
 - Never commit `SUPABASE_SERVICE_ROLE_KEY` or Stripe secrets.
 - Migrations: one new file per change under `supabase/migrations/`; never edit an applied migration.
 
+## Stakeholder locks (docs/DECISIONS.md)
+
+- DHG & Industria = **separate orgs**
+- **Host Stand required** for go-live
+- Domain = **restostacks.com** only
+- Billing v1 = **fake payment wall** (`billing_provider=fake`)
+- Auth = **Google + email/password only**
+
 ## Architecture locks (ADR-001)
 
 - Shared Postgres; isolation via `organization_id` (+ `location_id`) + RLS.
-- `organizations` → `locations` → tenant data. No localStorage as tenancy SoT.
 - Role-aware RLS: owner / manager / host.
 - Public booking only via SECURITY DEFINER RPCs + rate limits.
-- Stripe subscription gate: `trialing` | `active` or `/billing/locked`.
+- Subscription gate: `trialing` | `active` or `/billing/locked`.
 - Cross-tenant isolation tests must pass before merge (Phase 0+).
 
-## MVP product surface
+## Critical path
 
-Invite→auth→Stripe→onboard · Booking · Dashboard (reservation KPIs only) · Reports · Guests · Host Stand · Menu assets · Settings (incl. Billing).
-
-## Stack
-
-React/TS/Vite/TanStack Router/Tailwind/shadcn · Supabase · GitHub trunk · Vercel deploy (Phase 6). Defaults: CAD, America/Toronto, en-CA.
+Phase 0 → 1 → 2 → 3 (Host Stand) → 6.
 
 ## Key docs
 
-`docs/AUDIT.md` · `docs/DATA_MODEL.md` · `docs/BUILD_PLAN.md` · `docs/ROUTES.md` · `INDEPENDENCE.md`
+`docs/DECISIONS.md` · `docs/AUDIT.md` · `docs/DATA_MODEL.md` · `docs/BUILD_PLAN.md` · `docs/ROUTES.md`

@@ -18,7 +18,7 @@
 5. Replace `v2_current_restaurant_id()` with membership-aware helpers; role-aware RLS.
 6. Storage: private bucket + `org/{organization_id}/...` policies; signed URLs.
 7. Invite system: hashed single-use tokens, Edge Function `invite-create`, route `/invite/{token}`.
-8. Remove plaintext PIN auth path for production; owners use Google/email; team via invite.
+8. **Remove all staff PIN login** — Google SSO + email/password only (`docs/DECISIONS.md`). Delete PIN tiles / `pin-{pin}` bootstrap paths.
 9. Strip hardcoded demo credentials from client for non-demo builds.
 10. CI: typecheck, lint, migration dry-run against ephemeral DB, **cross-tenant isolation suite** (two orgs; tables/RPCs/storage).
 11. Update generated Supabase types; Zod at boundaries for new RPCs.
@@ -55,36 +55,40 @@
 
 ## Phase 1 — Onboarding + Settings core
 
-**Goal:** Invite → auth → Stripe pay → onboard → land in `/app`. Settings: profile, hours, locations, team.
+**Goal:** Invite → auth → **fake payment wall** → onboard → land in `/app`. Settings: profile, hours, locations, team.  
+(Stripe real charges deferred — schema stays ready; see `docs/DECISIONS.md`.)
 
 ### Tasks
-1. Stripe Checkout / Setup Intent + Customer; Edge `stripe-checkout`, `stripe-webhook` (idempotent).
-2. Mirror `subscriptions`; gate all `/app/*` on `trialing|active`.
-3. `/billing/locked` + Customer Portal link in Settings → Billing.
-4. Onboarding wizard: org + first location + owner membership (post-payment).
-5. Settings: profile, hours, locations CRUD, team invites (no payment step for team).
-6. Org/location switcher in shell (membership-driven).
+1. `platform_settings.billing_provider = fake` (default).
+2. `/billing/checkout` fake payment wall UI; RPC `app_activate_fake_subscription` → `subscriptions.status = active`.
+3. Gate all `/app/*` on `trialing|active`; `/billing/locked` for inactive.
+4. Settings → Billing: show plan + “Demo payment on file” (no Stripe Portal until provider=stripe).
+5. Onboarding wizard: org + first location + owner membership (post-activation).
+6. Settings: profile, hours, locations CRUD, team invites (Google/email; **skip payment** for team).
+7. Org/location switcher in shell (membership-driven).
+8. Document Stripe cutover checklist (do not implement webhooks in this phase).
 
 ### Files touched
-- Add: `src/routes/invite.$token.tsx`, `billing.checkout.tsx`, `billing.locked.tsx`, `billing.return.tsx`.
-- Refactor: `onboarding.tsx`, `settings.tsx`, `signup.tsx`, `login.tsx`.
-- Edge: `supabase/functions/stripe-*`.
+- Add: `src/routes/invite.$token.tsx`, `billing.checkout.tsx`, `billing.locked.tsx`.
+- Refactor: `onboarding.tsx`, `settings.tsx`, `signup.tsx`, `login.tsx` (no PIN UI).
+- RPC: `app_activate_fake_subscription`.
 
 ### Migrations
-- `subscriptions` finalize + webhook idempotency table `stripe_events`.
+- `subscriptions` + `activated_via`; `platform_settings.billing_provider`.
 - Settings fields on `organizations` / `locations` / `location_hours`.
 
 ### Done when
-- [ ] New owner cannot reach `/app` without Stripe confirmation.
+- [ ] New owner cannot reach `/app` without completing fake payment wall.
 - [ ] Team invite skips payment.
-- [ ] Portal opens; cancel → locked.
+- [ ] Canceling/locking subscription (platform grant revoke or status flip) → `/billing/locked`.
 - [ ] Multi-location create works; switcher changes RLS context.
+- [ ] No Stripe secret keys required in env for this phase.
 
 ### Rollback
-- Disable Checkout via `platform_settings`; keep webhook consumer. Revert frontend routes.
+- Platform grant `subscriptions.status=active` for stuck owners; feature-flag wall.
 
 ### Estimate
-**7–10 eng-days**
+**5–7 eng-days** (shorter without Stripe integration)
 
 ---
 
@@ -222,12 +226,13 @@
    - PR → typecheck, lint, isolation tests, Vercel preview.  
    - Merge `main` → migrate **staging** + deploy staging.  
    - Tag `v*` → migrate **prod** + deploy prod.
-4. Frontend on **Vercel**; domains `restostacks.com`, `app.restostacks.com` (public book can be apex or `book.` — confirm).
+4. Frontend on **Vercel**; primary domain **`restostacks.com`** (serves `/app`, `/book/{slug}`, auth). No separate `app.` subdomain required for v1 (`docs/DECISIONS.md`).
 5. Sentry (FE + Edge), uptime check on `/health`.
 6. Prod backups + PITR enabled.
-7. Seed script: demo tenant (isolated, not shared prod passwords in docs for customers).
-8. Invite first real tenant (DHG / Industria) via owner invite link.
-9. Run full isolation suite against staging; smoke Host Stand + public book + billing locked.
+7. Seed script: demo tenant (isolated).
+8. Invite **two separate orgs** — DHG and Industria — each via own owner invite link.
+9. Run full isolation suite against staging; smoke **Host Stand** + public book + billing locked/fake wall.
+10. Optional later: flip `billing_provider=stripe` (not required for first go-live).
 
 ### Files touched
 - `.github/workflows/*`, `scripts/seed-demo.ts`, env examples, DNS docs.
@@ -237,17 +242,18 @@
 - Apply full chain to staging then prod (no edits to old files).
 
 ### Done when
-- [ ] Two real-looking orgs on staging cannot see each other (automated + manual).
-- [ ] Stripe test→live keys cutover checklist complete.
-- [ ] DHG/Industria owner completes invite→pay→onboard on prod.
+- [ ] Two orgs on staging cannot see each other (automated + manual) — mirrors DHG vs Industria.
+- [ ] Fake paywall path works end-to-end on prod; no Stripe keys required.
+- [ ] DHG owner and Industria owner each complete invite→auth→fake pay→onboard→**Host Stand** smoke.
 - [ ] Uptime green; Sentry receiving events.
 - [ ] Lovable not required for deploy.
+- [ ] `restostacks.com` live.
 
 ### Rollback
 - DNS back to previous; Supabase PITR; Vercel instant rollback.
 
 ### Estimate
-**5–8 eng-days** (plus calendar for Stripe/DNS/access)
+**5–8 eng-days** (plus calendar for DNS/access)
 
 ---
 
@@ -256,23 +262,26 @@
 | Phase | Eng-days |
 |-------|----------|
 | 0 | 8–12 |
-| 1 | 7–10 |
+| 1 | 5–7 |
 | 2 | 8–11 |
 | 3 | 5–7 |
 | 4 | 4–6 |
 | 5 | 7–10 |
 | 6 | 5–8 |
-| **Sum** | **~44–64** |
+| **Sum** | **~42–61** |
 
-Critical path to first paid tenant: **Phase 0 → 1 → 2 (minimal book) → 6**, with Host Stand/CRM/Dashboard following if needed for DHG go-live — confirm with stakeholder whether Host Stand is required on day one (recommended yes for restaurant ops).
+**Critical path to first production tenants (locked):**  
+**Phase 0 → 1 → 2 → 3 (Host Stand required) → 6**, with Phases 4–5 (CRM, Dashboard/Reports polish, menu assets) completed before or immediately after invite — prefer finishing 4–5 before Phase 6 if calendar allows.
+
+First customers: **DHG** and **Industria** as **separate organizations**.
 
 ---
 
 ## Definition of “production ready”
 
 1. Isolation tests gate merge.  
-2. Stripe subscription gate enforced server-side.  
-3. No OUT-OF-SCOPE modules in prod build.  
+2. Subscription gate enforced (`fake` or later `stripe`).  
+3. No OUT-OF-SCOPE modules in prod build; **no PIN login**.  
 4. Separate prod Supabase; no demo passwords.  
-5. `restostacks.com` serving Vercel prod; invites working.  
+5. `restostacks.com` serving Vercel prod; invites working; **Host Stand** smoke-tested.  
 6. Backups/PITR/Sentry/uptime on.

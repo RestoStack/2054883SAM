@@ -16,11 +16,14 @@ If the user requests work on any of the following, **do not implement**. Point t
 - Public marketing site / pitch deck / Upgrade to Pro upsell
 - Structured menu item CRUD (v1 is PDF/image assets only)
 - Guest card deposits / guest payment collection
+- Staff PIN login / `pin-{pin}` auth
+- Real Stripe Checkout/webhooks while `billing_provider=fake` (unless explicitly starting Stripe cutover)
 
 Allowed pivots:
 
 - Calendar views → merge into Bookings
 - Floor plan editor → Settings → Tables
 - Waitlist SMS → walk-in reservations only (no SMS)
+- Fake payment wall → Stripe later via `billing_provider=stripe`
 
 Schema changes must include `organization_id` (and `location_id` when location-scoped), RLS, and an isolation test update.
