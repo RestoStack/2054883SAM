@@ -28,6 +28,8 @@ interface AuthCtx {
   platformAdmin: boolean;
   /** True when staff exists but restaurant onboarding is unfinished. */
   needsOnboarding: boolean;
+  /** Signed in but no org membership — needs invite or bootstrap. */
+  needsInvite: boolean;
   /** Org model context (empty/unavailable until Phase 0 migration applied). */
   org: OrgContext;
   /** Owner needs fake (or Stripe) payment wall. */
@@ -178,13 +180,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
   };
 
-  const needsOnboarding = !!session && (!staff || !staff.onboarding_completed_at);
+  const needsInvite =
+    !!session &&
+    org.available &&
+    org.memberships.length === 0 &&
+    !platformAdmin;
+
+  // Only force the wizard when the user belongs to an org (or legacy staff)
+  // and onboarding is unfinished. Bare Google logins must not hit a dead end.
+  const needsOnboarding =
+    !!session &&
+    !needsInvite &&
+    (!staff || !staff.onboarding_completed_at);
 
   // Pre-migration: treat as live so existing tenants are not locked out.
   const subscriptionLive = !org.available
     ? true
     : !org.activeOrganizationId
-      ? true
+      ? !needsInvite
       : subscriptionIsLive(org.subscriptionStatus);
 
   const needsPayment =
@@ -205,6 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         staff,
         platformAdmin,
         needsOnboarding,
+        needsInvite,
         org,
         needsPayment,
         subscriptionLive,

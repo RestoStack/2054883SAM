@@ -15,6 +15,7 @@ import {
 import {
   billingVerify,
   onboardingBooking,
+  onboardingBootstrapOwner,
   onboardingDone,
   onboardingGet,
   onboardingLocation,
@@ -54,6 +55,7 @@ function OnboardingWizardPage() {
   const [bookingPath, setBookingPath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [orgId, setOrgId] = useState<string | null>(org.activeOrganizationId);
 
   const [welcome, setWelcome] = useState<WelcomeStepInput>({ full_name: "" });
   const [organization, setOrganization] = useState<OrganizationStepInput>({
@@ -79,7 +81,9 @@ function OnboardingWizardPage() {
   });
   const [team, setTeam] = useState<TeamStepInput>({ invites: [] });
 
-  const orgId = org.activeOrganizationId;
+  useEffect(() => {
+    setOrgId(org.activeOrganizationId);
+  }, [org.activeOrganizationId]);
 
   useEffect(() => {
     if (loading) return;
@@ -91,13 +95,8 @@ function OnboardingWizardPage() {
       navigate({ to: "/billing/setup", replace: true });
       return;
     }
-    if (!subscriptionLive) {
+    if (!subscriptionLive && orgId) {
       navigate({ to: "/billing/locked", replace: true });
-      return;
-    }
-    if (!orgId) {
-      setBooting(false);
-      setError("No organization yet. Accept your owner invite first.");
       return;
     }
 
@@ -110,6 +109,19 @@ function OnboardingWizardPage() {
         (session.user.email ?? "").split("@")[0] ||
         "";
       setWelcome((w) => ({ full_name: w.full_name || seed }));
+      if (seed && !organization.organization_name) {
+        setOrganization((o) => ({
+          ...o,
+          organization_name: o.organization_name || `${seed.split(/\s+/)[0]}'s restaurant`,
+        }));
+      }
+
+      if (!orgId) {
+        // No membership yet — welcome step will bootstrap an owner org.
+        setBooting(false);
+        setError(null);
+        return;
+      }
 
       // Verify subscription from mirrored row — never trust client claim.
       const verified = await billingVerify(orgId);
@@ -120,29 +132,25 @@ function OnboardingWizardPage() {
 
       const prog = await onboardingGet(orgId);
       if (cancelled) return;
-      if (!prog.ok) {
-        // Pre-migration: allow wizard UI to render for review.
-        setBooting(false);
-        return;
-      }
-      const current = (prog.current_step as OnboardingStepId) || "welcome";
-      if (STEP_ORDER.includes(current)) setStep(current);
-      if (typeof prog.location_id === "string") setLocationId(prog.location_id);
-      if (typeof prog.public_slug === "string") {
-        setBookingPath(`/book/${prog.public_slug}`);
-      }
-      const draft = (prog.draft as Record<string, unknown>) ?? {};
-      if (typeof draft.full_name === "string") setWelcome({ full_name: draft.full_name });
-      if (typeof draft.organization_name === "string") {
-        setOrganization((o) => ({
-          ...o,
-          organization_name: draft.organization_name as string,
-          brand_color: (draft.brand_color as string) || o.brand_color,
-        }));
-      }
-      if (prog.completed_at) {
-        navigate({ to: "/app", replace: true });
-        return;
+      if (prog.ok) {
+        const current = (prog.current_step as OnboardingStepId) || "welcome";
+        if (STEP_ORDER.includes(current)) setStep(current);
+        if (prog.location_id) setLocationId(String(prog.location_id));
+        const draft = (prog.draft as Record<string, unknown>) ?? {};
+        if (typeof draft.full_name === "string" && draft.full_name) {
+          setWelcome({ full_name: draft.full_name });
+        }
+        if (typeof draft.organization_name === "string") {
+          setOrganization((o) => ({
+            ...o,
+            organization_name: draft.organization_name as string,
+            brand_color: (draft.brand_color as string) || o.brand_color,
+          }));
+        }
+        if (prog.completed_at) {
+          navigate({ to: "/app", replace: true });
+          return;
+        }
       }
       setBooting(false);
     })();
@@ -151,6 +159,19 @@ function OnboardingWizardPage() {
       cancelled = true;
     };
   }, [loading, session, orgId, needsPayment, subscriptionLive, navigate]);
+
+  const ensureOrg = async (fullName: string) => {
+    if (orgId) return orgId;
+    const boot = await onboardingBootstrapOwner(fullName, organization.organization_name || undefined);
+    if (!boot.ok) {
+      setError(boot.error);
+      return null;
+    }
+    const id = String(boot.organization_id);
+    setOrgId(id);
+    await refreshStaff();
+    return id;
+  };
 
   const requireOrg = () => {
     if (!orgId) {
@@ -181,10 +202,18 @@ function OnboardingWizardPage() {
         busy={busy}
         error={error}
         onContinue={async () => {
-          if (!requireOrg()) return;
+          if (!welcome.full_name.trim()) {
+            setError("Enter your name");
+            return;
+          }
           setBusy(true);
           setError(null);
-          const res = await onboardingWelcome(orgId!, welcome);
+          const id = await ensureOrg(welcome.full_name.trim());
+          if (!id) {
+            setBusy(false);
+            return;
+          }
+          const res = await onboardingWelcome(id, welcome);
           setBusy(false);
           if (!res.ok) {
             setError(res.error);

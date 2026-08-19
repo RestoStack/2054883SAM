@@ -55,6 +55,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     staff,
     platformAdmin,
     needsOnboarding,
+    needsInvite,
     needsPayment,
     subscriptionLive,
   } = useAuth();
@@ -71,7 +72,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // /onboarding: session + live subscription (owners pay first).
+    // /onboarding: session required; bootstrap may create the org on first step.
     if (pathname === "/onboarding") {
       if (!session) {
         navigate({ to: "/login", replace: true });
@@ -81,7 +82,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         navigate({ to: "/billing/setup", replace: true });
         return;
       }
-      if (!subscriptionLive) {
+      if (!subscriptionLive && !needsInvite) {
         navigate({ to: "/billing/locked", replace: true });
       }
       return;
@@ -100,6 +101,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     }
     if (platformAdmin && !staff) {
       navigate({ to: "/platform", replace: true });
+      return;
+    }
+
+    // No org yet — send to onboarding which can bootstrap (fake billing) or explain invite.
+    if (needsInvite) {
+      navigate({ to: "/onboarding", replace: true });
       return;
     }
 
@@ -127,6 +134,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     staff,
     platformAdmin,
     needsOnboarding,
+    needsInvite,
     needsPayment,
     subscriptionLive,
     pathname,
