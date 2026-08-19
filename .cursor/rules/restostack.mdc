@@ -1,0 +1,40 @@
+---
+description: RestoStack MVP rules — production multi-tenant deploy
+alwaysApply: true
+---
+
+# RestoStack MVP
+
+Goal: safe production multi-tenant app at restostacks.com. Judge every change by deploy safety and speed.
+
+## Before coding
+
+- Read `AGENTS.md`, `docs/DECISIONS.md`, `docs/AUDIT.md`, `docs/DATA_MODEL.md`, `docs/BUILD_PLAN.md`, `docs/ROUTES.md`.
+- Do **not** implement OUT-OF-SCOPE features (POS, Server Pad, orders, revenue metrics, payroll, marketing, loyalty, AI, public marketing site, structured menu items, waitlist SMS, Upgrade to Pro, **staff PIN login**, real Stripe until asked).
+- Prefer **delete** over refactor for out-of-scope modules.
+- Never commit `SUPABASE_SERVICE_ROLE_KEY` or Stripe secrets.
+- Migrations: one new file per change under `supabase/migrations/`; never edit an applied migration.
+
+## Stakeholder locks (docs/DECISIONS.md)
+
+- DHG & Industria = **separate orgs**
+- **Host Stand required** for go-live
+- Domain = **restostacks.com** only
+- Billing v1 = **fake payment wall** (`billing_provider=fake`)
+- Auth = **Google + email/password only**
+
+## Architecture locks (ADR-001)
+
+- Shared Postgres; isolation via `organization_id` (+ `location_id`) + RLS.
+- Role-aware RLS: owner / manager / host.
+- Public booking only via SECURITY DEFINER RPCs + rate limits.
+- Subscription gate: `trialing` | `active` or `/billing/locked`.
+- Cross-tenant isolation tests must pass before merge (Phase 0+).
+
+## Critical path
+
+Phase 0 → 1 → 2 → 3 (Host Stand) → 6.
+
+## Key docs
+
+`docs/DECISIONS.md` · `docs/AUDIT.md` · `docs/DATA_MODEL.md` · `docs/BUILD_PLAN.md` · `docs/ROUTES.md`
