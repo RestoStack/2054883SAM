@@ -30,7 +30,7 @@ function LoginPage() {
     if (loading) return;
     if (!session) return;
     if (needsPayment) {
-      navigate({ to: "/billing/checkout", replace: true });
+      navigate({ to: "/billing/setup", replace: true });
       return;
     }
     if (!subscriptionLive) {

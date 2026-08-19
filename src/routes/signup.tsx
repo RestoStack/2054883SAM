@@ -69,7 +69,7 @@ function SignupPage() {
     if (loading) return;
     if (!session) return;
     if (needsPayment) {
-      navigate({ to: "/billing/checkout", replace: true });
+      navigate({ to: "/billing/setup", replace: true });
       return;
     }
     if (!subscriptionLive) {
@@ -139,7 +139,7 @@ function SignupPage() {
       }
 
       await refreshStaff();
-      navigate({ to: "/billing/checkout", replace: true });
+      navigate({ to: "/billing/setup", replace: true });
     } catch (err: unknown) {
       const e = err as { message?: string };
       setError(e?.message || "Something went wrong. Please try again.");

@@ -60,14 +60,14 @@
 (Stripe real charges deferred — schema stays ready; see `docs/DECISIONS.md`.)
 
 ### Tasks
-1. `platform_settings.billing_provider = fake` (default).
-2. `/billing/checkout` fake payment wall UI; RPC `app_activate_fake_subscription` → `subscriptions.status = active`.
+1. `platform_settings.billing_provider = fake` (default) with Stripe-shaped `/billing/setup` funnel.
+2. `/billing/setup` plan picker → Checkout (Stripe when enabled) → return verifies `subscriptions` row via `app_billing_verify_subscription` (never client claim). Fake RPC writes the same row when provider=fake.
 3. Gate all `/app/*` on `trialing|active`; `/billing/locked` for inactive.
-4. Settings → Billing: show plan + “Demo payment on file” (no Stripe Portal until provider=stripe).
-5. Onboarding wizard: org + first location + owner membership (post-activation).
-6. Settings: profile, hours, locations CRUD, team invites (Google/email; **skip payment** for team).
+4. Settings → Billing: deferred until after wizard components land (this PR stops before Settings wiring).
+5. Onboarding wizard (7 steps) with transaction-safe RPCs + resume via `onboarding_progress`.
+6. Settings: profile, hours, locations, team — **next slice** (wizard components shown first).
 7. Org/location switcher in shell (membership-driven).
-8. Document Stripe cutover checklist (do not implement webhooks in this phase).
+8. Stripe Edge Functions scaffolded (`billing-checkout`, `stripe-webhook`); see `docs/STRIPE_CUTOVER.md`.
 
 ### Files touched
 - Add: `src/routes/invite.$token.tsx`, `billing.checkout.tsx`, `billing.locked.tsx`.

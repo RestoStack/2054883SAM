@@ -317,7 +317,7 @@ function BillingSection() {
           </div>
           {needsPayment ? (
             <Link
-              to="/billing/checkout"
+              to="/billing/setup"
               className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
             >
               Complete activation
