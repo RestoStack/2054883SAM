@@ -9,7 +9,7 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "deploy:cf": "npm run build && npx wrangler deploy",
-    "test:isolation": "node --import tsx --test tests/isolation/**/*.test.ts",
+    "test:isolation": "node --import tsx --test tests/isolation/*.test.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
     "invite:owner": "tsx scripts/create-owner-invite.ts",
     "lint": "eslint .",

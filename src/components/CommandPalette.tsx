@@ -69,7 +69,7 @@ export function CommandPalette() {
                 key={c.id}
                 value={`customer ${c.name} ${c.email}`}
                 onSelect={() =>
-                  go(() => navigate({ to: "/customers/$id", params: { id: c.id }, search: { tab: "overview" } }))
+                  go(() => navigate({ to: "/app/guests/$id", params: { id: c.id } }))
                 }
               >
                 <Users className="mr-2 size-4" />
@@ -87,9 +87,8 @@ export function CommandPalette() {
                   go(() => {
                     if (b.customerId) {
                       navigate({
-                        to: "/customers/$id",
+                        to: "/app/guests/$id",
                         params: { id: b.customerId },
-                        search: { tab: "overview" },
                       });
                     } else navigate({ to: "/app/reservations" });
                   })

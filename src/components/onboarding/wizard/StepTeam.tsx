@@ -1,5 +1,5 @@
 import { Plus, Trash2 } from "lucide-react";
-import { Field, inputClass, WizardPrimaryButton, WizardSecondaryButton, WizardShell } from "./WizardShell";
+import { Field, inputClass, WizardPrimaryButton, WizardShell } from "./WizardShell";
 import type { TeamStepInput } from "@/lib/schemas/onboarding";
 
 export function StepTeam({
@@ -7,6 +7,7 @@ export function StepTeam({
   onChange,
   onBack,
   onContinue,
+  onSkip,
   busy,
   error,
 }: {
@@ -14,13 +15,13 @@ export function StepTeam({
   onChange: (v: TeamStepInput) => void;
   onBack: () => void;
   onContinue: () => void;
+  onSkip: () => void;
   busy?: boolean;
   error?: string | null;
 }) {
   const invites = value.invites ?? [];
 
-  const add = () =>
-    onChange({ invites: [...invites, { email: "", role: "host" }] });
+  const add = () => onChange({ invites: [...invites, { email: "", role: "host" }] });
 
   const patch = (i: number, p: Partial<(typeof invites)[0]>) => {
     onChange({
@@ -33,29 +34,22 @@ export function StepTeam({
 
   return (
     <WizardShell
-      step="team"
+      step={6}
       title="Invite your team"
-      subtitle="Optional. Teammates skip payment and sign in with Google or email."
+      subtitle="Add by email. Invites expire in 7 days and are scoped to this restaurant."
       error={error}
+      onBack={onBack}
+      onSkip={onSkip}
+      canSkip
       footer={
-        <>
-          <WizardSecondaryButton onClick={onBack} disabled={busy}>
-            Back
-          </WizardSecondaryButton>
-          <div className="flex gap-2">
-            <WizardSecondaryButton onClick={onContinue} disabled={busy}>
-              Skip for now
-            </WizardSecondaryButton>
-            <WizardPrimaryButton disabled={busy} onClick={onContinue}>
-              {busy ? "Saving…" : "Continue"}
-            </WizardPrimaryButton>
-          </div>
-        </>
+        <WizardPrimaryButton disabled={busy} onClick={onContinue}>
+          {busy ? "Sending…" : "Continue"}
+        </WizardPrimaryButton>
       }
     >
       <div className="space-y-4">
         {invites.map((inv, i) => (
-          <div key={i} className="grid grid-cols-[1fr_120px_40px] gap-2 items-end">
+          <div key={i} className="grid grid-cols-[1fr_130px_40px] gap-2 items-end">
             <Field label="Email">
               <input
                 type="email"
@@ -70,20 +64,23 @@ export function StepTeam({
                 className={inputClass}
                 value={inv.role}
                 onChange={(e) =>
-                  patch(i, { role: e.target.value as "manager" | "host" })
+                  patch(i, {
+                    role: e.target.value as "manager" | "host" | "server",
+                  })
                 }
               >
-                <option value="host">Host</option>
                 <option value="manager">Manager</option>
+                <option value="host">Host</option>
+                <option value="server">Server</option>
               </select>
             </Field>
             <button
               type="button"
               onClick={() => remove(i)}
-              className="size-10 grid place-items-center rounded-lg hover:bg-slate-100"
+              className="size-10 grid place-items-center rounded-lg hover:bg-stone-100"
               aria-label="Remove"
             >
-              <Trash2 className="size-4 text-slate-500" />
+              <Trash2 className="size-4 text-stone-500" />
             </button>
           </div>
         ))}

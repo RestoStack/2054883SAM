@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Building2,
   Clock,
@@ -21,12 +21,17 @@ import { SettingsTables } from "@/components/settings/SettingsTables";
 import { SettingsMenu } from "@/components/settings/SettingsMenu";
 import { useAuth } from "@/lib/auth";
 
+type SectionId = "profile" | "hours" | "locations" | "team" | "billing" | "tables" | "menu";
+
+type SettingsSearch = { section?: string };
+
 export const Route = createFileRoute("/settings")({
+  validateSearch: (s: Record<string, unknown>): SettingsSearch => ({
+    section: typeof s.section === "string" ? s.section : undefined,
+  }),
   head: () => ({ meta: [{ title: "Settings — RestoStack" }] }),
   component: SettingsPage,
 });
-
-type SectionId = "profile" | "hours" | "locations" | "team" | "billing" | "tables" | "menu";
 
 const SECTIONS: {
   id: SectionId;
@@ -46,9 +51,20 @@ const SECTIONS: {
 
 function SettingsPage() {
   const { org } = useAuth();
-  const [active, setActive] = useState<SectionId>("profile");
+  const search = Route.useSearch();
+  const initial =
+    search.section && SECTIONS.some((s) => s.id === search.section)
+      ? (search.section as SectionId)
+      : "profile";
+  const [active, setActive] = useState<SectionId>(initial);
   const isOwner = org.role === "owner" || !org.available;
   const isManager = isOwner || org.role === "manager";
+
+  useEffect(() => {
+    if (search.section && SECTIONS.some((s) => s.id === search.section)) {
+      setActive(search.section as SectionId);
+    }
+  }, [search.section]);
 
   const visible = SECTIONS.filter(
     (s) => (!s.ownerOnly || isOwner) && (!s.managerOnly || isManager),

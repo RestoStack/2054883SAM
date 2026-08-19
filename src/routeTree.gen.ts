@@ -33,6 +33,7 @@ import { Route as AdminLoginRouteImport } from './routes/admin-login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlatformIndexRouteImport } from './routes/platform.index'
 import { Route as PlatformRestaurantsRouteImport } from './routes/platform.restaurants'
+import { Route as OnboardingStepRouteImport } from './routes/onboarding.$step'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as CustomersIdRouteImport } from './routes/customers_.$id'
 import { Route as BookSlugRouteImport } from './routes/book_.$slug'
@@ -40,11 +41,17 @@ import { Route as BillingSetupRouteImport } from './routes/billing.setup'
 import { Route as BillingLockedRouteImport } from './routes/billing.locked'
 import { Route as BillingCheckoutRouteImport } from './routes/billing.checkout'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
+import { Route as AppServerRouteImport } from './routes/app_.server'
 import { Route as AppReservationsRouteImport } from './routes/app_.reservations'
 import { Route as AppReportsRouteImport } from './routes/app_.reports'
+import { Route as AppOrdersRouteImport } from './routes/app_.orders'
+import { Route as AppMenuRouteImport } from './routes/app_.menu'
+import { Route as AppMarketingRouteImport } from './routes/app_.marketing'
+import { Route as AppLoyaltyRouteImport } from './routes/app_.loyalty'
 import { Route as AppHostRouteImport } from './routes/app_.host'
 import { Route as AppGuestsRouteImport } from './routes/app_.guests'
 import { Route as AppDashboardRouteImport } from './routes/app_.dashboard'
+import { Route as AppAnalyticsRouteImport } from './routes/app_.analytics'
 import { Route as AppGuestsIdRouteImport } from './routes/app_.guests.$id'
 
 const TermsRoute = TermsRouteImport.update({
@@ -167,6 +174,11 @@ const PlatformRestaurantsRoute = PlatformRestaurantsRouteImport.update({
   path: '/platform/restaurants',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OnboardingStepRoute = OnboardingStepRouteImport.update({
+  id: '/$step',
+  path: '/$step',
+  getParentRoute: () => OnboardingRoute,
+} as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
   path: '/invite/$token',
@@ -202,6 +214,11 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
   path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppServerRoute = AppServerRouteImport.update({
+  id: '/app_/server',
+  path: '/app/server',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppReservationsRoute = AppReservationsRouteImport.update({
   id: '/app_/reservations',
   path: '/app/reservations',
@@ -210,6 +227,26 @@ const AppReservationsRoute = AppReservationsRouteImport.update({
 const AppReportsRoute = AppReportsRouteImport.update({
   id: '/app_/reports',
   path: '/app/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppOrdersRoute = AppOrdersRouteImport.update({
+  id: '/app_/orders',
+  path: '/app/orders',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppMenuRoute = AppMenuRouteImport.update({
+  id: '/app_/menu',
+  path: '/app/menu',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppMarketingRoute = AppMarketingRouteImport.update({
+  id: '/app_/marketing',
+  path: '/app/marketing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppLoyaltyRoute = AppLoyaltyRouteImport.update({
+  id: '/app_/loyalty',
+  path: '/app/loyalty',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppHostRoute = AppHostRouteImport.update({
@@ -225,6 +262,11 @@ const AppGuestsRoute = AppGuestsRouteImport.update({
 const AppDashboardRoute = AppDashboardRouteImport.update({
   id: '/app_/dashboard',
   path: '/app/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
+  id: '/app_/analytics',
+  path: '/app/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppGuestsIdRoute = AppGuestsIdRouteImport.update({
@@ -247,7 +289,7 @@ export interface FileRoutesByFullPath {
   '/health': typeof HealthRoute
   '/host-stand': typeof HostStandRoute
   '/login': typeof LoginRoute
-  '/onboarding': typeof OnboardingRoute
+  '/onboarding': typeof OnboardingRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
@@ -256,11 +298,17 @@ export interface FileRoutesByFullPath {
   '/start': typeof StartRoute
   '/super-admin-login': typeof SuperAdminLoginRoute
   '/terms': typeof TermsRoute
+  '/app/analytics': typeof AppAnalyticsRoute
   '/app/dashboard': typeof AppDashboardRoute
   '/app/guests': typeof AppGuestsRouteWithChildren
   '/app/host': typeof AppHostRoute
+  '/app/loyalty': typeof AppLoyaltyRoute
+  '/app/marketing': typeof AppMarketingRoute
+  '/app/menu': typeof AppMenuRoute
+  '/app/orders': typeof AppOrdersRoute
   '/app/reports': typeof AppReportsRoute
   '/app/reservations': typeof AppReservationsRoute
+  '/app/server': typeof AppServerRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/billing/checkout': typeof BillingCheckoutRoute
   '/billing/locked': typeof BillingLockedRoute
@@ -268,6 +316,7 @@ export interface FileRoutesByFullPath {
   '/book/$slug': typeof BookSlugRoute
   '/customers/$id': typeof CustomersIdRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/onboarding/$step': typeof OnboardingStepRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
   '/platform/': typeof PlatformIndexRoute
   '/app/guests/$id': typeof AppGuestsIdRoute
@@ -286,7 +335,7 @@ export interface FileRoutesByTo {
   '/health': typeof HealthRoute
   '/host-stand': typeof HostStandRoute
   '/login': typeof LoginRoute
-  '/onboarding': typeof OnboardingRoute
+  '/onboarding': typeof OnboardingRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
@@ -295,11 +344,17 @@ export interface FileRoutesByTo {
   '/start': typeof StartRoute
   '/super-admin-login': typeof SuperAdminLoginRoute
   '/terms': typeof TermsRoute
+  '/app/analytics': typeof AppAnalyticsRoute
   '/app/dashboard': typeof AppDashboardRoute
   '/app/guests': typeof AppGuestsRouteWithChildren
   '/app/host': typeof AppHostRoute
+  '/app/loyalty': typeof AppLoyaltyRoute
+  '/app/marketing': typeof AppMarketingRoute
+  '/app/menu': typeof AppMenuRoute
+  '/app/orders': typeof AppOrdersRoute
   '/app/reports': typeof AppReportsRoute
   '/app/reservations': typeof AppReservationsRoute
+  '/app/server': typeof AppServerRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/billing/checkout': typeof BillingCheckoutRoute
   '/billing/locked': typeof BillingLockedRoute
@@ -307,6 +362,7 @@ export interface FileRoutesByTo {
   '/book/$slug': typeof BookSlugRoute
   '/customers/$id': typeof CustomersIdRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/onboarding/$step': typeof OnboardingStepRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
   '/platform': typeof PlatformIndexRoute
   '/app/guests/$id': typeof AppGuestsIdRoute
@@ -326,7 +382,7 @@ export interface FileRoutesById {
   '/health': typeof HealthRoute
   '/host-stand': typeof HostStandRoute
   '/login': typeof LoginRoute
-  '/onboarding': typeof OnboardingRoute
+  '/onboarding': typeof OnboardingRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
@@ -335,11 +391,17 @@ export interface FileRoutesById {
   '/start': typeof StartRoute
   '/super-admin-login': typeof SuperAdminLoginRoute
   '/terms': typeof TermsRoute
+  '/app_/analytics': typeof AppAnalyticsRoute
   '/app_/dashboard': typeof AppDashboardRoute
   '/app_/guests': typeof AppGuestsRouteWithChildren
   '/app_/host': typeof AppHostRoute
+  '/app_/loyalty': typeof AppLoyaltyRoute
+  '/app_/marketing': typeof AppMarketingRoute
+  '/app_/menu': typeof AppMenuRoute
+  '/app_/orders': typeof AppOrdersRoute
   '/app_/reports': typeof AppReportsRoute
   '/app_/reservations': typeof AppReservationsRoute
+  '/app_/server': typeof AppServerRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/billing/checkout': typeof BillingCheckoutRoute
   '/billing/locked': typeof BillingLockedRoute
@@ -347,6 +409,7 @@ export interface FileRoutesById {
   '/book_/$slug': typeof BookSlugRoute
   '/customers_/$id': typeof CustomersIdRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/onboarding/$step': typeof OnboardingStepRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
   '/platform/': typeof PlatformIndexRoute
   '/app_/guests/$id': typeof AppGuestsIdRoute
@@ -376,11 +439,17 @@ export interface FileRouteTypes {
     | '/start'
     | '/super-admin-login'
     | '/terms'
+    | '/app/analytics'
     | '/app/dashboard'
     | '/app/guests'
     | '/app/host'
+    | '/app/loyalty'
+    | '/app/marketing'
+    | '/app/menu'
+    | '/app/orders'
     | '/app/reports'
     | '/app/reservations'
+    | '/app/server'
     | '/auth/callback'
     | '/billing/checkout'
     | '/billing/locked'
@@ -388,6 +457,7 @@ export interface FileRouteTypes {
     | '/book/$slug'
     | '/customers/$id'
     | '/invite/$token'
+    | '/onboarding/$step'
     | '/platform/restaurants'
     | '/platform/'
     | '/app/guests/$id'
@@ -415,11 +485,17 @@ export interface FileRouteTypes {
     | '/start'
     | '/super-admin-login'
     | '/terms'
+    | '/app/analytics'
     | '/app/dashboard'
     | '/app/guests'
     | '/app/host'
+    | '/app/loyalty'
+    | '/app/marketing'
+    | '/app/menu'
+    | '/app/orders'
     | '/app/reports'
     | '/app/reservations'
+    | '/app/server'
     | '/auth/callback'
     | '/billing/checkout'
     | '/billing/locked'
@@ -427,6 +503,7 @@ export interface FileRouteTypes {
     | '/book/$slug'
     | '/customers/$id'
     | '/invite/$token'
+    | '/onboarding/$step'
     | '/platform/restaurants'
     | '/platform'
     | '/app/guests/$id'
@@ -454,11 +531,17 @@ export interface FileRouteTypes {
     | '/start'
     | '/super-admin-login'
     | '/terms'
+    | '/app_/analytics'
     | '/app_/dashboard'
     | '/app_/guests'
     | '/app_/host'
+    | '/app_/loyalty'
+    | '/app_/marketing'
+    | '/app_/menu'
+    | '/app_/orders'
     | '/app_/reports'
     | '/app_/reservations'
+    | '/app_/server'
     | '/auth/callback'
     | '/billing/checkout'
     | '/billing/locked'
@@ -466,6 +549,7 @@ export interface FileRouteTypes {
     | '/book_/$slug'
     | '/customers_/$id'
     | '/invite/$token'
+    | '/onboarding/$step'
     | '/platform/restaurants'
     | '/platform/'
     | '/app_/guests/$id'
@@ -485,7 +569,7 @@ export interface RootRouteChildren {
   HealthRoute: typeof HealthRoute
   HostStandRoute: typeof HostStandRoute
   LoginRoute: typeof LoginRoute
-  OnboardingRoute: typeof OnboardingRoute
+  OnboardingRoute: typeof OnboardingRouteWithChildren
   PrivacyRoute: typeof PrivacyRoute
   ReportsRoute: typeof ReportsRoute
   SettingsRoute: typeof SettingsRoute
@@ -494,11 +578,17 @@ export interface RootRouteChildren {
   StartRoute: typeof StartRoute
   SuperAdminLoginRoute: typeof SuperAdminLoginRoute
   TermsRoute: typeof TermsRoute
+  AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppGuestsRoute: typeof AppGuestsRouteWithChildren
   AppHostRoute: typeof AppHostRoute
+  AppLoyaltyRoute: typeof AppLoyaltyRoute
+  AppMarketingRoute: typeof AppMarketingRoute
+  AppMenuRoute: typeof AppMenuRoute
+  AppOrdersRoute: typeof AppOrdersRoute
   AppReportsRoute: typeof AppReportsRoute
   AppReservationsRoute: typeof AppReservationsRoute
+  AppServerRoute: typeof AppServerRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   BillingCheckoutRoute: typeof BillingCheckoutRoute
   BillingLockedRoute: typeof BillingLockedRoute
@@ -680,6 +770,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlatformRestaurantsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/onboarding/$step': {
+      id: '/onboarding/$step'
+      path: '/$step'
+      fullPath: '/onboarding/$step'
+      preLoaderRoute: typeof OnboardingStepRouteImport
+      parentRoute: typeof OnboardingRoute
+    }
     '/invite/$token': {
       id: '/invite/$token'
       path: '/invite/$token'
@@ -729,6 +826,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app_/server': {
+      id: '/app_/server'
+      path: '/app/server'
+      fullPath: '/app/server'
+      preLoaderRoute: typeof AppServerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app_/reservations': {
       id: '/app_/reservations'
       path: '/app/reservations'
@@ -741,6 +845,34 @@ declare module '@tanstack/react-router' {
       path: '/app/reports'
       fullPath: '/app/reports'
       preLoaderRoute: typeof AppReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app_/orders': {
+      id: '/app_/orders'
+      path: '/app/orders'
+      fullPath: '/app/orders'
+      preLoaderRoute: typeof AppOrdersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app_/menu': {
+      id: '/app_/menu'
+      path: '/app/menu'
+      fullPath: '/app/menu'
+      preLoaderRoute: typeof AppMenuRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app_/marketing': {
+      id: '/app_/marketing'
+      path: '/app/marketing'
+      fullPath: '/app/marketing'
+      preLoaderRoute: typeof AppMarketingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app_/loyalty': {
+      id: '/app_/loyalty'
+      path: '/app/loyalty'
+      fullPath: '/app/loyalty'
+      preLoaderRoute: typeof AppLoyaltyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app_/host': {
@@ -764,6 +896,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app_/analytics': {
+      id: '/app_/analytics'
+      path: '/app/analytics'
+      fullPath: '/app/analytics'
+      preLoaderRoute: typeof AppAnalyticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app_/guests/$id': {
       id: '/app_/guests/$id'
       path: '/$id'
@@ -773,6 +912,18 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface OnboardingRouteChildren {
+  OnboardingStepRoute: typeof OnboardingStepRoute
+}
+
+const OnboardingRouteChildren: OnboardingRouteChildren = {
+  OnboardingStepRoute: OnboardingStepRoute,
+}
+
+const OnboardingRouteWithChildren = OnboardingRoute._addFileChildren(
+  OnboardingRouteChildren,
+)
 
 interface AppGuestsRouteChildren {
   AppGuestsIdRoute: typeof AppGuestsIdRoute
@@ -800,7 +951,7 @@ const rootRouteChildren: RootRouteChildren = {
   HealthRoute: HealthRoute,
   HostStandRoute: HostStandRoute,
   LoginRoute: LoginRoute,
-  OnboardingRoute: OnboardingRoute,
+  OnboardingRoute: OnboardingRouteWithChildren,
   PrivacyRoute: PrivacyRoute,
   ReportsRoute: ReportsRoute,
   SettingsRoute: SettingsRoute,
@@ -809,11 +960,17 @@ const rootRouteChildren: RootRouteChildren = {
   StartRoute: StartRoute,
   SuperAdminLoginRoute: SuperAdminLoginRoute,
   TermsRoute: TermsRoute,
+  AppAnalyticsRoute: AppAnalyticsRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppGuestsRoute: AppGuestsRouteWithChildren,
   AppHostRoute: AppHostRoute,
+  AppLoyaltyRoute: AppLoyaltyRoute,
+  AppMarketingRoute: AppMarketingRoute,
+  AppMenuRoute: AppMenuRoute,
+  AppOrdersRoute: AppOrdersRoute,
   AppReportsRoute: AppReportsRoute,
   AppReservationsRoute: AppReservationsRoute,
+  AppServerRoute: AppServerRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   BillingCheckoutRoute: BillingCheckoutRoute,
   BillingLockedRoute: BillingLockedRoute,

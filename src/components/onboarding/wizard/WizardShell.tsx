@@ -1,70 +1,9 @@
-import type { ReactNode } from "react";
-import { STEP_ORDER, type OnboardingStepId } from "@/lib/schemas/onboarding";
+import { Link } from "@tanstack/react-router";
+import { ChevronLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { WIZARD_STEPS, stepFromParam, stepMeta } from "@/lib/schemas/onboarding";
 
-const LABELS: Record<OnboardingStepId, string> = {
-  welcome: "Welcome",
-  organization: "Restaurant",
-  location: "Location",
-  tables: "Tables",
-  booking: "Booking",
-  team: "Team",
-  done: "Done",
-};
-
-export function WizardShell({
-  step,
-  title,
-  subtitle,
-  children,
-  footer,
-  error,
-}: {
-  step: OnboardingStepId;
-  title: string;
-  subtitle?: string;
-  children: ReactNode;
-  footer: ReactNode;
-  error?: string | null;
-}) {
-  const idx = STEP_ORDER.indexOf(step);
-  return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#ecfdf5_0%,_#f8fafc_45%,_#ffffff_100%)] text-slate-900">
-      <header className="mx-auto max-w-2xl px-4 pt-8 pb-4">
-        <div className="flex items-center justify-between">
-          <span className="font-semibold tracking-tight text-lg">RestoStack</span>
-          <span className="text-xs text-slate-500">
-            Step {Math.min(idx + 1, 7)} of 7
-          </span>
-        </div>
-        <ol className="mt-4 flex gap-1">
-          {STEP_ORDER.map((s, i) => (
-            <li
-              key={s}
-              title={LABELS[s]}
-              className={`h-1.5 flex-1 rounded-full ${
-                i <= idx ? "bg-emerald-600" : "bg-slate-200"
-              }`}
-            />
-          ))}
-        </ol>
-      </header>
-
-      <main className="mx-auto max-w-2xl px-4 pb-24">
-        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
-        {subtitle && <p className="mt-2 text-sm text-slate-600">{subtitle}</p>}
-        <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          {children}
-          {error && (
-            <p className="mt-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
-              {error}
-            </p>
-          )}
-        </div>
-        <div className="mt-6 flex items-center justify-between gap-3">{footer}</div>
-      </main>
-    </div>
-  );
-}
+const GREEN = "#22C55E";
 
 export function WizardPrimaryButton({
   children,
@@ -72,7 +11,7 @@ export function WizardPrimaryButton({
   disabled,
   type = "button",
 }: {
-  children: ReactNode;
+  children: React.ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   type?: "button" | "submit";
@@ -80,9 +19,10 @@ export function WizardPrimaryButton({
   return (
     <button
       type={type}
-      onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
+      onClick={onClick}
+      className="inline-flex h-11 min-w-[120px] items-center justify-center rounded-xl px-5 text-sm font-semibold text-white disabled:opacity-50"
+      style={{ backgroundColor: GREEN }}
     >
       {children}
     </button>
@@ -93,40 +33,139 @@ export function WizardSecondaryButton({
   children,
   onClick,
   disabled,
+  type = "button",
 }: {
-  children: ReactNode;
+  children: React.ReactNode;
   onClick?: () => void;
   disabled?: boolean;
+  type?: "button" | "submit";
 }) {
   return (
     <button
-      type="button"
-      onClick={onClick}
+      type={type}
       disabled={disabled}
-      className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60"
+      onClick={onClick}
+      className="inline-flex h-11 min-w-[100px] items-center justify-center rounded-xl border border-stone-200 bg-white px-4 text-sm font-semibold text-stone-700 disabled:opacity-50 hover:bg-stone-50"
     >
       {children}
     </button>
   );
 }
 
+export function WizardShell({
+  step,
+  title,
+  subtitle,
+  children,
+  error,
+  footer,
+  onBack,
+  onSkip,
+  canSkip,
+}: {
+  step: number | string;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+  error?: string | null;
+  footer?: React.ReactNode;
+  onBack?: () => void;
+  onSkip?: () => void;
+  canSkip?: boolean;
+}) {
+  const stepNum = typeof step === "number" ? step : stepFromParam(String(step));
+  const meta = stepMeta(stepNum);
+  const pct = Math.round((stepNum / 7) * 100);
+
+  return (
+    <div className="min-h-dvh bg-[#F7F8FA]">
+      <header className="border-b border-black/5 bg-white">
+        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
+          <Link to="/app" className="font-serif text-lg font-semibold text-stone-900">
+            RestoStack
+          </Link>
+          <div className="text-xs font-medium text-stone-500">
+            Step {stepNum} of 7 · {meta.title}
+          </div>
+        </div>
+        <div className="h-1 w-full bg-stone-100">
+          <div className="h-full transition-all" style={{ width: `${pct}%`, backgroundColor: GREEN }} />
+        </div>
+        <div className="mx-auto flex max-w-3xl gap-1 px-4 py-2">
+          {WIZARD_STEPS.map((s) => (
+            <div
+              key={s.n}
+              className={cn(
+                "h-1 flex-1 rounded-full",
+                s.n <= stepNum ? "bg-emerald-500" : "bg-stone-200",
+              )}
+            />
+          ))}
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-3xl px-4 py-8">
+        <div className="mb-6">
+          <h1 className="font-serif text-3xl font-semibold tracking-tight text-stone-900">{title}</h1>
+          {subtitle && <p className="mt-2 text-sm text-stone-500">{subtitle}</p>}
+        </div>
+
+        <div className="rounded-2xl border border-black/[0.04] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] sm:p-6">
+          {error && (
+            <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {error}
+            </div>
+          )}
+          {children}
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            {onBack && stepNum > 1 ? (
+              <button
+                type="button"
+                onClick={onBack}
+                className="inline-flex h-11 items-center gap-1 rounded-xl px-3 text-sm font-medium text-stone-600 hover:bg-stone-100"
+              >
+                <ChevronLeft className="size-4" /> Back
+              </button>
+            ) : (
+              <span />
+            )}
+            {canSkip && onSkip && (
+              <button
+                type="button"
+                onClick={onSkip}
+                className="h-11 rounded-xl px-3 text-sm font-medium text-stone-500 hover:text-stone-800"
+              >
+                Skip for now
+              </button>
+            )}
+          </div>
+          {footer}
+        </div>
+      </main>
+    </div>
+  );
+}
+
 export function Field({
   label,
-  children,
   hint,
+  children,
 }: {
   label: string;
-  children: ReactNode;
   hint?: string;
+  children: React.ReactNode;
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-xs font-medium text-slate-600">{label}</span>
+      <span className="text-xs font-medium text-stone-600">{label}</span>
       {children}
-      {hint && <span className="block text-[11px] text-slate-500">{hint}</span>}
+      {hint && <span className="block text-[11px] text-stone-400">{hint}</span>}
     </label>
   );
 }
 
 export const inputClass =
-  "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20";
+  "h-11 w-full rounded-xl border border-stone-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500/30";

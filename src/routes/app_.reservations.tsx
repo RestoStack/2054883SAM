@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { AppShell } from "@/components/layout/Sidebar";
@@ -24,10 +24,11 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   createManualReservation,
-  listReservationsForDay,
+  listReservationsForRange,
   updateReservationStatus,
 } from "@/lib/booking-api";
 import { settingsListLocations } from "@/lib/settings-api";
+import { addDays, endOfMonth, format, startOfMonth, startOfWeek } from "date-fns";
 import {
   Calendar,
   Check,
@@ -42,11 +43,19 @@ import {
   Users,
 } from "lucide-react";
 
+type ResSearch = { from?: string; to?: string; date?: string; create?: string };
+
 export const Route = createFileRoute("/app_/reservations")({
+  validateSearch: (s: Record<string, unknown>): ResSearch => ({
+    from: typeof s.from === "string" ? s.from : undefined,
+    to: typeof s.to === "string" ? s.to : undefined,
+    date: typeof s.date === "string" ? s.date : undefined,
+    create: typeof s.create === "string" ? s.create : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Reservations — RestoStack" },
-      { name: "description", content: "Staff day view for reservations" },
+      { name: "description", content: "View and manage reservations by date or month" },
     ],
   }),
   component: ReservationsPage,
@@ -70,11 +79,7 @@ type ReservationRow = {
 };
 
 function todayISO(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return format(new Date(), "yyyy-MM-dd");
 }
 
 function formatTime(t: string): string {
@@ -110,30 +115,90 @@ const statusLabel = (s: ReservationStatus) =>
 
 const emptyForm = { name: "", phone: "", email: "", party: 2, time: "19:00", notes: "" };
 
+type Preset = "today" | "week" | "month" | "custom";
+
 function ReservationsPage() {
-  const { org } = useAuth();
+  const { org, staff } = useAuth();
+  const navigate = useNavigate();
+  const search = Route.useSearch();
   const orgId = org.activeOrganizationId;
+  const restaurantId = staff?.restaurant_id ?? null;
+  const tenantReady = Boolean(orgId || restaurantId);
   const [locationId, setLocationId] = useState(org.activeLocationId ?? "");
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
-  const [dateISO, setDateISO] = useState(todayISO());
+
+  const initialDay = search.date || search.from || todayISO();
+  const hasRange = Boolean(search.from && search.to);
+  const [preset, setPreset] = useState<Preset>(() => {
+    if (hasRange && search.from !== search.to) {
+      const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
+      const monthEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
+      if (search.from === monthStart && search.to === monthEnd) return "month";
+      return "custom";
+    }
+    if (!search.from && !search.to && !search.date) return "month";
+    return "today";
+  });
+  const [fromISO, setFromISO] = useState(
+    search.from ||
+      (!search.date ? format(startOfMonth(new Date()), "yyyy-MM-dd") : initialDay),
+  );
+  const [toISO, setToISO] = useState(
+    search.to ||
+      search.date ||
+      (!search.from ? format(endOfMonth(new Date()), "yyyy-MM-dd") : initialDay),
+  );
+  const [createDate, setCreateDate] = useState(initialDay);
+
   const [rows, setRows] = useState<ReservationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
-
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(search.create === "1");
   const [form, setForm] = useState(emptyForm);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    if (!orgId) return;
+    if (search.create === "1") setCreateOpen(true);
+  }, [search.create]);
+
+  const applyPreset = (p: Preset) => {
+    const today = new Date();
+    setPreset(p);
+    if (p === "today") {
+      const d = todayISO();
+      setFromISO(d);
+      setToISO(d);
+      setCreateDate(d);
+    } else if (p === "week") {
+      const start = startOfWeek(today, { weekStartsOn: 1 });
+      setFromISO(format(start, "yyyy-MM-dd"));
+      setToISO(format(addDays(start, 6), "yyyy-MM-dd"));
+      setCreateDate(todayISO());
+    } else if (p === "month") {
+      setFromISO(format(startOfMonth(today), "yyyy-MM-dd"));
+      setToISO(format(endOfMonth(today), "yyyy-MM-dd"));
+      setCreateDate(todayISO());
+    }
+  };
+
+  useEffect(() => {
+    navigate({
+      to: "/app/reservations",
+      search: { from: fromISO, to: toISO },
+      replace: true,
+    });
+  }, [fromISO, toISO, navigate]);
+
+  useEffect(() => {
+    if (!orgId) {
+      setLocations([]);
+      return;
+    }
     (async () => {
       const res = await settingsListLocations(orgId);
       const locs = (
         res.ok && Array.isArray((res as any).locations) ? (res as any).locations : []
-      ) as Array<{
-        id: string;
-        name: string;
-      }>;
+      ) as Array<{ id: string; name: string }>;
       setLocations(locs);
       const preferred =
         (org.activeLocationId && locs.find((l) => l.id === org.activeLocationId)?.id) ||
@@ -144,12 +209,18 @@ function ReservationsPage() {
   }, [orgId, org.activeLocationId]);
 
   const refresh = useCallback(async () => {
-    if (!orgId || !locationId) {
+    if (!tenantReady) {
       setRows([]);
       setLoading(false);
       return;
     }
-    const res = await listReservationsForDay(orgId, locationId, dateISO);
+    const res = await listReservationsForRange(
+      orgId,
+      locationId || null,
+      fromISO,
+      toISO,
+      restaurantId,
+    );
     if (!res.ok) {
       toast.error(res.error);
       setLoading(false);
@@ -157,17 +228,29 @@ function ReservationsPage() {
     }
     setRows(res.rows as unknown as ReservationRow[]);
     setLoading(false);
-  }, [orgId, locationId, dateISO]);
+  }, [tenantReady, orgId, locationId, fromISO, toISO, restaurantId]);
 
   useEffect(() => {
     setLoading(true);
     void refresh();
   }, [refresh]);
 
-  const sorted = useMemo(
-    () => rows.slice().sort((a, b) => a.reserved_time.localeCompare(b.reserved_time)),
-    [rows],
-  );
+  const grouped = useMemo(() => {
+    const map = new Map<string, ReservationRow[]>();
+    const sorted = rows
+      .slice()
+      .sort(
+        (a, b) =>
+          a.reserved_date.localeCompare(b.reserved_date) ||
+          a.reserved_time.localeCompare(b.reserved_time),
+      );
+    for (const r of sorted) {
+      const key = r.reserved_date;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(r);
+    }
+    return [...map.entries()];
+  }, [rows]);
 
   const counts = useMemo(() => {
     const acc: Record<string, number> = { total: rows.length };
@@ -176,11 +259,11 @@ function ReservationsPage() {
   }, [rows]);
 
   const handleStatus = async (id: string, status: ReservationStatus) => {
-    if (!orgId) return;
+    if (!tenantReady) return;
     const prev = rows;
     setBusyId(id);
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, status } : r)));
-    const res = await updateReservationStatus(orgId, id, status);
+    const res = await updateReservationStatus(orgId ?? restaurantId ?? "", id, status);
     setBusyId(null);
     if (!res.ok) {
       setRows(prev);
@@ -191,18 +274,19 @@ function ReservationsPage() {
   };
 
   const handleCreate = async () => {
-    if (!orgId || !locationId) return;
+    if (!tenantReady) return;
     if (!form.name.trim()) {
       toast.error("Guest name is required");
       return;
     }
     setCreating(true);
     const res = await createManualReservation({
-      organization_id: orgId,
-      location_id: locationId,
+      organization_id: orgId ?? restaurantId ?? "",
+      location_id: locationId || restaurantId || "",
+      restaurant_id: restaurantId,
       guest_name: form.name.trim(),
       party_size: Number(form.party) || 1,
-      date: dateISO,
+      date: createDate,
       time: form.time,
       guest_phone: form.phone.trim() || null,
       guest_email: form.email.trim() || null,
@@ -219,13 +303,15 @@ function ReservationsPage() {
     void refresh();
   };
 
+  const rangeLabel = fromISO === toISO ? fromISO : `${fromISO} → ${toISO}`;
+
   return (
     <AppShell>
       <div className="px-5 pt-4 pb-4 border-b border-border bg-card/40 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Reservations</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Staff day view — manage today's bookings.
+            Browse by day, week, or month — {rangeLabel}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -243,13 +329,55 @@ function ReservationsPage() {
               </SelectContent>
             </Select>
           )}
+          <div className="flex rounded-lg border border-border bg-card p-0.5">
+            {(
+              [
+                ["today", "Today"],
+                ["week", "This week"],
+                ["month", "This month"],
+                ["custom", "Custom"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => applyPreset(key)}
+                className={cn(
+                  "h-10 rounded-md px-3 text-xs font-semibold",
+                  preset === key
+                    ? "bg-emerald-500 text-white"
+                    : "text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 h-11 text-sm">
             <Calendar className="size-4 text-muted-foreground" />
             <input
               type="date"
-              value={dateISO}
-              onChange={(e) => setDateISO(e.target.value)}
+              value={fromISO}
+              onChange={(e) => {
+                setPreset("custom");
+                setFromISO(e.target.value);
+                if (e.target.value > toISO) setToISO(e.target.value);
+                setCreateDate(e.target.value);
+              }}
               className="bg-transparent text-sm outline-none"
+              aria-label="From date"
+            />
+            <span className="text-muted-foreground">–</span>
+            <input
+              type="date"
+              value={toISO}
+              onChange={(e) => {
+                setPreset("custom");
+                setToISO(e.target.value);
+                if (e.target.value < fromISO) setFromISO(e.target.value);
+              }}
+              className="bg-transparent text-sm outline-none"
+              aria-label="To date"
             />
           </div>
           <Button className="h-11 font-semibold" onClick={() => setCreateOpen(true)}>
@@ -282,69 +410,82 @@ function ReservationsPage() {
             <div className="py-16 text-center text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin inline mr-2" /> Loading…
             </div>
-          ) : sorted.length === 0 ? (
+          ) : grouped.length === 0 ? (
             <div className="py-16 text-center text-sm text-muted-foreground">
-              No reservations for this date.
+              No reservations in this date range.
             </div>
           ) : (
-            <ul className="divide-y divide-border">
-              {sorted.map((r) => (
-                <li key={r.id} className="p-4 flex flex-wrap items-center gap-3">
-                  <div className="w-20 shrink-0 text-sm font-semibold tabular-nums">
-                    {formatTime(r.reserved_time)}
+            <div className="divide-y divide-border">
+              {grouped.map(([date, dayRows]) => (
+                <div key={date}>
+                  <div className="sticky top-0 z-10 flex items-center justify-between bg-muted/60 px-4 py-2 text-sm font-semibold">
+                    <span>{format(new Date(date + "T12:00:00"), "EEEE, MMM d, yyyy")}</span>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {dayRows.length} booking{dayRows.length === 1 ? "" : "s"} ·{" "}
+                      {dayRows.reduce((s, r) => s + r.party_size, 0)} covers
+                    </span>
                   </div>
-                  <div className="flex-1 min-w-[160px]">
-                    <div className="font-medium">{r.guest_name}</div>
-                    <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2.5 mt-0.5">
-                      <span className="inline-flex items-center gap-1">
-                        <Users className="size-3" /> {r.party_size}
-                      </span>
-                      {r.table_number && (
-                        <span className="inline-flex items-center gap-1">
-                          <MapPin className="size-3" /> {r.table_number}
-                        </span>
-                      )}
-                      {r.guest_phone && (
-                        <span className="inline-flex items-center gap-1">
-                          <Phone className="size-3" /> {r.guest_phone}
-                        </span>
-                      )}
-                      <span className="capitalize">{r.source.replace("_", " ")}</span>
-                    </div>
-                  </div>
-                  <span
-                    className={cn(
-                      "rounded-full border px-2.5 py-1 text-xs font-semibold whitespace-nowrap",
-                      statusStyle[r.status],
-                    )}
-                  >
-                    {statusLabel(r.status)}
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {STATUS_OPTIONS.map((s) => {
-                      const active = r.status === s;
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          disabled={active || busyId === r.id}
-                          onClick={() => void handleStatus(r.id, s)}
+                  <ul className="divide-y divide-border">
+                    {dayRows.map((r) => (
+                      <li key={r.id} className="p-4 flex flex-wrap items-center gap-3">
+                        <div className="w-20 shrink-0 text-sm font-semibold tabular-nums">
+                          {formatTime(r.reserved_time)}
+                        </div>
+                        <div className="flex-1 min-w-[160px]">
+                          <div className="font-medium">{r.guest_name}</div>
+                          <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2.5 mt-0.5">
+                            <span className="inline-flex items-center gap-1">
+                              <Users className="size-3" /> {r.party_size}
+                            </span>
+                            {r.table_number && (
+                              <span className="inline-flex items-center gap-1">
+                                <MapPin className="size-3" /> {r.table_number}
+                              </span>
+                            )}
+                            {r.guest_phone && (
+                              <span className="inline-flex items-center gap-1">
+                                <Phone className="size-3" /> {r.guest_phone}
+                              </span>
+                            )}
+                            <span className="capitalize">{r.source.replace("_", " ")}</span>
+                          </div>
+                        </div>
+                        <span
                           className={cn(
-                            "h-9 rounded-full border px-2.5 text-xs font-medium transition-colors disabled:cursor-default",
-                            active
-                              ? "bg-success/15 text-success border-success/40"
-                              : "border-border hover:bg-muted",
+                            "rounded-full border px-2.5 py-1 text-xs font-semibold whitespace-nowrap",
+                            statusStyle[r.status],
                           )}
                         >
-                          {active && <Check className="size-3 inline mr-0.5" />}
-                          {statusLabel(s)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </li>
+                          {statusLabel(r.status)}
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {STATUS_OPTIONS.map((s) => {
+                            const active = r.status === s;
+                            return (
+                              <button
+                                key={s}
+                                type="button"
+                                disabled={active || busyId === r.id}
+                                onClick={() => void handleStatus(r.id, s)}
+                                className={cn(
+                                  "h-9 rounded-full border px-2.5 text-xs font-medium transition-colors disabled:cursor-default",
+                                  active
+                                    ? "bg-success/15 text-success border-success/40"
+                                    : "border-border hover:bg-muted",
+                                )}
+                              >
+                                {active && <Check className="size-3 inline mr-0.5" />}
+                                {statusLabel(s)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </div>
       </div>
@@ -355,7 +496,7 @@ function ReservationsPage() {
             <DialogTitle className="flex items-center gap-2">
               <Plus className="size-5 text-success" /> New reservation
             </DialogTitle>
-            <DialogDescription>Manually add a booking for {dateISO}.</DialogDescription>
+            <DialogDescription>Manually add a booking.</DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
             <div className="space-y-1.5 sm:col-span-2">
@@ -368,6 +509,28 @@ function ReservationsPage() {
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1.5">
+                <Calendar className="size-3.5" /> Date
+              </Label>
+              <Input
+                className="h-11"
+                type="date"
+                value={createDate}
+                onChange={(e) => setCreateDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1.5">
+                <Clock className="size-3.5" /> Time
+              </Label>
+              <Input
+                className="h-11"
+                type="time"
+                value={form.time}
+                onChange={(e) => setForm({ ...form, time: e.target.value })}
               />
             </div>
             <div className="space-y-1.5">
@@ -407,17 +570,6 @@ function ReservationsPage() {
                 onChange={(e) => setForm({ ...form, party: Number(e.target.value) || 1 })}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1.5">
-                <Clock className="size-3.5" /> Time
-              </Label>
-              <Input
-                className="h-11"
-                type="time"
-                value={form.time}
-                onChange={(e) => setForm({ ...form, time: e.target.value })}
-              />
-            </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1.5">
                 <StickyNote className="size-3.5" /> Notes (optional)
@@ -439,7 +591,7 @@ function ReservationsPage() {
               disabled={creating || !form.name.trim()}
               onClick={() => void handleCreate()}
             >
-              {creating ? <Loader2 className="size-4 animate-spin" /> : "Create reservation"}
+              {creating ? <Loader2 className="size-4 animate-spin" /> : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -72,18 +72,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // /onboarding: session required; bootstrap may create the org on first step.
-    if (pathname === "/onboarding") {
+    // /onboarding: session only. Do NOT billing-gate here — new Google/email
+    // owners bootstrap the org inside the wizard (fake billing). Locking them
+    // to /billing/* before an org exists breaks "Continue with Google" signup.
+    if (pathname === "/onboarding" || pathname.startsWith("/onboarding/")) {
       if (!session) {
         navigate({ to: "/login", replace: true });
-        return;
-      }
-      if (needsPayment) {
-        navigate({ to: "/billing/setup", replace: true });
-        return;
-      }
-      if (!subscriptionLive && !needsInvite) {
-        navigate({ to: "/billing/locked", replace: true });
       }
       return;
     }

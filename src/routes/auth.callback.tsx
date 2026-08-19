@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
+import { createRestaurantForCurrentUser } from "@/lib/create-restaurant";
+import { readSelectedPlan } from "@/lib/plans";
 
 export const Route = createFileRoute("/auth/callback")({
   head: () => ({ meta: [{ title: "Signing you in — RestoStack" }] }),
@@ -19,8 +21,11 @@ function AuthCallbackPage() {
 
     (async () => {
       try {
-        // Handle both PKCE (?code=) and hash token redirects.
         const url = new URL(window.location.href);
+        const oauthError =
+          url.searchParams.get("error_description") || url.searchParams.get("error");
+        if (oauthError) throw new Error(oauthError);
+
         const code = url.searchParams.get("code");
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -30,16 +35,22 @@ function AuthCallbackPage() {
           if (error) throw error;
         }
 
-        await refreshStaff();
-        if (cancelled) return;
-
         const {
           data: { session },
         } = await supabase.auth.getSession();
         if (!session?.user) {
-          navigate({ to: "/login", replace: true });
+          navigate({ to: "/signup", replace: true });
           return;
         }
+
+        const meta = (session.user.user_metadata as Record<string, unknown>) ?? {};
+        const fullName =
+          (meta.full_name as string) ||
+          (meta.name as string) ||
+          (session.user.email ?? "").split("@")[0] ||
+          "Owner";
+        const restaurantName =
+          (meta.restaurant_name as string) || `${String(fullName).split(/\s+/)[0]}'s restaurant`;
 
         const { data: staff } = await supabase
           .from("v2_users")
@@ -48,6 +59,33 @@ function AuthCallbackPage() {
           .maybeSingle();
 
         if (!staff?.restaurant_id) {
+          const created = await createRestaurantForCurrentUser({
+            restaurantName,
+            fullName,
+            plan: readSelectedPlan(),
+          });
+          if (!created.ok && !created.needsMigration) {
+            throw new Error(created.error);
+          }
+          if (!created.ok && created.needsMigration) {
+            await refreshStaff();
+            if (!cancelled) navigate({ to: "/onboarding", replace: true });
+            return;
+          }
+        }
+
+        await refreshStaff();
+        if (cancelled) return;
+
+        // New owners always land in onboarding (even if emergency SQL marked complete).
+        // The wizard is the product surface they expect after sign-up.
+        const { data: staffAfter } = await supabase
+          .from("v2_users")
+          .select("restaurant_id")
+          .eq("auth_user_id", session.user.id)
+          .maybeSingle();
+
+        if (!staffAfter?.restaurant_id) {
           navigate({ to: "/onboarding", replace: true });
           return;
         }
@@ -55,12 +93,13 @@ function AuthCallbackPage() {
         const { data: restaurant } = await supabase
           .from("v2_restaurants")
           .select("onboarding_completed_at")
-          .eq("id", staff.restaurant_id)
+          .eq("id", staffAfter.restaurant_id)
           .maybeSingle();
 
-        if (restaurant?.onboarding_completed_at) {
-          navigate({ to: "/dashboard", replace: true });
+        if (!restaurant?.onboarding_completed_at) {
+          navigate({ to: "/onboarding", replace: true });
         } else {
+          // Already finished once — still allow resume via /onboarding if they navigate there.
           navigate({ to: "/onboarding", replace: true });
         }
       } catch (e) {
@@ -81,9 +120,14 @@ function AuthCallbackPage() {
         {error ? (
           <>
             <p className="text-sm text-rose-600 mb-4">{error}</p>
-            <a href="/login" className="text-sm font-semibold text-emerald-700 underline">
-              Back to sign in
-            </a>
+            <div className="flex flex-col gap-2 items-center">
+              <a href="/signup" className="text-sm font-semibold text-emerald-700 underline">
+                Back to create account
+              </a>
+              <a href="/login" className="text-sm text-slate-500 underline">
+                Sign in instead
+              </a>
+            </div>
           </>
         ) : (
           <>

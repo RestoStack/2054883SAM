@@ -44,7 +44,8 @@ export function isPublicSignupEnabled(): boolean {
   const override = readEnv("VITE_ALLOW_PUBLIC_SIGNUP");
   if (override === "true") return true;
   if (override === "false") return false;
-  return false;
+  // Demo deploys: allow self-serve so stakeholders can walk the onboarding wizard.
+  return getShipMode() === "demo" || getShipMode() === "public";
 }
 
 export function isDemoAccessEnabled(): boolean {
