@@ -10,6 +10,7 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import type { DateRange } from "react-day-picker";
 import { format, isSameDay } from "date-fns";
 import {
+  localDateISO,
   useBookings,
   useDashboardStats,
   useLast7DayMetrics,
@@ -35,7 +36,6 @@ function Dashboard() {
   const [range, setRange] = useState<DateRange | undefined>({ from: new Date(), to: new Date() });
   const [activeMetric, setActiveMetric] = useState<StatKey>("bookings");
   const { data: dash } = useDashboardStats();
-  const { data: bookings = [] } = useBookings(new Date().toISOString().slice(0, 10));
 
   const isTodayRange =
     !!range?.from &&
@@ -45,6 +45,13 @@ function Dashboard() {
 
   const fromISO = range?.from ? format(range.from, "yyyy-MM-dd") : "";
   const toISO = range?.to ? format(range.to, "yyyy-MM-dd") : fromISO;
+  const todayLocal = localDateISO();
+  // Match Host Stand / public book (local calendar day), not UTC.
+  const bookingRange = useMemo(() => {
+    if (fromISO && toISO) return { from: fromISO, to: toISO };
+    return { from: todayLocal, to: todayLocal };
+  }, [fromISO, toISO, todayLocal]);
+  const { data: bookings = [] } = useBookings(bookingRange);
 
   const { data: rangeTrend = [] } = useMetricsInRange(fromISO, toISO);
   const { data: last7Trend = [] } = useLast7DayMetrics();
@@ -85,7 +92,14 @@ function Dashboard() {
   const fmtAxis = (v: number) =>
     activeMetric === "revenue" || activeMetric === "ticket" ? fmtMoney(v) : fmtCount(v);
 
-  const upcomingBookings = bookings.filter((b) => b.status === "pending" || b.status === "confirmed").slice(0, 6);
+  const upcomingBookings = bookings
+    .filter(
+      (b) =>
+        b.status === "pending" ||
+        b.status === "confirmed" ||
+        b.status === "seated",
+    )
+    .slice(0, 8);
   const foh = staffUsers.filter((s) => s.dept === "Front of House").length;
   const boh = staffUsers.filter((s) => s.dept === "Back of House").length;
   const mgmt = staffUsers.filter((s) => s.dept === "Management").length;
@@ -252,19 +266,32 @@ function Dashboard() {
 
           <div className="rounded-lg border border-border bg-card p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">Upcoming Bookings</h3>
+              <h3 className="font-semibold">
+                {isTodayRange ? "Upcoming Bookings" : "Bookings in Range"}
+              </h3>
               <Link to="/bookings" className="text-xs text-primary font-medium hover:underline">
                 View all →
               </Link>
             </div>
             <ul className="space-y-1 text-sm">
               {upcomingBookings.length === 0 && (
-                <li className="text-xs text-muted-foreground text-center py-4">No upcoming bookings today.</li>
+                <li className="text-xs text-muted-foreground text-center py-4">
+                  {isTodayRange
+                    ? "No upcoming bookings today."
+                    : "No bookings in this date range."}
+                </li>
               )}
               {upcomingBookings.map((b) => {
                 const body = (
                   <>
-                    <div className="text-xs font-semibold w-16 shrink-0 tabular-nums">{b.time}</div>
+                    <div className="text-xs font-semibold w-16 shrink-0 tabular-nums">
+                      {!isTodayRange && b.date !== todayLocal ? (
+                        <span className="block text-[10px] text-muted-foreground font-medium">
+                          {b.date.slice(5)}
+                        </span>
+                      ) : null}
+                      {b.time}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate text-sm">{b.name}</div>
                       <div className="text-xs text-muted-foreground truncate">

@@ -7,6 +7,7 @@ import {
   useCreateBooking,
   useStaffUsers,
   useUpdateBooking,
+  localDateISO,
   stripServerTag,
   type BookingRow,
 } from "@/lib/v2-data";
@@ -109,7 +110,7 @@ function minutesUntilTime(rawTime: string, now: Date) {
 }
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateISO();
 }
 
 function abbreviateName(name: string) {
@@ -840,9 +841,9 @@ function HostStandPage() {
   }, [dateISO]);
 
   const shiftDate = (delta: number) => {
-    const d = new Date(`${dateISO}T12:00:00`);
-    d.setDate(d.getDate() + delta);
-    setDateISO(d.toISOString().slice(0, 10));
+    const [y, m, d] = dateISO.split("-").map(Number);
+    const next = new Date(y, m - 1, d + delta);
+    setDateISO(localDateISO(next));
   };
 
   const openDatePicker = () => {

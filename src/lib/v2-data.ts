@@ -4,7 +4,16 @@ import { supabase } from "@/integrations/supabase/client";
 export const slugify = (s: string) =>
   (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+/** Calendar date in the user's local timezone (YYYY-MM-DD). Never use UTC for booking days. */
+export function localDateISO(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** @deprecated Prefer localDateISO — kept as alias so existing call sites stay correct. */
+const todayISO = () => localDateISO();
 
 const fmtTime12 = (t: string | null | undefined) => {
   if (!t) return "";
@@ -99,16 +108,26 @@ function mapBookingRow(
   };
 }
 
-export function useBookings(dateFilter?: string) {
+export function useBookings(dateFilter?: string | { from: string; to: string }) {
+  const key =
+    !dateFilter
+      ? "all"
+      : typeof dateFilter === "string"
+        ? dateFilter
+        : `${dateFilter.from}:${dateFilter.to}`;
   return useQuery({
-    queryKey: ["v2_bookings", dateFilter ?? "all"],
+    queryKey: ["v2_bookings", key],
     queryFn: async (): Promise<BookingRow[]> => {
       let q = supabase
         .from("v2_bookings")
         .select("*")
         .order("date", { ascending: true })
         .order("time", { ascending: true });
-      if (dateFilter) q = q.eq("date", dateFilter);
+      if (typeof dateFilter === "string") {
+        q = q.eq("date", dateFilter);
+      } else if (dateFilter) {
+        q = q.gte("date", dateFilter.from).lte("date", dateFilter.to);
+      }
       const { data, error } = await q;
       if (error) throw error;
       const rows = data ?? [];
@@ -132,6 +151,8 @@ export function useBookings(dateFilter?: string) {
         mapBookingRow(b, b.customer_id ? metaById[b.customer_id] : null),
       );
     },
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -225,6 +246,7 @@ export function useCreateBooking() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["v2_bookings"] });
       qc.invalidateQueries({ queryKey: ["v2_dashboard_stats"] });
+      qc.invalidateQueries({ queryKey: ["v2_last7_metrics"] });
     },
   });
 }
@@ -287,6 +309,7 @@ export function useUpdateBooking() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["v2_bookings"] });
       qc.invalidateQueries({ queryKey: ["v2_dashboard_stats"] });
+      qc.invalidateQueries({ queryKey: ["v2_last7_metrics"] });
     },
   });
 }
@@ -440,10 +463,10 @@ export function useTables() {
 
 // ============ DASHBOARD METRICS ============
 export function useDashboardStats() {
+  const today = localDateISO();
   return useQuery({
-    queryKey: ["v2_dashboard_stats", todayISO()],
+    queryKey: ["v2_dashboard_stats", today],
     queryFn: async () => {
-      const today = todayISO();
       const [bookingsRes, ordersRes, customersRes] = await Promise.all([
         supabase.from("v2_bookings").select("party_size,status").eq("date", today),
         supabase
@@ -480,6 +503,8 @@ export function useDashboardStats() {
         customerCount: customersRes.count ?? 0,
       };
     },
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -674,7 +699,7 @@ export function useLast7DayMetrics() {
       for (let i = 6; i >= 0; i--) {
         const d = new Date(today);
         d.setDate(today.getDate() - i);
-        const iso = d.toISOString().slice(0, 10);
+        const iso = localDateISO(d);
         days.push({
           day: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
           date: iso,
@@ -1104,7 +1129,7 @@ export function useMetricsInRange(from: string, to: string) {
       const end = new Date(`${to}T00:00:00`);
       const days: DayMetric[] = [];
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const iso = d.toISOString().slice(0, 10);
+        const iso = localDateISO(d);
         days.push({
           day: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
           date: iso,
