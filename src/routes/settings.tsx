@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   Building2,
@@ -16,6 +16,7 @@ import { SettingsHours } from "@/components/settings/SettingsHours";
 import { SettingsLocations } from "@/components/settings/SettingsLocations";
 import { SettingsTeam } from "@/components/settings/SettingsTeam";
 import { SettingsBilling } from "@/components/settings/SettingsBilling";
+import { SettingsTables } from "@/components/settings/SettingsTables";
 import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/settings")({
@@ -34,9 +35,9 @@ const SECTIONS: {
   { id: "profile", label: "Profile", icon: Building2 },
   { id: "hours", label: "Hours", icon: Clock },
   { id: "locations", label: "Locations", icon: MapPin },
+  { id: "tables", label: "Tables & booking", icon: LayoutGrid },
   { id: "team", label: "Team", icon: Users },
   { id: "billing", label: "Billing", icon: CreditCard, ownerOnly: true },
-  { id: "tables", label: "Tables / floor", icon: LayoutGrid },
 ];
 
 function SettingsPage() {
@@ -85,21 +86,7 @@ function SettingsPage() {
             {active === "locations" && <SettingsLocations />}
             {active === "team" && <SettingsTeam />}
             {active === "billing" && <SettingsBilling />}
-            {active === "tables" && (
-              <div className="space-y-3 max-w-xl">
-                <h2 className="text-lg font-semibold">Tables & floor plan</h2>
-                <p className="text-sm text-muted-foreground">
-                  Full editor lives here in Phase 2. Quick table setup was part of onboarding.
-                </p>
-                <Link
-                  to="/floorplan"
-                  className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted"
-                >
-                  <LayoutGrid className="size-4" />
-                  Open floor plan designer
-                </Link>
-              </div>
-            )}
+            {active === "tables" && <SettingsTables />}
           </section>
         </div>
       </div>

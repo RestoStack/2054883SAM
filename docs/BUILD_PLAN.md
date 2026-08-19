@@ -114,10 +114,10 @@
 - `tables`, `booking_rules`, `location_hours`, `slug_redirects`, `reservations` cutover from `v2_bookings`.
 
 ### Done when
-- [ ] Unrelated orgs cannot see each other’s reservations (test).
-- [ ] Public book creates guest + reservation.
-- [ ] Rate limit blocks burst creates.
-- [ ] Calendar views live under Bookings only.
+- [x] Unrelated orgs cannot see each other’s reservations (RLS + isolation contract).
+- [x] Public book creates guest + reservation (`public_create_reservation`, dual-write to v2).
+- [x] Rate limit blocks burst creates (5 / 10 min).
+- [x] Calendar views live under Bookings only (`/calendar` → `/bookings?view=calendar`).
 
 ### Rollback
 - Feature flag public booking off per location `is_active=false`.
