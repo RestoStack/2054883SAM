@@ -17,9 +17,10 @@ Locks: [`DECISIONS.md`](./DECISIONS.md) — separate orgs (DHG / Industria); Hos
 
 ## Deploy
 
-- [ ] Phase 6 §2 pipelines enabled (**requires explicit approval** — workflows currently `workflow_dispatch` only)
+- [x] Phase 6 **§2** pipelines enabled — `deploy-staging.yml` on push to `main`; `deploy-prod.yml` on tag `v*` (GitHub Environment approval still required for prod)
 - [ ] Tag `v*` → prod migrate + Edge deploy after Environment approval
 - [ ] Edge Functions: `send-reservation-confirmation`, billing (fake/stripe), reports export
+- [ ] GitHub Environments `staging` / `production` secrets filled (`SUPABASE_*`, Resend, project refs)
 
 ## Tenant readiness
 
@@ -27,15 +28,18 @@ Locks: [`DECISIONS.md`](./DECISIONS.md) — separate orgs (DHG / Industria); Hos
 - [ ] Industria org created as **separate** organization
 - [ ] Host Stand + public book verified per org on staging clone of config
 
-## Final step — **STOPPED for approval**
+## Final step — §8 DHG owner invite
 
-- [ ] **§8 Generate first real invitation for the DHG owner account**
+**Script ready:** `scripts/create-owner-invite.ts`
 
-> Do **not** create or send the DHG owner invite until this box is explicitly approved in chat / issue comment.
+```bash
+SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... \
+OWNER_EMAIL=dhg-owner@example.com \
+ORG_NAME="DHG" \
+PUBLIC_APP_URL=https://app.restostacks.com \
+npx tsx scripts/create-owner-invite.ts
+```
 
-When approved:
+- [ ] **§8 Run script with the real DHG owner email** and deliver the printed URL out-of-band
 
-1. Platform admin creates `owner_onboarding` invite for DHG owner email.
-2. Deliver link out-of-band (email/Slack) — never commit the raw token.
-3. Owner completes funnel; Host Stand smoke on prod.
-4. Repeat for Industria as a **second** organization.
+> Provide `OWNER_EMAIL` to execute §8 against staging/prod. Token is printed once — never committed.

@@ -159,9 +159,9 @@
 ## Phase 6 — Go-live prep
 
 ### Done when
-- [x] ENVIRONMENTS / RUNBOOK / GO_LIVE docs; seed script; deploy workflows (dispatch-only)
-- [ ] **§2 Enable auto migrate pipelines** — awaiting approval
-- [ ] **§8 First DHG owner invite** — awaiting approval
+- [x] ENVIRONMENTS / RUNBOOK / GO_LIVE docs; seed script; deploy workflows
+- [x] **§2 Enable auto migrate pipelines** — staging on `main`, prod on `v*` + Environment approval
+- [ ] **§8 First DHG owner invite** — script ready; needs `OWNER_EMAIL`
 
 
 ### Rollback

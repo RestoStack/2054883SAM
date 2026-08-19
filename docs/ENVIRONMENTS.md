@@ -65,5 +65,5 @@ supabase link --project-ref <PROD_REF>
 
 ## Approval gates
 
-- **Phase 6 §2** (enable `deploy-staging.yml` / `deploy-prod.yml` push+tag triggers): **awaiting approval**
-- **Phase 6 §8** (first real DHG owner invite): **awaiting approval** — see `docs/GO_LIVE.md`
+- **Phase 6 §2** (auto migrate pipelines): **enabled** — staging on push to `main`; prod on tag `v*` with Environment approval
+- **Phase 6 §8** (first real DHG owner invite): run `scripts/create-owner-invite.ts` with `OWNER_EMAIL` — see `docs/GO_LIVE.md`

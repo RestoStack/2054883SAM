@@ -1,24 +1,30 @@
-# Deploy production — Phase 6 §2 (PENDING APPROVAL)
-# After approval: enable `push: tags: ['v*']` (keep environment approval gate).
+# Deploy production — Phase 6 §2 enabled
+# Tag v* → isolation suite → Environment "production" approval → db push + Edge deploy.
 
 name: Deploy Production
 
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type deploy-prod to confirm'
+        description: "Type deploy-prod to confirm (manual runs only)"
         required: true
+        default: ""
 
 jobs:
   guard:
     runs-on: ubuntu-latest
     steps:
-      - name: Confirm
-        if: github.event.inputs.confirm != 'deploy-prod'
+      - name: Confirm manual dispatch
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'deploy-prod'
         run: |
-          echo "Refusing deploy without confirm=deploy-prod"
+          echo "Refusing manual deploy without confirm=deploy-prod"
           exit 1
+      - name: Tag deploy
+        if: github.event_name == 'push'
+        run: echo "Deploying tag ${{ github.ref_name }}"
 
   isolate:
     needs: guard

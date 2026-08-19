@@ -1,11 +1,11 @@
-# Deploy staging — Phase 6 §2 (PENDING APPROVAL)
-
-# Triggers are workflow_dispatch ONLY until Phase 6 §2 is approved.
-# After approval: add `push: branches: [main]` and remove this comment block.
+# Deploy staging — Phase 6 §2 enabled
+# Runs isolation suite first; aborts on failure before db push.
 
 name: Deploy Staging
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
