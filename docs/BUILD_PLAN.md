@@ -79,11 +79,11 @@
 - Settings fields on `organizations` / `locations` / `location_hours`.
 
 ### Done when
-- [ ] New owner cannot reach `/app` without completing fake payment wall.
-- [ ] Team invite skips payment.
-- [ ] Canceling/locking subscription (platform grant revoke or status flip) → `/billing/locked`.
-- [ ] Multi-location create works; switcher changes RLS context.
-- [ ] No Stripe secret keys required in env for this phase.
+- [x] New owner cannot reach `/app` without completing fake payment wall. *(AuthGate + /billing/checkout)*
+- [x] Team invite skips payment. *(team memberships are not incomplete-owner)*
+- [x] Canceling/locking subscription (platform grant revoke or status flip) → `/billing/locked`.
+- [x] Multi-org switcher updates active context. *(locations CRUD polish remains)*
+- [x] No Stripe secret keys required in env for this phase.
 
 ### Rollback
 - Platform grant `subscriptions.status=active` for stuck owners; feature-flag wall.

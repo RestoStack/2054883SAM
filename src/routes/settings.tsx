@@ -250,7 +250,7 @@ function HoursSection() {
 const TRIAL_DAYS = 14;
 
 function BillingSection() {
-  const { staff } = useAuth();
+  const { staff, org, needsPayment, subscriptionLive } = useAuth();
   const [loading, setLoading] = useState(true);
   const [planId, setPlanId] = useState<PlanId>("starter");
   const [trialStartedAt, setTrialStartedAt] = useState<string | null>(null);
@@ -282,6 +282,7 @@ function BillingSection() {
   }
 
   const plan = PLANS.find((p) => p.id === planId) ?? PLANS[0];
+  const provider = org.billingProvider ?? "fake";
   let trialNote = "";
   if (trialStartedAt) {
     const start = new Date(trialStartedAt);
@@ -294,6 +295,10 @@ function BillingSection() {
         : `Trial ended ${end.toLocaleDateString()} · ${plan.price}${plan.priceNote}`;
   }
 
+  const statusLabel = !org.available
+    ? "Legacy (pre-org migration)"
+    : org.subscriptionStatus ?? (subscriptionLive ? "active" : "inactive");
+
   return (
     <div className="space-y-5 max-w-2xl">
       <h2 className="text-lg font-semibold">Billing & Plan</h2>
@@ -305,13 +310,30 @@ function BillingSection() {
             {restaurantName && (
               <div className="text-xs text-muted-foreground mt-0.5">{restaurantName}</div>
             )}
+            <div className="text-xs text-muted-foreground mt-1 capitalize">
+              Status: {statusLabel}
+              {provider === "fake" ? " · billing_provider=fake" : " · Stripe"}
+            </div>
           </div>
-          <a
-            href="mailto:sales@restostack.app?subject=Change%20plan"
-            className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold hover:bg-muted/60"
-          >
-            Contact sales to change plan
-          </a>
+          {needsPayment ? (
+            <Link
+              to="/billing/checkout"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+            >
+              Complete activation
+            </Link>
+          ) : provider === "stripe" ? (
+            <a
+              href="mailto:sales@restostack.app?subject=Billing%20portal"
+              className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold hover:bg-muted/60"
+            >
+              Open billing portal
+            </a>
+          ) : (
+            <span className="rounded-lg border border-success/30 bg-success/10 px-4 py-2 text-sm font-semibold text-success">
+              Demo payment on file
+            </span>
+          )}
         </div>
         <div className="text-sm text-muted-foreground mt-2">
           {plan.price}
@@ -320,6 +342,16 @@ function BillingSection() {
         </div>
         {trialNote && <div className="text-sm text-success mt-1 font-medium">{trialNote}</div>}
         <p className="text-xs text-muted-foreground mt-3">{plan.description}</p>
+        {provider === "fake" && (
+          <p className="text-xs text-muted-foreground mt-2">
+            Real Stripe charges are deferred. See docs/STRIPE_CUTOVER.md when ready.
+          </p>
+        )}
+        {!subscriptionLive && (
+          <Link to="/billing/locked" className="mt-3 inline-block text-xs font-semibold underline">
+            Subscription locked — view details
+          </Link>
+        )}
       </div>
     </div>
   );

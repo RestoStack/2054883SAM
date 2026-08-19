@@ -3,14 +3,11 @@ import { useEffect, useState } from "react";
 import { Loader2, Utensils } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
+import { fetchSignupMode } from "@/lib/org";
 import { signInWithGoogle } from "@/lib/oauth";
 import { isPlanId, PLANS, readSelectedPlan, saveSelectedPlan, type PlanId } from "@/lib/plans";
 import { InviteOnlyPanel } from "@/components/InviteOnlyPanel";
-import {
-  getInviteCode,
-  inviteCodeMatches,
-  isPublicSignupEnabled,
-} from "@/lib/ship-mode";
+import { isPublicSignupEnabled } from "@/lib/ship-mode";
 
 type SignupSearch = { plan?: string };
 
@@ -24,7 +21,7 @@ export const Route = createFileRoute("/signup")({
 
 function SignupPage() {
   const navigate = useNavigate();
-  const { session, staff, loading, refreshStaff } = useAuth();
+  const { session, staff, loading, needsPayment, subscriptionLive, refreshStaff } = useAuth();
   const { plan: planParam } = Route.useSearch();
   const [plan, setPlan] = useState<PlanId>("starter");
   const [fullName, setFullName] = useState("");
@@ -32,11 +29,32 @@ function SignupPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<"google" | "email" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [inviteInput, setInviteInput] = useState("");
-  const [inviteUnlocked, setInviteUnlocked] = useState(false);
+  const [modeLoading, setModeLoading] = useState(true);
+  const [dbSignupOpen, setDbSignupOpen] = useState(false);
 
-  const signupOpen = isPublicSignupEnabled() || inviteUnlocked;
-  const hasInviteGate = !isPublicSignupEnabled() && !!getInviteCode();
+  // Env override for demo deploys; otherwise platform_settings.signup_mode wins.
+  const signupOpen = isPublicSignupEnabled() || dbSignupOpen;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (isPublicSignupEnabled()) {
+        if (!cancelled) {
+          setDbSignupOpen(true);
+          setModeLoading(false);
+        }
+        return;
+      }
+      const mode = await fetchSignupMode();
+      if (!cancelled) {
+        setDbSignupOpen(mode === "open");
+        setModeLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (isPlanId(planParam)) {
@@ -49,65 +67,33 @@ function SignupPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (session && staff) {
-      navigate({ to: "/onboarding", replace: true });
-    } else if (session && !staff) {
-      navigate({ to: "/onboarding", replace: true });
+    if (!session) return;
+    if (needsPayment) {
+      navigate({ to: "/billing/checkout", replace: true });
+      return;
     }
-  }, [loading, session, staff, navigate]);
+    if (!subscriptionLive) {
+      navigate({ to: "/billing/locked", replace: true });
+      return;
+    }
+    navigate({ to: "/onboarding", replace: true });
+  }, [loading, session, staff, needsPayment, subscriptionLive, navigate]);
+
+  if (modeLoading) {
+    return (
+      <div className="min-h-screen grid place-items-center">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   if (!signupOpen) {
-    if (hasInviteGate) {
-      return (
-        <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#ecfdf5_0%,_#f8fafc_50%,_#ffffff_100%)] flex items-center justify-center p-6">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h1 className="text-xl font-semibold tracking-tight">Enter invite code</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              Public signup is closed. Use the invite code from your RestoStack contact.
-            </p>
-            <form
-              className="mt-4 space-y-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (inviteCodeMatches(inviteInput)) {
-                  try {
-                    sessionStorage.setItem("restostack:invite_code", inviteInput.trim());
-                  } catch {
-                    /* ignore */
-                  }
-                  setInviteUnlocked(true);
-                  setError(null);
-                } else {
-                  setError("That invite code is not valid.");
-                }
-              }}
-            >
-              <input
-                value={inviteInput}
-                onChange={(e) => setInviteInput(e.target.value)}
-                placeholder="Invite code"
-                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
-                autoComplete="off"
-              />
-              {error && <p className="text-sm text-rose-700">{error}</p>}
-              <button
-                type="submit"
-                className="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500"
-              >
-                Continue
-              </button>
-            </form>
-            <p className="mt-4 text-center text-sm text-slate-500">
-              No code?{" "}
-              <Link to="/" className="font-medium text-emerald-700 hover:underline">
-                Request a demo
-              </Link>
-            </p>
-          </div>
-        </div>
-      );
-    }
-    return <InviteOnlyPanel />;
+    return (
+      <InviteOnlyPanel
+        title="Invite-only signup"
+        description="Open signup is closed (signup_mode=invite_only). Use the invite link from your RestoStack contact, or request a demo."
+      />
+    );
   }
 
   const selected = PLANS.find((p) => p.id === plan) ?? PLANS[0];
@@ -153,7 +139,7 @@ function SignupPage() {
       }
 
       await refreshStaff();
-      navigate({ to: "/onboarding", replace: true });
+      navigate({ to: "/billing/checkout", replace: true });
     } catch (err: unknown) {
       const e = err as { message?: string };
       setError(e?.message || "Something went wrong. Please try again.");

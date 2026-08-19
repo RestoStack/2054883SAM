@@ -43,19 +43,49 @@ function isPublicPath(pathname: string) {
   );
 }
 
+function isBillingPath(pathname: string) {
+  return pathname.startsWith("/billing/");
+}
+
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { loading, session, staff, platformAdmin, needsOnboarding } = useAuth();
+  const {
+    loading,
+    session,
+    staff,
+    platformAdmin,
+    needsOnboarding,
+    needsPayment,
+    subscriptionLive,
+  } = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
     if (loading) return;
     if (isPublicPath(pathname)) return;
-    // /onboarding only requires a session (staff row may be created mid-flow).
-    if (pathname === "/onboarding") {
+
+    // Billing pages require session only (payment / locked messaging).
+    if (isBillingPath(pathname)) {
       if (!session) navigate({ to: "/login", replace: true });
       return;
     }
+
+    // /onboarding: session + live subscription (owners pay first).
+    if (pathname === "/onboarding") {
+      if (!session) {
+        navigate({ to: "/login", replace: true });
+        return;
+      }
+      if (needsPayment) {
+        navigate({ to: "/billing/checkout", replace: true });
+        return;
+      }
+      if (!subscriptionLive) {
+        navigate({ to: "/billing/locked", replace: true });
+      }
+      return;
+    }
+
     // Platform super-admin console — separate from restaurant login.
     if (pathname.startsWith("/platform")) {
       if (!session || !platformAdmin) {
@@ -71,7 +101,18 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       navigate({ to: "/platform", replace: true });
       return;
     }
-    // New owners: finish Typeform onboarding before the restaurant app.
+
+    // Subscription gate for restaurant app.
+    if (needsPayment) {
+      navigate({ to: "/billing/checkout", replace: true });
+      return;
+    }
+    if (!subscriptionLive) {
+      navigate({ to: "/billing/locked", replace: true });
+      return;
+    }
+
+    // New owners: finish onboarding before the restaurant app.
     if (needsOnboarding) {
       navigate({ to: "/onboarding", replace: true });
       return;
@@ -79,7 +120,17 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (!staff) {
       navigate({ to: "/login", replace: true });
     }
-  }, [loading, session, staff, platformAdmin, needsOnboarding, pathname, navigate]);
+  }, [
+    loading,
+    session,
+    staff,
+    platformAdmin,
+    needsOnboarding,
+    needsPayment,
+    subscriptionLive,
+    pathname,
+    navigate,
+  ]);
 
   return <>{children}</>;
 }

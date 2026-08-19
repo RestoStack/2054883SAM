@@ -72,7 +72,7 @@ function InviteAcceptPage() {
       return;
     }
     if (data.needs_payment) {
-      navigate({ to: "/start", replace: true });
+      navigate({ to: "/billing/checkout", replace: true });
       return;
     }
     if (data.needs_onboarding) {

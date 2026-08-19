@@ -19,7 +19,7 @@ export const Route = createFileRoute("/login")({
 /** MVP: Google or email+password only — no staff PIN login (docs/DECISIONS.md). */
 function LoginPage() {
   const navigate = useNavigate();
-  const { session, staff, loading, needsOnboarding } = useAuth();
+  const { session, staff, loading, needsOnboarding, needsPayment, subscriptionLive } = useAuth();
   const demo = isDemoAccessEnabled();
   const [email, setEmail] = useState(demo ? "admin@jukebox.com" : "");
   const [password, setPassword] = useState(demo ? "admin1234" : "");
@@ -28,11 +28,20 @@ function LoginPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (session && needsOnboarding) {
+    if (!session) return;
+    if (needsPayment) {
+      navigate({ to: "/billing/checkout", replace: true });
+      return;
+    }
+    if (!subscriptionLive) {
+      navigate({ to: "/billing/locked", replace: true });
+      return;
+    }
+    if (needsOnboarding) {
       navigate({ to: "/onboarding", replace: true });
       return;
     }
-    if (session && staff) {
+    if (staff) {
       try {
         sessionStorage.setItem("restostack:portal", "restaurant");
       } catch {
@@ -49,7 +58,7 @@ function LoginPage() {
           : "/dashboard";
       navigate({ to: home, replace: true });
     }
-  }, [loading, session, staff, needsOnboarding, navigate]);
+  }, [loading, session, staff, needsOnboarding, needsPayment, subscriptionLive, navigate]);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
