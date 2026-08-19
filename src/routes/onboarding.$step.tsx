@@ -188,14 +188,6 @@ function OnboardingStepPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, !!session]);
 
-  const requireOrg = () => {
-    if (!orgId) {
-      setError("Missing organization");
-      return false;
-    }
-    return true;
-  };
-
   /** Always run the step save (org RPC or legacy v2 write), then advance. */
   const continueOrAdvance = async (next: number, save?: () => Promise<boolean>) => {
     if (!save) {
