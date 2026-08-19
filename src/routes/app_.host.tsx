@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { AppShell } from "@/components/layout/Sidebar";
@@ -42,13 +42,16 @@ import {
   type HostFloorTable,
 } from "@/lib/host-stand-api";
 import { settingsListLocations } from "@/lib/settings-api";
+import { useI18n } from "@/lib/i18n";
 import {
   Armchair,
   Ban,
+  Bell,
   CheckCircle2,
   Clock,
   Loader2,
   MapPin,
+  NotebookPen,
   Plus,
   Sparkles,
   UserX,
@@ -163,16 +166,26 @@ function abbreviateGuest(name: string): string {
 
 function HostStandLive() {
   const { org, staff } = useAuth();
+  const { t } = useI18n();
   const orgId = org.activeOrganizationId;
   const restaurantId = staff?.restaurant_id ?? null;
   const tenantReady = Boolean(orgId || restaurantId);
   const scopeId = orgId ?? restaurantId ?? "";
   const [locationId, setLocationId] = useState(org.activeLocationId ?? "");
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
-  const dateISO = useMemo(() => localDateISO(), []);
+  const [dateISO, setDateISO] = useState(() => localDateISO());
   const [period, setPeriod] = useState<MealPeriod>(() =>
     new Date().getHours() < 16 ? "Lunch" : "Dinner",
   );
+  const [partyFilter, setPartyFilter] = useState<number | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [serviceNotes, setServiceNotes] = useState(() => {
+    try {
+      return localStorage.getItem(`restostack:service-notes:${localDateISO()}`) ?? "";
+    } catch {
+      return "";
+    }
+  });
 
   const [tables, setTables] = useState<HostFloorTable[]>([]);
   const [reservations, setReservations] = useState<HostFloorReservation[]>([]);
@@ -313,6 +326,34 @@ function HostStandLive() {
       periodReservations.filter((r) => r.status === "pending" || r.status === "confirmed").length,
     [periodReservations],
   );
+  const noShowCount = useMemo(
+    () => periodReservations.filter((r) => r.status === "no_show").length,
+    [periodReservations],
+  );
+  const coversTonight = useMemo(
+    () =>
+      periodReservations
+        .filter((r) => !["cancelled", "no_show"].includes(r.status))
+        .reduce((s, r) => s + r.party_size, 0),
+    [periodReservations],
+  );
+  const toSeat = useMemo(
+    () =>
+      activeReservations.filter(
+        (r) =>
+          (r.status === "pending" || r.status === "confirmed") &&
+          (partyFilter == null ||
+            (partyFilter >= 6 ? r.party_size >= 6 : r.party_size === partyFilter)),
+      ),
+    [activeReservations, partyFilter],
+  );
+  const occupiedTables = tables.filter((t) => t.status === "occupied" || t.status === "reserved").length;
+  const tableTotal = tables.length || 1;
+  const occupancyPct = Math.round((occupiedTables / tableTotal) * 100);
+  const noShowRate =
+    periodReservations.length > 0
+      ? Math.round((noShowCount / periodReservations.length) * 1000) / 10
+      : 0;
 
   const floorItems: FloorItem[] = useMemo(() => {
     const positioned = tables.filter(
@@ -556,13 +597,19 @@ function HostStandLive() {
 
   return (
     <AppShell immersive>
-      <div className="flex h-full min-h-0 flex-col bg-background">
-        <header className="shrink-0 flex flex-wrap items-center gap-2 border-b border-border bg-card px-3 sm:px-4 py-2.5">
-          <h1 className="text-sm font-semibold mr-1 hidden sm:block">Host Stand</h1>
+      <div className="flex h-full min-h-0 flex-col bg-[#F7F8FA]">
+        <header className="shrink-0 flex flex-wrap items-center gap-2 border-b border-black/5 bg-white px-3 sm:px-4 py-2.5">
+          <div className="mr-1 flex items-center gap-2">
+            <h1 className="text-sm font-semibold">Host Stand</h1>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+              <span className="size-1.5 rounded-full bg-emerald-500" />
+              {t("host.live")}
+            </span>
+          </div>
 
-          {locations.length > 1 && (
-            <Select value={locationId} onValueChange={setLocationId}>
-              <SelectTrigger className="h-11 w-[170px] text-xs">
+          {locations.length > 0 && (
+            <Select value={locationId || "none"} onValueChange={(v) => setLocationId(v === "none" ? "" : v)}>
+              <SelectTrigger className="h-10 w-[160px] text-xs">
                 <SelectValue placeholder="Location" />
               </SelectTrigger>
               <SelectContent>
@@ -571,12 +618,21 @@ function HostStandLive() {
                     {l.name}
                   </SelectItem>
                 ))}
+                {locations.length === 0 && <SelectItem value="none">—</SelectItem>}
               </SelectContent>
             </Select>
           )}
 
+          <input
+            type="date"
+            value={dateISO}
+            onChange={(e) => setDateISO(e.target.value)}
+            className="h-10 rounded-lg border border-border bg-white px-2 text-xs"
+            aria-label="Date"
+          />
+
           <Select value={period} onValueChange={(v) => setPeriod(v as MealPeriod)}>
-            <SelectTrigger className="h-11 w-[120px] text-xs font-semibold">
+            <SelectTrigger className="h-10 w-[120px] text-xs font-semibold">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -585,28 +641,67 @@ function HostStandLive() {
             </SelectContent>
           </Select>
 
-          <div className="hidden md:flex items-center gap-4 mx-2 text-xs">
-            <div className="text-center">
-              <div className="font-semibold tracking-wide uppercase text-muted-foreground text-[10px]">
-                Seated
-              </div>
-              <div className="text-lg font-bold tabular-nums leading-tight">{seatedCount}</div>
-            </div>
-            <div className="text-center">
-              <div className="font-semibold tracking-wide uppercase text-muted-foreground text-[10px]">
-                Upcoming
-              </div>
-              <div className="text-lg font-bold tabular-nums leading-tight">{upcomingCount}</div>
-            </div>
-          </div>
+          <Link
+            to="/app/reservations"
+            search={{ from: dateISO, to: dateISO }}
+            className="ml-auto grid size-10 place-items-center rounded-xl border border-border bg-white text-muted-foreground hover:bg-muted"
+            aria-label="Notifications"
+          >
+            <Bell className="size-4" />
+          </Link>
 
-          <Button className="ml-auto h-11 px-4 font-semibold" onClick={() => setWalkInOpen(true)}>
-            <Plus className="size-4" /> Walk-in
+          <Link
+            to="/settings"
+            className="hidden sm:flex items-center gap-2 rounded-xl border border-border bg-white py-1.5 pl-1.5 pr-3 hover:bg-muted"
+          >
+            <div className="grid size-8 place-items-center rounded-full bg-emerald-500 text-xs font-bold text-white">
+              {(staff?.full_name?.[0] ?? "A").toUpperCase()}
+            </div>
+            <div className="leading-tight">
+              <div className="text-xs font-semibold">{staff?.full_name ?? "Admin"}</div>
+              <div className="text-[10px] text-muted-foreground">Admin</div>
+            </div>
+          </Link>
+
+          <Button asChild className="h-10 px-4 font-semibold bg-stone-900 hover:bg-stone-800">
+            <Link to="/app/reservations" search={{ from: dateISO, to: dateISO, create: "1" }}>
+              <Plus className="size-4" /> {t("dashboard.newReservation")}
+            </Link>
           </Button>
         </header>
 
+        {/* Metrics */}
+        <div className="shrink-0 grid grid-cols-2 gap-2 border-b border-black/5 bg-white px-3 py-3 sm:grid-cols-5 sm:px-4">
+          <div className="rounded-xl border border-border bg-card p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {t("dashboard.occupancy")}
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <div
+                className="grid size-10 place-items-center rounded-full border-4 border-emerald-500 text-xs font-bold"
+                style={{
+                  background: `conic-gradient(#22c55e ${occupancyPct}%, #e7e5e4 0)`,
+                }}
+              >
+                <span className="rounded-full bg-white px-1">{occupancyPct}%</span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {occupiedTables}/{tables.length || "—"}
+              </div>
+            </div>
+          </div>
+          <MetricCard label={t("host.coversTonight")} value={String(coversTonight)} />
+          <MetricCard label={t("host.resTonight")} value={String(periodReservations.length)} />
+          <MetricCard label={t("host.arrivals")} value={String(seatedCount)} />
+          <MetricCard
+            label={t("dashboard.noShows")}
+            value={`${noShowCount}`}
+            sub={`${noShowRate}%`}
+          />
+        </div>
+
         {target && (
-          <div className="shrink-0 flex items-center gap-3 bg-primary px-4 py-2.5 text-primary-foreground">
+          <div className="shrink-0 flex items-center gap-3 bg-emerald-600 px-4 py-2.5 text-white">
             <MapPin className="size-4 shrink-0" />
             <div className="flex-1 text-sm font-semibold">
               {target.mode === "assign" ? "Tap a table to assign to" : "Tap a table to seat"}{" "}
@@ -624,16 +719,92 @@ function HostStandLive() {
           </div>
         )}
 
-        <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
-          {/* Left: floor plan */}
-          <main className="flex-1 min-w-0 min-h-0 relative border-b lg:border-b-0 lg:border-r border-border">
+        <div className="flex-1 min-h-0 flex flex-col xl:flex-row">
+          {/* Left: to-seat + quick assign */}
+          <aside className="xl:w-[280px] shrink-0 border-b xl:border-b-0 xl:border-r border-border bg-white flex flex-col max-h-[40vh] xl:max-h-none">
+            <div className="px-4 py-3 border-b border-border">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {t("host.toSeat")}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {[2, 4, 6].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setPartyFilter((p) => (p === n ? null : n))}
+                    className={cn(
+                      "h-8 rounded-lg px-2.5 text-xs font-semibold border",
+                      partyFilter === n
+                        ? "bg-emerald-500 text-white border-emerald-500"
+                        : "bg-white text-stone-600 border-border hover:bg-muted",
+                    )}
+                  >
+                    {n}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setPartyFilter((p) => (p === 7 ? null : 7))}
+                  className={cn(
+                    "h-8 rounded-lg px-2.5 text-xs font-semibold border",
+                    partyFilter === 7
+                      ? "bg-emerald-500 text-white border-emerald-500"
+                      : "bg-white text-stone-600 border-border hover:bg-muted",
+                  )}
+                >
+                  6+
+                </button>
+              </div>
+              <div className="mt-1 text-[10px] text-muted-foreground">{t("host.quickAssign")}</div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-2">
+              {toSeat.length === 0 && (
+                <div className="py-8 text-center text-xs text-muted-foreground">{t("common.empty")}</div>
+              )}
+              {toSeat.slice(0, 20).map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => startSeat(r)}
+                  className="w-full rounded-xl border border-border bg-card p-3 text-left hover:border-emerald-300 hover:bg-emerald-50/40"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="truncate text-sm font-semibold">{r.guest_name}</div>
+                    <div className="text-xs font-semibold tabular-nums text-muted-foreground">
+                      {formatTimeLabel(r.reserved_time)}
+                    </div>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <Users className="size-3" /> {r.party_size}
+                    {r.table_number && <span>· T{r.table_number}</span>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          {/* Center: floor */}
+          <main className="flex-1 min-w-0 min-h-0 relative border-b xl:border-b-0 xl:border-r border-border bg-white">
+            <div className="absolute top-3 left-3 right-3 z-10 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-semibold">{t("dashboard.floor")}</div>
+              <div className="flex flex-wrap gap-2 text-[10px] text-muted-foreground">
+                <LegendDot className="bg-emerald-500" label={t("dashboard.available")} />
+                <LegendDot className="border border-stone-300 bg-white" label={t("dashboard.reserved")} />
+                <LegendDot className="bg-stone-800" label={t("dashboard.occupied")} />
+                <LegendDot className="bg-amber-500" label="Wait" />
+                <LegendDot className="bg-rose-500" label={t("dashboard.attention")} />
+              </div>
+            </div>
             {loading ? (
               <div className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">
                 <Loader2 className="size-5 animate-spin" />
               </div>
             ) : tables.length === 0 ? (
               <div className="absolute inset-0 grid place-items-center text-sm text-muted-foreground px-6 text-center">
-                No tables configured for this location yet.
+                No tables configured yet.{" "}
+                <Link to="/floorplan" className="text-emerald-600 underline">
+                  {t("host.seeFloor")}
+                </Link>
               </div>
             ) : (
               <FloorPlan
@@ -642,7 +813,7 @@ function HostStandLive() {
                 light
                 selectedId={selectedTableId}
                 onSelect={onSelectFloorTable}
-                className="h-full w-full min-h-[280px]"
+                className="h-full w-full min-h-[280px] pt-10"
               />
             )}
 
@@ -684,47 +855,147 @@ function HostStandLive() {
                     Mark dirty
                   </Button>
                 )}
+                {selectedTable.status !== "blocked" && (
+                  <Button
+                    variant="outline"
+                    className="w-full h-11"
+                    disabled={busy}
+                    onClick={() => void setTableClean("blocked")}
+                  >
+                    <Ban className="size-4" /> {t("host.blockTable")}
+                  </Button>
+                )}
               </div>
             )}
           </main>
 
-          {/* Right: reservation timeline */}
-          <aside className="lg:w-[360px] xl:w-[400px] shrink-0 flex flex-col max-h-[46vh] lg:max-h-none bg-card">
-            <div className="shrink-0 px-4 py-2.5 border-b border-border text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              {period} timeline
+          {/* Right: arrivals + actions */}
+          <aside className="xl:w-[340px] shrink-0 flex flex-col max-h-[46vh] xl:max-h-none bg-white">
+            <div className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-border">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("host.upcomingArrivals")}
+              </div>
+              <Link
+                to="/app/reservations"
+                search={{ from: dateISO, to: dateISO }}
+                className="text-[11px] font-medium text-emerald-600 hover:underline"
+              >
+                {t("dashboard.seeAll")}
+              </Link>
             </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-3">
+            <div className="flex-1 overflow-y-auto p-2 space-y-2">
               {loading && (
                 <div className="flex items-center justify-center gap-2 py-14 text-xs text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" /> Loading…
                 </div>
               )}
-              {!loading && blocks.length === 0 && (
+              {!loading && upcomingCount === 0 && (
                 <div className="text-center text-xs text-muted-foreground py-14">
-                  No reservations this {period.toLowerCase()}.
+                  No upcoming arrivals.
                 </div>
               )}
               {!loading &&
-                blocks.map((block) => (
-                  <div key={block.key}>
-                    <div className="px-2 py-1 text-[11px] font-bold text-muted-foreground tracking-wide">
-                      {block.label}
+                activeReservations
+                  .filter((r) => r.status === "pending" || r.status === "confirmed" || r.status === "seated")
+                  .slice(0, 25)
+                  .map((r) => (
+                    <div
+                      key={r.id}
+                      className="rounded-xl border border-border p-3 space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-semibold">{r.guest_name}</div>
+                          <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5">
+                            <Clock className="size-3" /> {formatTimeLabel(r.reserved_time)}
+                            <Users className="size-3" /> {r.party_size}
+                            {r.table_number && <span>T{r.table_number}</span>}
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                          {r.status}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(r.status === "pending" || r.status === "confirmed") && (
+                          <>
+                            <Button
+                              size="sm"
+                              className="h-8 text-xs"
+                              disabled={busy}
+                              onClick={() => startSeat(r)}
+                            >
+                              <Armchair className="size-3" /> {t("host.seat")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-xs"
+                              disabled={busy}
+                              onClick={() => startAssign(r)}
+                            >
+                              <MapPin className="size-3" /> Assign
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-xs"
+                              disabled={busy}
+                              onClick={() => void markNoShow(r)}
+                            >
+                              <UserX className="size-3" /> {t("host.noShow")}
+                            </Button>
+                          </>
+                        )}
+                        {r.status === "seated" && (
+                          <>
+                            <Button
+                              size="sm"
+                              className="h-8 text-xs"
+                              disabled={busy}
+                              onClick={() => void unseat(r)}
+                            >
+                              <CheckCircle2 className="size-3" /> {t("host.unseat")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-xs"
+                              disabled={busy}
+                              onClick={() => startAssign(r)}
+                            >
+                              {t("host.transfer")}
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      {block.items.map((r) => (
-                        <ReservationRow
-                          key={r.id}
-                          r={r}
-                          busy={busy}
-                          onAssign={() => startAssign(r)}
-                          onSeat={() => startSeat(r)}
-                          onUnseat={() => void unseat(r)}
-                          onNoShow={() => void markNoShow(r)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+            </div>
+
+            <div className="shrink-0 border-t border-border p-3 space-y-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-1">
+                {t("host.quickActions")}
+              </div>
+              <Button className="w-full h-10 justify-start font-semibold" onClick={() => setWalkInOpen(true)}>
+                <Plus className="size-4" /> {t("host.walkIn")}
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full h-10 justify-start"
+                onClick={() => {
+                  if (!selectedTable) {
+                    toast.message("Select a table on the floor first");
+                    return;
+                  }
+                  void setTableClean("blocked");
+                }}
+              >
+                <Ban className="size-4" /> {t("host.blockTable")}
+              </Button>
+              <Button variant="outline" className="w-full h-10 justify-start" onClick={() => setNotesOpen(true)}>
+                <NotebookPen className="size-4" /> {t("host.serviceNotes")}
+              </Button>
             </div>
           </aside>
         </div>
@@ -786,106 +1057,60 @@ function HostStandLive() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={notesOpen} onOpenChange={setNotesOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("host.serviceNotes")}</DialogTitle>
+            <DialogDescription>Shared notes for this service period (local to this device).</DialogDescription>
+          </DialogHeader>
+          <textarea
+            value={serviceNotes}
+            onChange={(e) => setServiceNotes(e.target.value)}
+            className="min-h-[120px] w-full rounded-lg border border-border bg-background p-3 text-sm"
+            placeholder="VIP arrivals, large parties, kitchen notes…"
+          />
+          <DialogFooter>
+            <Button
+              className="h-11 font-semibold"
+              onClick={() => {
+                try {
+                  localStorage.setItem(`restostack:service-notes:${dateISO}`, serviceNotes);
+                } catch {
+                  /* ignore */
+                }
+                toast.success("Service notes saved");
+                setNotesOpen(false);
+              }}
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
 
-function ReservationRow({
-  r,
-  busy,
-  onAssign,
-  onSeat,
-  onUnseat,
-  onNoShow,
-}: {
-  r: HostFloorReservation;
-  busy: boolean;
-  onAssign: () => void;
-  onSeat: () => void;
-  onUnseat: () => void;
-  onNoShow: () => void;
-}) {
-  const upcoming = r.status === "pending" || r.status === "confirmed";
-  const seated = r.status === "seated";
-
+function MetricCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div
-      className={cn(
-        "rounded-xl border border-border p-3",
-        seated && "bg-emerald-500/5 border-emerald-500/30",
-      )}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="font-semibold text-sm truncate">{r.guest_name}</div>
-          <div className="mt-0.5 flex items-center gap-2.5 text-[11px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1 tabular-nums">
-              <Clock className="size-3" /> {formatTimeLabel(r.reserved_time)}
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <Users className="size-3" /> {r.party_size}
-            </span>
-            {r.table_number && (
-              <span className="inline-flex items-center gap-1">
-                <Armchair className="size-3" /> {r.table_number}
-              </span>
-            )}
-          </div>
-        </div>
-        <span
-          className={cn("mt-0.5 size-2 rounded-full shrink-0", statusDot[r.status])}
-          title={r.status}
-        />
+    <div className="rounded-xl border border-border bg-card p-3">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
       </div>
-
-      {(upcoming || seated) && (
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {upcoming && !r.table_id && (
-            <Button
-              size="sm"
-              className="h-11 flex-1 min-w-[110px] font-semibold"
-              disabled={busy}
-              onClick={onAssign}
-            >
-              <MapPin className="size-4" /> Assign table
-            </Button>
-          )}
-          {upcoming && (
-            <Button
-              size="sm"
-              variant={r.table_id ? "default" : "outline"}
-              className="h-11 flex-1 min-w-[90px] font-semibold"
-              disabled={busy}
-              onClick={onSeat}
-            >
-              <CheckCircle2 className="size-4" /> Seat
-            </Button>
-          )}
-          {upcoming && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-11 min-w-[44px] px-3"
-              disabled={busy}
-              onClick={onNoShow}
-              title="Mark no-show"
-            >
-              <UserX className="size-4" />
-            </Button>
-          )}
-          {seated && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-11 flex-1 font-semibold"
-              disabled={busy}
-              onClick={onUnseat}
-            >
-              <Ban className="size-4" /> Unseat
-            </Button>
-          )}
-        </div>
-      )}
+      <div className="mt-1 text-xl font-bold tabular-nums">
+        {value}
+        {sub && <span className="ml-1 text-xs font-medium text-muted-foreground">{sub}</span>}
+      </div>
     </div>
+  );
+}
+
+function LegendDot({ className, label }: { className: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className={cn("size-2.5 rounded-sm", className)} />
+      {label}
+    </span>
   );
 }
