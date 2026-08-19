@@ -1,38 +1,37 @@
 ---
-description: RestoStack project context for any Cursor session
+description: RestoStack MVP rules — production multi-tenant deploy
 alwaysApply: true
 ---
 
-# RestoStack
+# RestoStack MVP
 
-Multi-tenant restaurant SaaS. Repo `RestoStack/2054883SAM` is source of truth.
+Goal: safe production multi-tenant app at restostacks.com. Judge every change by deploy safety and speed.
 
 ## Before coding
 
-- Read `AGENTS.md`, `docs/SHIP.md`, and `docs/ACCESS.md`.
-- `main` is nearly empty — work from the latest full-app feature branch (see `docs/DEVELOPER.md`).
-- Do not commit `SUPABASE_SERVICE_ROLE_KEY`.
+- Read `AGENTS.md`, `docs/AUDIT.md`, `docs/DATA_MODEL.md`, `docs/BUILD_PLAN.md`, `docs/ROUTES.md`.
+- Do **not** implement OUT-OF-SCOPE features (POS, Server Pad, orders, revenue metrics, payroll, marketing, loyalty, AI, public marketing site, structured menu items, waitlist SMS, Upgrade to Pro).
+- Prefer **delete** over refactor for out-of-scope modules.
+- Never commit `SUPABASE_SERVICE_ROLE_KEY` or Stripe secrets.
+- Migrations: one new file per change under `supabase/migrations/`; never edit an applied migration.
 
-## Product locks
+## Architecture locks (ADR-001)
 
-- Default ship mode is **launch** (`src/lib/ship-mode.ts`): launch landing, no open signup, no demo credentials, Server Pad off.
-- Landing homepage: demo-request gated; launch surface at `/` (launch/invite) or `/launch`.
-- Demo tenant: Italian Bistro (`italian-bistro`); entry `/demo` in demo mode only.
-- Tenant column: `restaurant_id` on `v2_*` tables.
-- Prefer `src/lib/v2-data.ts` for data access.
-- Keep existing green-accent admin UI; no drive-by redesigns.
-- Server Pad is global v1 POS — disabled on launch deploys.
+- Shared Postgres; isolation via `organization_id` (+ `location_id`) + RLS.
+- `organizations` → `locations` → tenant data. No localStorage as tenancy SoT.
+- Role-aware RLS: owner / manager / host.
+- Public booking only via SECURITY DEFINER RPCs + rate limits.
+- Stripe subscription gate: `trialing` | `active` or `/billing/locked`.
+- Cross-tenant isolation tests must pass before merge (Phase 0+).
 
-## Key paths
+## MVP product surface
 
-- `src/routes/` — app routes
-- `src/lib/v2-data.ts` — data hooks
-- `src/integrations/supabase/config.ts` — public Supabase defaults
-- `supabase/migrations/` — schema
-- `docs/` — developer handbook
+Invite→auth→Stripe→onboard · Booking · Dashboard (reservation KPIs only) · Reports · Guests · Host Stand · Menu assets · Settings (incl. Billing).
 
-## Live refs
+## Stack
 
-- App: https://restostacks.lovable.app / https://restostacks.com
-- Lovable project: `282aa365-2256-4d7f-ac7b-f277286d2960`
-- Supabase: `taenbelgzntolqzzjsee`
+React/TS/Vite/TanStack Router/Tailwind/shadcn · Supabase · GitHub trunk · Vercel deploy (Phase 6). Defaults: CAD, America/Toronto, en-CA.
+
+## Key docs
+
+`docs/AUDIT.md` · `docs/DATA_MODEL.md` · `docs/BUILD_PLAN.md` · `docs/ROUTES.md` · `INDEPENDENCE.md`
