@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, Utensils } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -12,11 +12,12 @@ import { signInWithGoogle } from "@/lib/oauth";
 import { isPlanId, PLANS, readSelectedPlan, saveSelectedPlan, type PlanId } from "@/lib/plans";
 import { isPublicSignupEnabled } from "@/lib/ship-mode";
 
-type SignupSearch = { plan?: string };
+type SignupSearch = { plan?: string; oauth?: string };
 
 export const Route = createFileRoute("/signup")({
   validateSearch: (search: Record<string, unknown>): SignupSearch => ({
     plan: typeof search.plan === "string" ? search.plan : undefined,
+    oauth: typeof search.oauth === "string" ? search.oauth : undefined,
   }),
   head: () => ({ meta: [{ title: "Create your account — RestoStack" }] }),
   component: SignupPage,
@@ -25,7 +26,7 @@ export const Route = createFileRoute("/signup")({
 function SignupPage() {
   const navigate = useNavigate();
   const { session, loading, refreshStaff } = useAuth();
-  const { plan: planParam } = Route.useSearch();
+  const { plan: planParam, oauth } = Route.useSearch();
   const [plan, setPlan] = useState<PlanId>("starter");
   const [fullName, setFullName] = useState("");
   const [restaurantName, setRestaurantName] = useState("");
@@ -36,6 +37,7 @@ function SignupPage() {
   const [googleBroken, setGoogleBroken] = useState(false);
   const [modeLoading, setModeLoading] = useState(true);
   const [signupOpen, setSignupOpen] = useState(true);
+  const finishingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,51 +74,69 @@ function SignupPage() {
   }, [planParam]);
 
   const finishNewOwner = async (nameHint?: string) => {
-    const meta =
-      ((await supabase.auth.getUser()).data.user?.user_metadata as Record<string, unknown>) ?? {};
+    if (finishingRef.current) return { ok: true as const, restaurant_id: "pending" };
+    finishingRef.current = true;
+
     const full =
       fullName.trim() ||
-      (meta.full_name as string) ||
-      (meta.name as string) ||
+      nameHint ||
       email.split("@")[0] ||
       "Owner";
     const restaurant =
       restaurantName.trim() ||
       `${String(full).split(/\s+/)[0]}'s restaurant` ||
-      nameHint ||
       "My restaurant";
 
-    const created = await createRestaurantForCurrentUser({
-      restaurantName: restaurant,
-      fullName: full,
-      plan,
-    });
-    await refreshStaff();
+    try {
+      const created = await createRestaurantForCurrentUser({
+        restaurantName: restaurant,
+        fullName: full,
+        plan,
+      });
 
-    if (!created.ok) {
-      if (created.needsMigration) {
-        navigate({ to: "/onboarding", replace: true });
-        return created;
+      // Never call auth.getUser() here — it can deadlock with onAuthStateChange.
+      try {
+        await refreshStaff();
+      } catch {
+        // Staff hydrate is best-effort; wizard can recover.
       }
-      throw new Error(created.error);
+
+      if (!created.ok) {
+        if (created.needsMigration) {
+          navigate({ to: "/onboarding", replace: true });
+          return created;
+        }
+        finishingRef.current = false;
+        throw new Error(created.error);
+      }
+      navigate({ to: "/onboarding", replace: true });
+      return created;
+    } catch (e) {
+      finishingRef.current = false;
+      throw e;
     }
-    // Always start the wizard — never skip to /app for a brand-new owner.
-    navigate({ to: "/onboarding", replace: true });
-    return created;
   };
 
+  // Only auto-finish after Google OAuth returns to /signup?oauth=1 — never on every session.
   useEffect(() => {
-    if (loading || !session || busy) return;
-    // Returning session (e.g. after Google callback landed on /signup).
+    if (loading || !session || busy || oauth !== "1") return;
+    if (finishingRef.current) return;
     void (async () => {
+      setBusy("google");
       try {
-        await finishNewOwner();
+        const meta = (session.user.user_metadata as Record<string, unknown>) ?? {};
+        await finishNewOwner(
+          (meta.full_name as string) || (meta.name as string) || session.user.email || undefined,
+        );
       } catch (e) {
         setError((e as Error).message);
+        finishingRef.current = false;
+      } finally {
+        setBusy(null);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, session]);
+  }, [loading, session, oauth]);
 
   if (modeLoading) {
     return (
@@ -167,6 +187,7 @@ function SignupPage() {
     e.preventDefault();
     setError(null);
     if (password.length < 8) return setError("Password must be at least 8 characters.");
+    if (finishingRef.current || busy) return;
     setBusy("email");
     saveSelectedPlan(plan);
     try {
@@ -187,23 +208,29 @@ function SignupPage() {
         if (/already|registered|exists/i.test(msg)) {
           const { error: siErr } = await supabase.auth.signInWithPassword({ email, password });
           if (siErr) throw new Error(`This email is already registered. ${siErr.message}`);
-        } else if (/weak|easy to guess/i.test(msg)) {
+        } else if (/weak|easy to guess|pwned/i.test(msg)) {
           throw new Error("Choose a stronger password (mix of letters, numbers, symbols).");
         } else {
           throw suErr;
         }
       } else if (!signUp.session) {
+        // Email confirmation may be required — try password sign-in anyway.
         const { error: siErr } = await supabase.auth.signInWithPassword({ email, password });
-        if (siErr) throw siErr;
+        if (siErr) {
+          throw new Error(
+            "Check your email to confirm the account, then sign in. Or disable email confirmation in Supabase Auth settings.",
+          );
+        }
       }
 
-      const result = await finishNewOwner();
-      if (result && !result.ok && result.needsMigration) {
+      const result = await finishNewOwner(fullName.trim() || undefined);
+      if (result && "ok" in result && !result.ok && "needsMigration" in result && result.needsMigration) {
         setError(result.error);
       }
     } catch (err: unknown) {
       const e = err as { message?: string };
       setError(e?.message || "Something went wrong. Please try again.");
+      finishingRef.current = false;
     } finally {
       setBusy(null);
     }

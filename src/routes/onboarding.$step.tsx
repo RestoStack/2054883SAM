@@ -50,7 +50,7 @@ export const Route = createFileRoute("/onboarding/$step")({
 function OnboardingStepPage() {
   const { step: stepParam } = Route.useParams();
   const step = stepFromParam(stepParam);
-  const { session, loading, org, needsPayment, subscriptionLive, refreshStaff } = useAuth();
+  const { session, loading, org, needsPayment, subscriptionLive, refreshStaff, staff } = useAuth();
   const navigate = useNavigate();
 
   const [booting, setBooting] = useState(true);
@@ -117,6 +117,19 @@ function OnboardingStepPage() {
 
       let id = orgId;
       if (!id) {
+        // Legacy staff already has a restaurant — skip bootstrap/create (avoids hang/errors).
+        if (staff?.restaurant_id) {
+          if (!cancelled) {
+            setRestaurant((r) => ({
+              ...r,
+              name: r.name || (seedName ? `${seedName.split(/\s+/)[0]}'s restaurant` : "My restaurant"),
+            }));
+            setError(null);
+            setBooting(false);
+          }
+          return;
+        }
+
         const boot = await onboardingBootstrapOwner(
           seedName,
           seedName ? `${seedName.split(/\s+/)[0]}'s restaurant` : "My restaurant",
@@ -239,7 +252,7 @@ function OnboardingStepPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, session, orgId, needsPayment, subscriptionLive]);
+  }, [loading, session, orgId, needsPayment, subscriptionLive, staff?.restaurant_id]);
 
   const requireOrg = () => {
     if (!orgId) {
