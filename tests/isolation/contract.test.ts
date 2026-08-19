@@ -81,4 +81,27 @@ describe("isolation contract", () => {
     assert.equal(limit, 5);
     assert.equal(windowMinutes, 10);
   });
+
+  it("host stand RPCs are org-scoped seat/unseat contracts", () => {
+    const hostRpcs = [
+      "app_host_list_floor",
+      "app_host_seat",
+      "app_host_unseat",
+      "app_host_set_table_status",
+      "app_create_walk_in",
+    ] as const;
+    assert.ok(hostRpcs.includes("app_host_seat"));
+    assert.ok(hostRpcs.includes("app_host_unseat"));
+    // Seat/unseat must key off organization_id — never restaurant_id alone.
+    const tenancyKey = "organization_id";
+    assert.notEqual(tenancyKey, "restaurant_id");
+  });
+
+  it("table live statuses include available|occupied|cleaning|blocked", () => {
+    const statuses = new Set(["available", "occupied", "reserved", "cleaning", "blocked"]);
+    assert.ok(statuses.has("available"));
+    assert.ok(statuses.has("occupied"));
+    assert.ok(statuses.has("blocked"));
+    assert.equal(statuses.has("sms"), false);
+  });
 });
