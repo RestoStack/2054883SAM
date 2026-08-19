@@ -2,14 +2,21 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/Sidebar";
 import { Calendar, ChevronLeft, ChevronRight, Filter, Plus, CalendarDays, Users, Ban, UserX, ArrowUpDown, X, MapPin, Clock, Globe, Pencil, MoreHorizontal, User, Phone, Mail, StickyNote, Loader2, Check } from "lucide-react";
 import { useBookings, slugify, useCreateBooking, useUpdateBooking, useDashboardStats, localDateISO, type BookingStatus } from "@/lib/v2-data";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FloorPlan, mainFloorPlan } from "@/components/FloorPlan";
+import { useAuth } from "@/lib/auth";
+import { createWalkIn } from "@/lib/booking-api";
+
+type BookingsSearch = { view?: "list" | "calendar" };
 
 export const Route = createFileRoute("/bookings")({
+  validateSearch: (s: Record<string, unknown>): BookingsSearch => ({
+    view: s.view === "calendar" ? "calendar" : "list",
+  }),
   head: () => ({ meta: [{ title: "Bookings — RestoStack" }] }),
   component: BookingsPage,
 });
@@ -90,6 +97,9 @@ const addDaysISO = (iso: string, days: number) => {
 };
 
 function BookingsPage() {
+  const { view = "list" } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const { org } = useAuth();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
   const [open, setOpen] = useState(false);
@@ -98,6 +108,7 @@ function BookingsPage() {
   const [form, setForm] = useState({ name: "", phone: "", email: "", people: 2, time: "19:00", notes: "" });
   const [dateISO, setDateISO] = useState<string>(todayISO());
   const [dateMode, setDateMode] = useState<DateMode>("single");
+  const [walkInBusy, setWalkInBusy] = useState(false);
 
   const { data: allBookings = [], isLoading } = useBookings();
   const { data: dash } = useDashboardStats();
@@ -128,9 +139,30 @@ function BookingsPage() {
   const setSingle = (iso: string) => { setDateMode("single"); setDateISO(iso); };
   const shiftDate = (days: number) => setSingle(addDaysISO(dateISO, days));
 
-  const handleCreate = async () => {
+  const handleCreate = async (source: "phone" | "walk_in" = "phone") => {
     if (!form.name.trim()) {
       toast.error("Guest name is required");
+      return;
+    }
+    if (source === "walk_in" && org.available && org.activeOrganizationId && org.activeLocationId) {
+      setWalkInBusy(true);
+      const res = await createWalkIn({
+        organization_id: org.activeOrganizationId,
+        location_id: org.activeLocationId,
+        guest_name: form.name.trim(),
+        party_size: Number(form.people) || 2,
+        table_number: selectedTable ? String(selectedTable) : null,
+        notes: form.notes.trim() || null,
+      });
+      setWalkInBusy(false);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success("Walk-in seated");
+      setOpen(false);
+      setForm({ name: "", phone: "", email: "", people: 2, time: "19:00", notes: "" });
+      setSelectedTable(null);
       return;
     }
     try {
@@ -144,9 +176,9 @@ function BookingsPage() {
         section: sectionKeyToLabel[section],
         table_number: selectedTable ? String(selectedTable) : null,
         notes: form.notes.trim() || undefined,
-        source: "phone",
+        source,
       });
-      toast.success("Booking created");
+      toast.success(source === "walk_in" ? "Walk-in created" : "Booking created");
       setOpen(false);
       setForm({ name: "", phone: "", email: "", people: 2, time: "19:00", notes: "" });
       setSelectedTable(null);
@@ -178,6 +210,22 @@ function BookingsPage() {
           <p className="text-sm text-muted-foreground mt-1">Manage all restaurant bookings in one place.</p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-border overflow-hidden text-sm">
+            <button
+              type="button"
+              onClick={() => navigate({ search: { view: "list" } })}
+              className={`px-3 py-2 font-medium ${view === "list" ? "bg-success/15 text-success" : "bg-card"}`}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate({ search: { view: "calendar" } })}
+              className={`px-3 py-2 font-medium border-l border-border ${view === "calendar" ? "bg-success/15 text-success" : "bg-card"}`}
+            >
+              Calendar
+            </button>
+          </div>
           <div className="flex items-center gap-1 rounded-lg border border-border bg-card px-3 py-2 text-sm">
             <Calendar className="size-4" />
             <input
@@ -205,6 +253,15 @@ function BookingsPage() {
         </div>
       </div>
 
+      {view === "calendar" ? (
+        <BookingsCalendarMonth
+          bookings={allBookings}
+          onSelectDate={(iso) => {
+            setSingle(iso);
+            navigate({ search: { view: "list" } });
+          }}
+        />
+      ) : (
       <div className="p-4 lg:p-5 space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {kpis.map((s) => (
@@ -362,6 +419,7 @@ function BookingsPage() {
           </aside>
         </div>
       </div>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
@@ -437,14 +495,117 @@ function BookingsPage() {
             </div>
           </div>
 
-          <DialogFooter className="mt-2">
+          <DialogFooter className="mt-2 gap-2">
             <button onClick={() => setOpen(false)} className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">Cancel</button>
-            <button onClick={handleCreate} className="rounded-lg bg-success px-4 py-2 text-sm font-semibold text-success-foreground hover:bg-success/90 disabled:opacity-50" disabled={createBooking.isPending || !form.name.trim()}>
+            <button
+              onClick={() => void handleCreate("walk_in")}
+              className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-50"
+              disabled={createBooking.isPending || walkInBusy || !form.name.trim()}
+            >
+              {walkInBusy ? "Seating…" : "Seat walk-in"}
+            </button>
+            <button
+              onClick={() => void handleCreate("phone")}
+              className="rounded-lg bg-success px-4 py-2 text-sm font-semibold text-success-foreground hover:bg-success/90 disabled:opacity-50"
+              disabled={createBooking.isPending || walkInBusy || !form.name.trim()}
+            >
               {createBooking.isPending ? "Creating…" : "Create Booking"}
             </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </AppShell>
+  );
+}
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function BookingsCalendarMonth({
+  bookings,
+  onSelectDate,
+}: {
+  bookings: ReturnType<typeof useBookings>["data"];
+  onSelectDate: (iso: string) => void;
+}) {
+  const now = new Date();
+  const [cursor, setCursor] = useState(new Date(now.getFullYear(), now.getMonth(), 1));
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const first = new Date(year, month, 1);
+  const startDay = first.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: { date: Date | null }[] = [];
+  for (let i = 0; i < startDay; i++) cells.push({ date: null });
+  for (let d = 1; d <= daysInMonth; d++) cells.push({ date: new Date(year, month, d) });
+  while (cells.length % 7 !== 0) cells.push({ date: null });
+
+  const byDay = useMemo(() => {
+    const acc: Record<string, NonNullable<typeof bookings>> = {};
+    for (const b of bookings ?? []) (acc[b.date] ||= []).push(b);
+    return acc;
+  }, [bookings]);
+
+  return (
+    <div className="p-4 lg:p-5">
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">
+            {MONTHS[month]} {year}
+          </h2>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              className="size-8 rounded-md border border-border grid place-items-center"
+              onClick={() => setCursor(new Date(year, month - 1, 1))}
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <button
+              type="button"
+              className="size-8 rounded-md border border-border grid place-items-center"
+              onClick={() => setCursor(new Date(year, month + 1, 1))}
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden">
+          {DOW.map((d) => (
+            <div key={d} className="bg-muted/60 px-2 py-1.5 text-[11px] font-semibold text-muted-foreground">
+              {d}
+            </div>
+          ))}
+          {cells.map((c, i) => {
+            if (!c.date) return <div key={`e-${i}`} className="bg-card min-h-[88px]" />;
+            const iso = localDateISO(c.date);
+            const dayBookings = byDay[iso] ?? [];
+            return (
+              <button
+                key={iso}
+                type="button"
+                onClick={() => onSelectDate(iso)}
+                className="bg-card min-h-[88px] p-1.5 text-left hover:bg-muted/40"
+              >
+                <div className="text-xs font-semibold mb-1">{c.date.getDate()}</div>
+                <div className="space-y-0.5">
+                  {dayBookings.slice(0, 3).map((b) => (
+                    <div
+                      key={b.id}
+                      className="truncate rounded-sm bg-info/15 text-info text-[10px] font-medium px-1 py-0.5"
+                    >
+                      {b.time} {b.name.split(" ")[0]}
+                    </div>
+                  ))}
+                  {dayBookings.length > 3 && (
+                    <div className="text-[10px] text-muted-foreground">+{dayBookings.length - 3} more</div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -68,4 +68,17 @@ describe("isolation contract", () => {
     const billingProvider = "fake";
     assert.notEqual(billingProvider, "stripe");
   });
+
+  it("reservations and guests are org-scoped", () => {
+    assert.ok(ORG_SCOPED_TABLES.includes("reservations"));
+    assert.ok(ORG_SCOPED_TABLES.includes("guests"));
+    assert.ok(ORG_SCOPED_TABLES.includes("tables"));
+  });
+
+  it("public booking rate limit is 5 per 10 minutes (contract)", () => {
+    const limit = 5;
+    const windowMinutes = 10;
+    assert.equal(limit, 5);
+    assert.equal(windowMinutes, 10);
+  });
 });

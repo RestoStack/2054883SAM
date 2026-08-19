@@ -6,6 +6,7 @@ import {
   PartyPopper, Wine, BookOpen, Sun, Moon, Loader2, Utensils,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { createPublicReservation, getPublicAvailability } from "@/lib/booking-api";
 import { slotsForDay, fmtSlot12, dayKeyFromDate, DAYS, type WeekHours } from "@/components/onboarding/HoursEditor";
 import heroImg from "@/assets/book-hero-v2.jpg";
 import mainImg from "@/assets/section-main.jpg";
@@ -149,6 +150,9 @@ function BookingFlow({ restaurant, menu }: { restaurant: Restaurant; menu: MenuR
   const [busy, setBusy] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [maxParty, setMaxParty] = useState(8);
+  const [availSlots, setAvailSlots] = useState<Array<{ t: string; popular?: boolean; available?: boolean }> | null>(null);
+  const [availClosed, setAvailClosed] = useState(false);
 
   const primary = restaurant.brand_primary || "#dc2626";
   const accent = restaurant.brand_accent || "#b91c1c";
@@ -166,13 +170,44 @@ function BookingFlow({ restaurant, menu }: { restaurant: Restaurant; menu: MenuR
 
   const dayKey = dayKeyFromDate(date);
   const dayInfo = hours[dayKey];
-  const isClosed = !!(dayInfo && dayInfo.closed);
-  const slots = slotsForDay(hours, dayKey);
-  const timeSlots = slots.length > 0
-    ? slots.map((t, i) => ({ t, popular: i === 2 || i === 5 }))
-    : FALLBACK_TIMES;
+  const isClosed = availSlots != null ? availClosed : !!(dayInfo && dayInfo.closed);
+  const fallbackSlots = slotsForDay(hours, dayKey);
+  const timeSlots =
+    availSlots && availSlots.length > 0
+      ? availSlots
+      : fallbackSlots.length > 0
+        ? fallbackSlots.map((t, i) => ({ t, popular: i === 2 || i === 5, available: true }))
+        : FALLBACK_TIMES.map((x) => ({ ...x, available: true }));
 
-  useEffect(() => { setTime(null); }, [date]);
+  const partySizes = Array.from({ length: Math.min(maxParty, 12) }, (_, i) => i + 1);
+
+  useEffect(() => {
+    setTime(null);
+    let cancelled = false;
+    const isoDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    (async () => {
+      const res = await getPublicAvailability(restaurant.slug, isoDate);
+      if (cancelled) return;
+      if (!res.ok) {
+        setAvailSlots(null);
+        setAvailClosed(false);
+        return;
+      }
+      setMaxParty(res.max_party_size || 8);
+      setAvailClosed(!!res.closed);
+      setAvailSlots(
+        (res.slots ?? []).map((s, i) => ({
+          t: s.time,
+          available: s.available,
+          popular: i === 2 || i === 5,
+        })),
+      );
+      if (party > (res.max_party_size || 8)) setParty(Math.min(party, res.max_party_size || 8));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [date, restaurant.slug]);
 
   const canStep2 = !!time && !isClosed;
   const canStep3 = !!section && isBirthday !== null;
@@ -180,25 +215,65 @@ function BookingFlow({ restaurant, menu }: { restaurant: Restaurant; menu: MenuR
 
   const submit = async () => {
     if (!canConfirm || !time) return;
-    setBusy(true); setError(null);
-    const isoDate = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
-    const occLabel = isBirthday ? "Birthday" : occasion ? OCCASIONS.find(o => o.id === occasion)?.label : "";
-    const notesFull = [occLabel && `Occasion: ${occLabel}`, joinLoyalty && "Wants loyalty signup", notes.trim()].filter(Boolean).join(" · ");
-    const sectionName = SECTIONS.find(s => s.id === section)?.name || "";
-    const { error } = await supabase.rpc("v2_public_create_booking", {
-      _slug: restaurant.slug,
-      _guest_name: name.trim(),
-      _guest_phone: phone.trim(),
-      _guest_email: email.trim(),
-      _party_size: party,
-      _date: isoDate,
-      _time: `${time.length === 5 ? time : time}:00`.replace(/::00$/, ":00"),
-      _section: sectionName,
-      _notes: notesFull,
+    setBusy(true);
+    setError(null);
+    const isoDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const occLabel = isBirthday
+      ? "Birthday"
+      : occasion
+        ? OCCASIONS.find((o) => o.id === occasion)?.label
+        : "";
+    const notesFull = [
+      occLabel && `Occasion: ${occLabel}`,
+      joinLoyalty && "Wants loyalty signup",
+      notes.trim(),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const sectionName = SECTIONS.find((s) => s.id === section)?.name || "";
+
+    const created = await createPublicReservation({
+      slug: restaurant.slug,
+      guest_name: name.trim(),
+      guest_phone: phone.trim(),
+      guest_email: email.trim(),
+      party_size: party,
+      date: isoDate,
+      time,
+      section: sectionName,
+      notes: notesFull,
     });
+
+    if (created.ok) {
+      setBusy(false);
+      setConfirmed(true);
+      return;
+    }
+
+    // Fallback to legacy RPC until Phase 2 migration is applied.
+    if ("missing" in created && created.missing) {
+      const { error: legacyErr } = await supabase.rpc("v2_public_create_booking", {
+        _slug: restaurant.slug,
+        _guest_name: name.trim(),
+        _guest_phone: phone.trim(),
+        _guest_email: email.trim(),
+        _party_size: party,
+        _date: isoDate,
+        _time: `${time.length === 5 ? time : time}:00`.replace(/::00$/, ":00"),
+        _section: sectionName,
+        _notes: notesFull,
+      });
+      setBusy(false);
+      if (legacyErr) {
+        setError(legacyErr.message || "Could not save your booking.");
+        return;
+      }
+      setConfirmed(true);
+      return;
+    }
+
     setBusy(false);
-    if (error) { setError(error.message || "Could not save your booking."); return; }
-    setConfirmed(true);
+    setError(created.error || "Could not save your booking.");
   };
 
   const brandStyle = { "--brand": primary, "--brand-2": accent } as React.CSSProperties;
@@ -296,7 +371,7 @@ function BookingFlow({ restaurant, menu }: { restaurant: Restaurant; menu: MenuR
                 <section>
                   <label className="text-sm font-semibold flex items-center gap-2 mb-3"><Users className="size-4 brand-ic" /> How many guests?</label>
                   <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-                    {PARTY_SIZES.map((n) => (
+                    {partySizes.map((n) => (
                       <button key={n} onClick={() => setParty(n)}
                         className={`h-11 lg:h-9 rounded-lg border text-sm font-medium transition ${party === n ? `${brandFillClass} text-white shadow-sm` : "bg-white border-border hover-brand"}`}>
                         {n}
@@ -342,11 +417,22 @@ function BookingFlow({ restaurant, menu }: { restaurant: Restaurant; menu: MenuR
                     <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                       {timeSlots.map((s) => {
                         const selected = time === s.t;
+                        const disabled = s.available === false;
                         return (
-                          <button key={s.t} onClick={() => setTime(s.t)}
-                            className={`relative h-11 lg:h-9 rounded-lg border text-sm font-medium transition ${selected ? `${brandFillClass} text-white shadow-sm` : "bg-white border-border hover-brand"}`}>
+                          <button
+                            key={s.t}
+                            disabled={disabled}
+                            onClick={() => setTime(s.t)}
+                            className={`relative h-11 lg:h-9 rounded-lg border text-sm font-medium transition ${
+                              disabled
+                                ? "bg-muted/40 text-muted-foreground border-border opacity-50 cursor-not-allowed"
+                                : selected
+                                  ? `${brandFillClass} text-white shadow-sm`
+                                  : "bg-white border-border hover-brand"
+                            }`}
+                          >
                             {fmtSlot12(s.t)}
-                            {s.popular && !selected && (
+                            {s.popular && !selected && !disabled && (
                               <span className="absolute -top-1.5 -right-1.5 text-[9px] font-semibold bg-amber-100 px-1.5 py-0.5 rounded-full brand-ic brand-border-soft">Popular</span>
                             )}
                           </button>
