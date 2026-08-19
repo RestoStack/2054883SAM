@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
 import {
   StepBooking,
   StepDone,
@@ -103,10 +104,7 @@ function OnboardingStepPage() {
       navigate({ to: "/login", replace: true });
       return;
     }
-    if (needsPayment) {
-      navigate({ to: "/billing/setup", replace: true });
-      return;
-    }
+    // Do not billing-gate the wizard — owners must see onboarding first.
 
     let cancelled = false;
     (async () => {
@@ -132,13 +130,28 @@ function OnboardingStepPage() {
           });
           if (legacy.ok) {
             await refreshStaff();
-            if (!cancelled) navigate({ to: "/app", replace: true });
+            // Stay IN the wizard — do not jump to /app. Seed step-1 fields.
+            if (!cancelled) {
+              setRestaurant((r) => ({
+                ...r,
+                name: r.name || (seedName ? `${seedName.split(/\s+/)[0]}'s restaurant` : "My restaurant"),
+                slug: legacy.slug || r.slug,
+              }));
+              if (legacy.slug) setSlug(legacy.slug);
+              setError(null);
+              setBooting(false);
+            }
             return;
           }
           if (!cancelled) {
+            // Still show the wizard UI so the owner isn't stuck on a blank/error screen.
+            setRestaurant((r) => ({
+              ...r,
+              name: r.name || (seedName ? `${seedName.split(/\s+/)[0]}'s restaurant` : "My restaurant"),
+            }));
             setError(
               legacy.needsMigration
-                ? legacy.error
+                ? `${legacy.error}\n\nOpen /onboarding/1 after running the SQL — the wizard will appear here.`
                 : boot.error || legacy.error,
             );
             setBooting(false);
@@ -162,7 +175,9 @@ function OnboardingStepPage() {
       if (cancelled) return;
 
       if (prog.ok) {
-        if (prog.completed_at) {
+        // Do not auto-skip the wizard when completed_at is set during emergency signup.
+        // Only leave if the user explicitly finished (draft.completed) or asks via dashboard CTA.
+        if (prog.completed_at && (prog.draft as any)?.completed === true) {
           navigate({ to: "/app", replace: true });
           return;
         }
@@ -234,12 +249,30 @@ function OnboardingStepPage() {
     return true;
   };
 
+  /** When org schema isn't migrated yet, still let the owner walk the wizard UI. */
+  const continueOrAdvance = async (next: number, save?: () => Promise<boolean>) => {
+    if (!orgId || !locationId) {
+      setError(null);
+      go(next);
+      return;
+    }
+    if (!save) {
+      go(next);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const ok = await save();
+    setBusy(false);
+    if (ok) go(next);
+  };
+
   const skip = async () => {
-    if (!canSkipStep(step) || !orgId) return;
+    if (!canSkipStep(step)) return;
     setBusy(true);
     setError(null);
     const next = Math.min(7, step + 1);
-    await onboardingSkipTo(orgId, next);
+    if (orgId) await onboardingSkipTo(orgId, next);
     setBusy(false);
     go(next);
   };
@@ -265,24 +298,47 @@ function OnboardingStepPage() {
         busy={busy}
         error={error}
         onContinue={async () => {
-          if (!requireOrg()) return;
           if (!restaurant.name.trim()) {
             setError("Restaurant name is required");
             return;
           }
           setBusy(true);
           setError(null);
-          const res = await onboardingSaveRestaurant(orgId!, {
-            ...restaurant,
-            slug: restaurant.slug || slugifyName(restaurant.name),
-          });
-          setBusy(false);
-          if (!res.ok) {
-            setError(res.error);
+
+          // Prefer org wizard RPC; fall back to legacy v2 create.
+          if (orgId) {
+            const res = await onboardingSaveRestaurant(orgId, {
+              ...restaurant,
+              slug: restaurant.slug || slugifyName(restaurant.name),
+            });
+            setBusy(false);
+            if (!res.ok) {
+              setError(res.error);
+              return;
+            }
+            if (typeof res.location_id === "string") setLocationId(res.location_id);
+            if (typeof res.public_slug === "string") setSlug(res.public_slug);
+            go(2);
             return;
           }
-          if (typeof res.location_id === "string") setLocationId(res.location_id);
-          if (typeof res.public_slug === "string") setSlug(res.public_slug);
+
+          const legacy = await createRestaurantForCurrentUser({
+            restaurantName: restaurant.name,
+            fullName:
+              (session?.user.user_metadata as any)?.full_name ||
+              session?.user.email?.split("@")[0] ||
+              "Owner",
+            city: restaurant.city,
+            plan: readSelectedPlan(),
+          });
+          await refreshStaff();
+          setBusy(false);
+          if (!legacy.ok) {
+            setError(legacy.error);
+            return;
+          }
+          if (legacy.slug) setSlug(legacy.slug);
+          // Without org schema, walk remaining steps as UI-only then finish to /app.
           go(2);
         }}
       />
@@ -298,27 +354,22 @@ function OnboardingStepPage() {
         busy={busy}
         error={error}
         onContinue={async () => {
-          if (!requireOrg() || !locationId) {
-            setError("Finish creating your restaurant first");
-            return;
-          }
-          setBusy(true);
-          setError(null);
-          const res = await onboardingSaveHours(orgId!, locationId, hours);
-          setBusy(false);
-          if (!res.ok) {
-            setError(res.error);
-            return;
-          }
-          // Prefill booking hours from opening hours
-          setBooking((b) => ({
-            ...b,
-            use_opening_hours: true,
-            booking_ranges: hours.ranges
-              .filter((r) => !hours.closed_days.includes(r.day))
-              .map((r) => ({ day: r.day, open: r.open, close: r.close })),
-          }));
-          go(3);
+          await continueOrAdvance(3, async () => {
+            if (!orgId || !locationId) return true;
+            const res = await onboardingSaveHours(orgId, locationId, hours);
+            if (!res.ok) {
+              setError(res.error);
+              return false;
+            }
+            setBooking((b) => ({
+              ...b,
+              use_opening_hours: true,
+              booking_ranges: hours.ranges
+                .filter((r) => !hours.closed_days.includes(r.day))
+                .map((r) => ({ day: r.day, open: r.open, close: r.close })),
+            }));
+            return true;
+          });
         }}
       />
     );
@@ -335,19 +386,15 @@ function OnboardingStepPage() {
         busy={busy}
         error={error}
         onContinue={async () => {
-          if (!requireOrg() || !locationId) {
-            setError("Finish creating your restaurant first");
-            return;
-          }
-          setBusy(true);
-          setError(null);
-          const res = await onboardingSaveBooking(orgId!, locationId, booking);
-          setBusy(false);
-          if (!res.ok) {
-            setError(res.error);
-            return;
-          }
-          go(4);
+          await continueOrAdvance(4, async () => {
+            if (!orgId || !locationId) return true;
+            const res = await onboardingSaveBooking(orgId, locationId, booking);
+            if (!res.ok) {
+              setError(res.error);
+              return false;
+            }
+            return true;
+          });
         }}
       />
     );
@@ -363,26 +410,22 @@ function OnboardingStepPage() {
         busy={busy}
         error={error}
         onContinue={async () => {
-          if (!requireOrg() || !locationId) {
-            setError("Finish creating your restaurant first");
-            return;
-          }
-          setBusy(true);
-          setError(null);
-          const res = await onboardingSaveTablesQuick(
-            orgId!,
-            locationId,
-            tables.count,
-            tables.seats,
-            tables.section,
-            tables.bookable_online,
-          );
-          setBusy(false);
-          if (!res.ok) {
-            setError(res.error);
-            return;
-          }
-          go(5);
+          await continueOrAdvance(5, async () => {
+            if (!orgId || !locationId) return true;
+            const res = await onboardingSaveTablesQuick(
+              orgId,
+              locationId,
+              tables.count,
+              tables.seats,
+              tables.section,
+              tables.bookable_online,
+            );
+            if (!res.ok) {
+              setError(res.error);
+              return false;
+            }
+            return true;
+          });
         }}
       />
     );
@@ -398,19 +441,15 @@ function OnboardingStepPage() {
         busy={busy}
         error={error}
         onContinue={async () => {
-          if (!requireOrg() || !locationId) {
-            setError("Finish creating your restaurant first");
-            return;
-          }
-          setBusy(true);
-          setError(null);
-          const res = await onboardingSaveMenu(orgId!, locationId, menu);
-          setBusy(false);
-          if (!res.ok) {
-            setError(res.error);
-            return;
-          }
-          go(6);
+          await continueOrAdvance(6, async () => {
+            if (!orgId || !locationId) return true;
+            const res = await onboardingSaveMenu(orgId, locationId, menu);
+            if (!res.ok) {
+              setError(res.error);
+              return false;
+            }
+            return true;
+          });
         }}
       />
     );
@@ -426,17 +465,16 @@ function OnboardingStepPage() {
         busy={busy}
         error={error}
         onContinue={async () => {
-          if (!requireOrg()) return;
-          setBusy(true);
-          setError(null);
-          const res = await onboardingSaveTeam(orgId!, team);
-          setBusy(false);
-          if (!res.ok) {
-            setError(res.error);
-            return;
-          }
           if (!slug) setSlug(slugifyName(restaurant.name));
-          go(7);
+          await continueOrAdvance(7, async () => {
+            if (!orgId) return true;
+            const res = await onboardingSaveTeam(orgId, team);
+            if (!res.ok) {
+              setError(res.error);
+              return false;
+            }
+            return true;
+          });
         }}
       />
     );
@@ -451,7 +489,11 @@ function OnboardingStepPage() {
       }}
       slugAvailable={slugAvailable}
       onCheckSlug={async () => {
-        const res = await onboardingCheckSlug(bookingUrlSlug, orgId ?? undefined);
+        if (!orgId) {
+          setSlugAvailable(true);
+          return;
+        }
+        const res = await onboardingCheckSlug(bookingUrlSlug, orgId);
         setSlugAvailable(res.available);
         if (!res.ok && res.error) setError(res.error);
       }}
@@ -459,22 +501,37 @@ function OnboardingStepPage() {
       busy={busy}
       error={error}
       onFinish={async () => {
-        if (!requireOrg()) return;
         setBusy(true);
         setError(null);
-        const check = await onboardingCheckSlug(bookingUrlSlug, orgId!);
-        if (!check.available) {
-          setSlugAvailable(false);
-          setBusy(false);
-          setError("Slug is not available");
-          return;
+        if (orgId) {
+          const check = await onboardingCheckSlug(bookingUrlSlug, orgId);
+          if (!check.available) {
+            setSlugAvailable(false);
+            setBusy(false);
+            setError("Slug is not available");
+            return;
+          }
+          const res = await onboardingComplete(orgId, bookingUrlSlug);
+          if (!res.ok) {
+            setBusy(false);
+            setError(res.error);
+            return;
+          }
+        } else {
+          // Legacy: mark restaurant onboarding complete if we can.
+          const { data: staffRow } = await supabase
+            .from("v2_users")
+            .select("restaurant_id")
+            .eq("auth_user_id", session!.user.id)
+            .maybeSingle();
+          if (staffRow?.restaurant_id) {
+            await supabase
+              .from("v2_restaurants")
+              .update({ onboarding_completed_at: new Date().toISOString(), slug: bookingUrlSlug })
+              .eq("id", staffRow.restaurant_id);
+          }
         }
-        const res = await onboardingComplete(orgId!, bookingUrlSlug);
         setBusy(false);
-        if (!res.ok) {
-          setError(res.error);
-          return;
-        }
         await refreshStaff();
         navigate({ to: "/app", replace: true });
       }}

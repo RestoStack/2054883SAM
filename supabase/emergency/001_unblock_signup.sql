@@ -100,7 +100,7 @@ BEGIN
     'America/Toronto',
     _plan_final,
     now(),
-    now()
+    NULL  -- leave incomplete so the owner sees /onboarding
   )
   RETURNING id INTO _rid;
 

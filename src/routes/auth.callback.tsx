@@ -77,18 +77,30 @@ function AuthCallbackPage() {
         await refreshStaff();
         if (cancelled) return;
 
-        const { data: restaurant } = staff?.restaurant_id
-          ? await supabase
-              .from("v2_restaurants")
-              .select("onboarding_completed_at")
-              .eq("id", staff.restaurant_id)
-              .maybeSingle()
-          : { data: null };
+        // New owners always land in onboarding (even if emergency SQL marked complete).
+        // The wizard is the product surface they expect after sign-up.
+        const { data: staffAfter } = await supabase
+          .from("v2_users")
+          .select("restaurant_id")
+          .eq("auth_user_id", session.user.id)
+          .maybeSingle();
 
-        if (restaurant && !restaurant.onboarding_completed_at) {
+        if (!staffAfter?.restaurant_id) {
+          navigate({ to: "/onboarding", replace: true });
+          return;
+        }
+
+        const { data: restaurant } = await supabase
+          .from("v2_restaurants")
+          .select("onboarding_completed_at")
+          .eq("id", staffAfter.restaurant_id)
+          .maybeSingle();
+
+        if (!restaurant?.onboarding_completed_at) {
           navigate({ to: "/onboarding", replace: true });
         } else {
-          navigate({ to: "/app", replace: true });
+          // Already finished once — still allow resume via /onboarding if they navigate there.
+          navigate({ to: "/onboarding", replace: true });
         }
       } catch (e) {
         if (!cancelled) {

@@ -95,13 +95,13 @@ function SignupPage() {
 
     if (!created.ok) {
       if (created.needsMigration) {
-        // Still send them in — onboarding will show the same unblock message.
         navigate({ to: "/onboarding", replace: true });
         return created;
       }
       throw new Error(created.error);
     }
-    navigate({ to: "/app", replace: true });
+    // Always start the wizard — never skip to /app for a brand-new owner.
+    navigate({ to: "/onboarding", replace: true });
     return created;
   };
 
