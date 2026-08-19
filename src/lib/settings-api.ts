@@ -15,12 +15,150 @@ import {
   type TeamRemoveInput,
   type TeamRoleUpdateInput,
 } from "@/lib/schemas/settings";
+import { isMissingDbObject, resolveRestaurantId } from "@/lib/legacy-tenant";
 
 async function rpc(name: string, args: Record<string, unknown>) {
   const { data, error } = await (supabase as any).rpc(name, args);
-  if (error) return { ok: false as const, error: error.message };
-  if (!data?.ok) return { ok: false as const, error: data?.error ?? "Request failed" };
+  if (error) return { ok: false as const, error: error.message, missing: isMissingDbObject(error) };
+  if (!data?.ok) return { ok: false as const, error: data?.error ?? "Request failed", missing: false };
   return data as { ok: true; [k: string]: unknown };
+}
+
+export type SettingsLocation = {
+  id: string;
+  name: string;
+  public_slug: string;
+  address: string | null;
+  city: string | null;
+  phone: string | null;
+  timezone: string | null;
+  is_active: boolean;
+  /** Primary restaurant row vs extra location stored in integrations */
+  kind?: "primary" | "extra";
+};
+
+type StoredExtraLocation = {
+  id: string;
+  name: string;
+  public_slug: string;
+  address?: string | null;
+  city?: string | null;
+  phone?: string | null;
+  timezone?: string | null;
+  is_active?: boolean;
+};
+
+function extrasFromIntegrations(integrations: unknown): StoredExtraLocation[] {
+  if (!integrations || typeof integrations !== "object") return [];
+  const locs = (integrations as Record<string, unknown>).locations;
+  if (!Array.isArray(locs)) return [];
+  return locs.filter((l) => l && typeof l === "object") as StoredExtraLocation[];
+}
+
+async function listLegacyLocations(restaurantId?: string | null) {
+  const rid = await resolveRestaurantId(restaurantId);
+  if (!rid) return { ok: false as const, error: "No restaurant context", locations: [] as SettingsLocation[] };
+
+  const { data, error } = await supabase
+    .from("v2_restaurants")
+    .select("id, name, slug, address, city, phone, timezone, integrations")
+    .eq("id", rid)
+    .maybeSingle();
+  if (error) return { ok: false as const, error: error.message, locations: [] as SettingsLocation[] };
+  if (!data) return { ok: true as const, locations: [] as SettingsLocation[] };
+
+  const primary: SettingsLocation = {
+    id: data.id,
+    name: data.name,
+    public_slug: data.slug,
+    address: data.address,
+    city: data.city,
+    phone: data.phone,
+    timezone: data.timezone,
+    is_active: true,
+    kind: "primary",
+  };
+  const extras = extrasFromIntegrations(data.integrations).map((l) => ({
+    id: l.id,
+    name: l.name,
+    public_slug: l.public_slug,
+    address: l.address ?? null,
+    city: l.city ?? null,
+    phone: l.phone ?? null,
+    timezone: l.timezone ?? null,
+    is_active: l.is_active !== false,
+    kind: "extra" as const,
+  }));
+  return { ok: true as const, locations: [primary, ...extras] };
+}
+
+async function upsertLegacyLocation(
+  input: LocationUpsertInput & { restaurant_id?: string | null },
+) {
+  const rid = await resolveRestaurantId(input.restaurant_id ?? input.organization_id);
+  if (!rid) return { ok: false as const, error: "No restaurant context" };
+
+  const { data: restaurant, error: rErr } = await supabase
+    .from("v2_restaurants")
+    .select("id, slug, integrations")
+    .eq("id", rid)
+    .maybeSingle();
+  if (rErr) return { ok: false as const, error: rErr.message };
+  if (!restaurant) return { ok: false as const, error: "Restaurant not found" };
+
+  const slug =
+    (input.public_slug?.trim() ||
+      input.name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")) || "location";
+
+  // Editing the primary restaurant row
+  if (input.location_id && input.location_id === rid) {
+    const { error } = await supabase
+      .from("v2_restaurants")
+      .update({
+        name: input.name.trim(),
+        slug,
+        address: input.address ?? null,
+        city: input.city ?? null,
+        phone: input.phone ?? null,
+        timezone: input.timezone ?? "America/Toronto",
+      })
+      .eq("id", rid);
+    if (error) return { ok: false as const, error: error.message };
+    return { ok: true as const, location_id: rid };
+  }
+
+  // Extra locations live in integrations.locations (works without org migrations)
+  const integrations =
+    restaurant.integrations && typeof restaurant.integrations === "object"
+      ? ({ ...(restaurant.integrations as Record<string, unknown>) } as Record<string, unknown>)
+      : {};
+  const extras = extrasFromIntegrations(integrations);
+  const id = input.location_id || crypto.randomUUID();
+  const next: StoredExtraLocation = {
+    id,
+    name: input.name.trim(),
+    public_slug: slug,
+    address: input.address ?? null,
+    city: input.city ?? null,
+    phone: input.phone ?? null,
+    timezone: input.timezone ?? "America/Toronto",
+    is_active: input.is_active !== false,
+  };
+  const idx = extras.findIndex((l) => l.id === id);
+  if (idx >= 0) extras[idx] = next;
+  else extras.push(next);
+  integrations.locations = extras;
+
+  const { error } = await supabase
+    .from("v2_restaurants")
+    .update({ integrations: integrations as never })
+    .eq("id", rid);
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const, location_id: id };
 }
 
 export async function settingsUpdateProfile(input: ProfileUpdateInput) {
@@ -37,17 +175,49 @@ export async function settingsUpdateProfile(input: ProfileUpdateInput) {
   });
 }
 
-export async function settingsListLocations(organizationId: string) {
-  return rpc("app_settings_list_locations", { _organization_id: organizationId });
+export async function settingsListLocations(
+  organizationId: string | null,
+  restaurantId?: string | null,
+) {
+  if (organizationId) {
+    const res = await rpc("app_settings_list_locations", { _organization_id: organizationId });
+    if (res.ok && Array.isArray((res as any).locations)) {
+      return { ok: true as const, locations: (res as any).locations as SettingsLocation[] };
+    }
+    if (!("missing" in res && res.missing) && !res.ok) {
+      // RPC failed for non-missing reason — still try legacy
+      const legacy = await listLegacyLocations(restaurantId);
+      if (legacy.ok && legacy.locations.length) return legacy;
+      return { ok: false as const, error: res.error, locations: [] as SettingsLocation[] };
+    }
+  }
+  return listLegacyLocations(restaurantId ?? organizationId);
 }
 
-export async function settingsUpsertLocation(input: LocationUpsertInput) {
+export async function settingsUpsertLocation(
+  input: LocationUpsertInput & { restaurant_id?: string | null },
+) {
   const parsed = locationUpsertSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: parsed.error.errors[0]?.message ?? "Invalid" };
-  return rpc("app_settings_upsert_location", {
+
+  // Prefer org RPC when organization tables exist; otherwise store on the restaurant row.
+  const res = await rpc("app_settings_upsert_location", {
     _organization_id: parsed.data.organization_id,
     _payload: parsed.data,
   });
+  if (res.ok) return res;
+
+  const missing =
+    ("missing" in res && res.missing) ||
+    (!!res.error && /could not find|schema cache|does not exist|PGRST202/i.test(res.error));
+
+  // If we only have a restaurant workspace (no real org), always use legacy storage.
+  if (!missing && input.restaurant_id && input.restaurant_id === parsed.data.organization_id) {
+    return upsertLegacyLocation({ ...parsed.data, restaurant_id: input.restaurant_id });
+  }
+
+  if (!missing && res.error) return { ok: false as const, error: res.error };
+  return upsertLegacyLocation({ ...parsed.data, restaurant_id: input.restaurant_id });
 }
 
 export async function settingsGetHours(organizationId: string, locationId: string) {

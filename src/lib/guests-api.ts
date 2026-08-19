@@ -56,6 +56,63 @@ export async function listGuests(
   const rid = await resolveRestaurantId(restaurantId);
   if (!rid) return { ok: true as const, guests: [] as GuestRow[] };
 
+  // Backfill customers from bookings that were created without a customer_id.
+  try {
+    const { data: orphanBookings } = await (supabase as any)
+      .from("v2_bookings")
+      .select("id, guest_name, guest_email, guest_phone, customer_id")
+      .eq("restaurant_id", rid)
+      .is("customer_id", null)
+      .not("guest_name", "is", null)
+      .limit(100);
+    for (const b of (orphanBookings ?? []) as Array<Record<string, unknown>>) {
+      const name = String(b.guest_name ?? "").trim();
+      if (!name) continue;
+      const email = (b.guest_email as string | null) ?? null;
+      const phone = (b.guest_phone as string | null) ?? null;
+      let customerId: string | null = null;
+      if (email) {
+        const { data } = await (supabase as any)
+          .from("v2_customers")
+          .select("id")
+          .eq("restaurant_id", rid)
+          .eq("email", email)
+          .maybeSingle();
+        if (data?.id) customerId = String(data.id);
+      }
+      if (!customerId && phone) {
+        const { data } = await (supabase as any)
+          .from("v2_customers")
+          .select("id")
+          .eq("restaurant_id", rid)
+          .eq("phone", phone)
+          .maybeSingle();
+        if (data?.id) customerId = String(data.id);
+      }
+      if (!customerId) {
+        const { data: created } = await (supabase as any)
+          .from("v2_customers")
+          .insert({
+            restaurant_id: rid,
+            full_name: name,
+            email,
+            phone,
+          })
+          .select("id")
+          .single();
+        if (created?.id) customerId = String(created.id);
+      }
+      if (customerId) {
+        await (supabase as any)
+          .from("v2_bookings")
+          .update({ customer_id: customerId })
+          .eq("id", b.id);
+      }
+    }
+  } catch {
+    // Best-effort backfill.
+  }
+
   let cq = (supabase as any)
     .from("v2_customers")
     .select("id, full_name, email, phone, notes, created_at, restaurant_id")

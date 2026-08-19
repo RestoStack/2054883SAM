@@ -73,36 +73,6 @@ type MealPeriod = "Lunch" | "Dinner";
 type TargetMode = "assign" | "seat";
 type Target = { id: string; name: string; party: number; mode: TargetMode };
 
-/** Round a HH:MM(:SS) time string down to its enclosing 15-minute block key, e.g. "12:07" -> "12:00". */
-function blockKeyFor(time: string): string {
-  const raw = (time ?? "").slice(0, 5);
-  const [hStr, mStr] = raw.split(":");
-  const h = Number(hStr);
-  const m = Number(mStr);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return "00:00";
-  const flooredM = Math.floor(m / 15) * 15;
-  return `${String(h).padStart(2, "0")}:${String(flooredM).padStart(2, "0")}`;
-}
-
-function groupInto15MinBlocks(
-  reservations: HostFloorReservation[],
-): Array<{ key: string; label: string; items: HostFloorReservation[] }> {
-  const map = new Map<string, HostFloorReservation[]>();
-  for (const r of reservations) {
-    const key = blockKeyFor(r.reserved_time);
-    const arr = map.get(key) ?? [];
-    arr.push(r);
-    map.set(key, arr);
-  }
-  return Array.from(map.entries())
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([key, items]) => ({
-      key,
-      label: formatTimeLabel(`${key}:00`),
-      items: items.slice().sort((a, b) => a.reserved_time.localeCompare(b.reserved_time)),
-    }));
-}
-
 const statusDot: Record<HostFloorReservation["status"], string> = {
   pending: "bg-sky-500",
   confirmed: "bg-sky-500",
@@ -315,7 +285,6 @@ function HostStandLive() {
     () => periodReservations.filter((r) => r.status !== "cancelled" && r.status !== "completed"),
     [periodReservations],
   );
-  const blocks = useMemo(() => groupInto15MinBlocks(activeReservations), [activeReservations]);
 
   const seatedCount = useMemo(
     () => periodReservations.filter((r) => r.status === "seated").length,

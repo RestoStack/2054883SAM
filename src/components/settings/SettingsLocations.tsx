@@ -13,6 +13,7 @@ type Loc = {
   phone: string | null;
   timezone: string | null;
   is_active: boolean;
+  kind?: "primary" | "extra";
 };
 
 const empty = {
@@ -26,8 +27,11 @@ const empty = {
 };
 
 export function SettingsLocations() {
-  const { org } = useAuth();
+  const { org, staff } = useAuth();
   const orgId = org.activeOrganizationId;
+  const restaurantId = staff?.restaurant_id ?? null;
+  const tenantReady = Boolean(orgId || restaurantId);
+
   const [locations, setLocations] = useState<Loc[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Partial<Loc> & typeof empty>(empty);
@@ -35,19 +39,25 @@ export function SettingsLocations() {
   const [busy, setBusy] = useState(false);
 
   const refresh = async () => {
-    if (!orgId) return;
-    const res = await settingsListLocations(orgId);
-    if (res.ok && Array.isArray(res.locations)) setLocations(res.locations as Loc[]);
+    if (!tenantReady) return;
+    const res = await settingsListLocations(orgId, restaurantId);
+    if (!res.ok) {
+      toast.error(res.error ?? "Failed to load locations");
+      setLocations([]);
+      return;
+    }
+    if (Array.isArray(res.locations)) setLocations(res.locations as Loc[]);
   };
 
   useEffect(() => {
-    if (!orgId) {
+    if (!tenantReady) {
       setLoading(false);
       return;
     }
+    setLoading(true);
     refresh().finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+  }, [orgId, restaurantId, tenantReady]);
 
   if (loading) {
     return (
@@ -57,7 +67,11 @@ export function SettingsLocations() {
     );
   }
 
-  if (!orgId) return <p className="text-sm text-muted-foreground">No organization selected.</p>;
+  if (!tenantReady) {
+    return <p className="text-sm text-muted-foreground">No restaurant workspace found.</p>;
+  }
+
+  const tenantId = orgId ?? restaurantId!;
 
   const startEdit = (loc?: Loc) => {
     if (loc) {
@@ -82,7 +96,10 @@ export function SettingsLocations() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Locations</h2>
-          <p className="text-sm text-muted-foreground">Add or edit dining rooms under this organization.</p>
+          <p className="text-sm text-muted-foreground">
+            Add or edit dining rooms. Extra sites are saved with this restaurant until organization
+            mode is enabled.
+          </p>
         </div>
         <button
           type="button"
@@ -100,7 +117,14 @@ export function SettingsLocations() {
             className="flex items-center justify-between rounded-xl border border-border px-4 py-3"
           >
             <div className="min-w-0">
-              <div className="font-medium text-sm truncate">{l.name}</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="font-medium text-sm truncate">{l.name}</div>
+                {l.kind === "primary" && (
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Primary
+                  </span>
+                )}
+              </div>
               <div className="text-xs text-muted-foreground truncate">
                 /book/{l.public_slug}
                 {l.city ? ` · ${l.city}` : ""}
@@ -117,7 +141,7 @@ export function SettingsLocations() {
           </li>
         ))}
         {locations.length === 0 && (
-          <li className="text-sm text-muted-foreground">No locations yet.</li>
+          <li className="text-sm text-muted-foreground">No locations yet. Add your first site.</li>
         )}
       </ul>
 
@@ -191,7 +215,7 @@ export function SettingsLocations() {
             }
             setBusy(true);
             const res = await settingsUpsertLocation({
-              organization_id: orgId,
+              organization_id: tenantId,
               location_id: editId,
               name: editing.name,
               public_slug: editing.public_slug || undefined,
@@ -200,6 +224,7 @@ export function SettingsLocations() {
               phone: editing.phone || null,
               timezone: editing.timezone || null,
               is_active: editing.is_active,
+              restaurant_id: restaurantId,
             });
             setBusy(false);
             if (!res.ok) toast.error(res.error);

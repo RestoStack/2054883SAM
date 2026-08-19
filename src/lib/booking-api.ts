@@ -223,6 +223,50 @@ export async function createManualReservation(input: {
     };
   }
   const time = input.time.length === 5 ? `${input.time}:00` : input.time;
+
+  // Ensure a v2_customers row so the guest appears in Guests CRM.
+  let customerId: string | null = null;
+  try {
+    const email = input.guest_email?.trim() || null;
+    const phone = input.guest_phone?.trim() || null;
+    let existing: { id: string } | null = null;
+    if (email) {
+      const { data } = await (supabase as any)
+        .from("v2_customers")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("email", email)
+        .maybeSingle();
+      existing = data;
+    }
+    if (!existing && phone) {
+      const { data } = await (supabase as any)
+        .from("v2_customers")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("phone", phone)
+        .maybeSingle();
+      existing = data;
+    }
+    if (existing?.id) {
+      customerId = String(existing.id);
+    } else {
+      const { data: created } = await (supabase as any)
+        .from("v2_customers")
+        .insert({
+          restaurant_id: restaurantId,
+          full_name: input.guest_name.trim(),
+          email,
+          phone,
+        })
+        .select("id")
+        .single();
+      if (created?.id) customerId = String(created.id);
+    }
+  } catch {
+    // Guest CRM link is best-effort; booking still succeeds.
+  }
+
   const { data: row, error: insErr } = await (supabase as any)
     .from("v2_bookings")
     .insert({
@@ -237,6 +281,7 @@ export async function createManualReservation(input: {
       source: "manual",
       notes: input.notes ?? null,
       table_number: null,
+      customer_id: customerId,
     })
     .select("id")
     .single();

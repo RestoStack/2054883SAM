@@ -243,44 +243,48 @@ function GuestsPage() {
               {!loading &&
                 guests.map((g) => (
                   <tr key={g.id} className="border-b border-border last:border-0 hover:bg-muted/40">
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-4" colSpan={6}>
                       <Link
                         to="/app/guests/$id"
                         params={{ id: g.id }}
-                        className="flex items-center gap-3 font-medium hover:underline"
+                        className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-2 -mx-5 -my-4 px-5 py-4"
                       >
-                        <div className="size-9 rounded-full bg-gradient-to-br from-accent to-primary/30 shrink-0" />
-                        {g.full_name}
+                        <span className="flex items-center gap-3 font-medium min-w-0">
+                          <span className="size-9 rounded-full bg-gradient-to-br from-accent to-primary/30 shrink-0" />
+                          <span className="truncate">{g.full_name}</span>
+                        </span>
+                        <span className="text-muted-foreground truncate">{g.email ?? "—"}</span>
+                        <span className="text-muted-foreground truncate">
+                          {g.phone_e164 ?? g.phone ?? "—"}
+                        </span>
+                        <span>
+                          <Badge
+                            variant={g.marketing_opt_in ? "default" : "outline"}
+                            className={
+                              g.marketing_opt_in
+                                ? "bg-success/15 text-success border-transparent"
+                                : "text-muted-foreground"
+                            }
+                          >
+                            {g.marketing_opt_in ? "Opted in" : "Opted out"}
+                          </Badge>
+                        </span>
+                        <span className="text-muted-foreground truncate">
+                          {(g.tags ?? []).length > 0 ? g.tags!.join(", ") : "—"}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {new Date(g.created_at).toLocaleDateString()}
+                        </span>
                       </Link>
-                    </td>
-                    <td className="px-5 py-4 text-muted-foreground">{g.email ?? "—"}</td>
-                    <td className="px-5 py-4 text-muted-foreground">
-                      {g.phone_e164 ?? g.phone ?? "—"}
-                    </td>
-                    <td className="px-5 py-4">
-                      <Badge
-                        variant={g.marketing_opt_in ? "default" : "outline"}
-                        className={
-                          g.marketing_opt_in
-                            ? "bg-success/15 text-success border-transparent"
-                            : "text-muted-foreground"
-                        }
-                      >
-                        {g.marketing_opt_in ? "Opted in" : "Opted out"}
-                      </Badge>
-                    </td>
-                    <td className="px-5 py-4 text-muted-foreground">
-                      {(g.tags ?? []).length > 0 ? g.tags!.join(", ") : "—"}
-                    </td>
-                    <td className="px-5 py-4 text-muted-foreground">
-                      {new Date(g.created_at).toLocaleDateString()}
                     </td>
                   </tr>
                 ))}
               {!loading && guests.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">
-                    {orgId ? "No guests match these filters." : "No organization selected."}
+                    {tenantReady
+                      ? "No guests match these filters."
+                      : "No restaurant workspace found."}
                   </td>
                 </tr>
               )}

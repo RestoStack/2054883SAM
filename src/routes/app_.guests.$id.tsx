@@ -98,10 +98,12 @@ const statusStyle = (s: string) =>
 function GuestDetail() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
-  const { org } = useAuth();
+  const { org, staff } = useAuth();
   const orgId = org.activeOrganizationId;
-  const canManage = org.role === "owner" || org.role === "manager";
-  const isOwner = org.role === "owner";
+  const restaurantId = staff?.restaurant_id ?? null;
+  const tenantReady = Boolean(orgId || restaurantId);
+  const canManage = Boolean(orgId) && (org.role === "owner" || org.role === "manager");
+  const isOwner = Boolean(orgId) && org.role === "owner";
 
   const [guest, setGuest] = useState<Guest | null>(null);
   const [stats, setStats] = useState<LocationStat[]>([]);
@@ -119,30 +121,34 @@ function GuestDetail() {
   const [anonymizing, setAnonymizing] = useState(false);
 
   const refresh = async () => {
-    if (!orgId) return;
+    if (!tenantReady) return;
     setLoading(true);
-    const [g, s, h, n] = await Promise.all([
-      getGuest(orgId, id),
-      getGuestStats(id),
-      getGuestHistory(orgId, id),
-      getGuestNotes(id),
-    ]);
+    const [g, h] = await Promise.all([getGuest(orgId, id), getGuestHistory(orgId, id)]);
     if (!g.ok) {
       toast.error(g.error);
       setGuest(null);
     } else {
       setGuest(g.guest);
     }
-    if (s.ok) setStats(s.stats as LocationStat[]);
     if (h.ok) setHistory(h.rows as HistoryRow[]);
-    if (n.ok) setNotes(n.notes as NoteRow[]);
+
+    if (orgId) {
+      const [s, n] = await Promise.all([getGuestStats(id), getGuestNotes(id)]);
+      if (s.ok) setStats(s.stats as LocationStat[]);
+      else setStats([]);
+      if (n.ok) setNotes(n.notes as NoteRow[]);
+      else setNotes([]);
+    } else {
+      setStats([]);
+      setNotes([]);
+    }
     setLoading(false);
   };
 
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, id]);
+  }, [orgId, restaurantId, tenantReady, id]);
 
   useEffect(() => {
     if (!orgId || !mergeQuery.trim()) {
@@ -201,6 +207,16 @@ function GuestDetail() {
     navigate({ to: "/app/guests" });
   };
 
+  if (!tenantReady) {
+    return (
+      <AppShell>
+        <div className="p-10 text-center text-muted-foreground">
+          No restaurant workspace found.
+        </div>
+      </AppShell>
+    );
+  }
+
   if (loading) {
     return (
       <AppShell>
@@ -217,7 +233,7 @@ function GuestDetail() {
         <div className="p-10 text-center">
           <div className="text-lg font-semibold">Guest not found</div>
           <p className="text-sm text-muted-foreground mt-1">
-            This guest is not part of your organization's data.
+            This guest is not in your restaurant guest list.
           </p>
           <Link
             to="/app/guests"
@@ -330,10 +346,14 @@ function GuestDetail() {
                     : "—",
                 ],
                 ["Tags", ((guest.tags as string[]) ?? []).join(", ") || "—"],
+                [
+                  "Profile notes",
+                  typeof guest.notes === "string" && guest.notes.trim() ? guest.notes : "—",
+                ],
               ].map(([k, v]) => (
                 <div key={k as string} className="flex justify-between gap-3">
                   <dt className="text-muted-foreground">{k}</dt>
-                  <dd className="font-medium text-right">{v as string}</dd>
+                  <dd className="font-medium text-right whitespace-pre-wrap">{v as string}</dd>
                 </div>
               ))}
             </dl>
@@ -386,30 +406,37 @@ function GuestDetail() {
 
         <Panel title="Notes">
           <div className="space-y-3">
-            <div className="flex gap-2">
-              <Textarea
-                value={noteBody}
-                onChange={(e) => setNoteBody(e.target.value)}
-                placeholder="Add a note about this guest (allergies, preferences, occasions)…"
-                rows={2}
-                className="flex-1"
-              />
-              <button
-                type="button"
-                disabled={addingNote || !noteBody.trim()}
-                onClick={handleAddNote}
-                className="inline-flex items-center gap-1.5 h-fit self-end rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-              >
-                {addingNote ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <PlusCircle className="size-4" />
-                )}
-                Add
-              </button>
-            </div>
+            {orgId ? (
+              <div className="flex gap-2">
+                <Textarea
+                  value={noteBody}
+                  onChange={(e) => setNoteBody(e.target.value)}
+                  placeholder="Add a note about this guest (allergies, preferences, occasions)…"
+                  rows={2}
+                  className="flex-1"
+                />
+                <button
+                  type="button"
+                  disabled={addingNote || !noteBody.trim()}
+                  onClick={handleAddNote}
+                  className="inline-flex items-center gap-1.5 h-fit self-end rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                >
+                  {addingNote ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <PlusCircle className="size-4" />
+                  )}
+                  Add
+                </button>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Staff notes are available when organization mode is enabled. Profile notes appear
+                above when present.
+              </p>
+            )}
             <div className="space-y-2">
-              {notes.length === 0 && (
+              {notes.length === 0 && orgId && (
                 <p className="text-sm text-muted-foreground">No notes yet for this guest.</p>
               )}
               {notes.map((n) => (
