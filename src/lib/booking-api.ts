@@ -101,6 +101,7 @@ export async function createWalkIn(input: {
   party_size: number;
   table_number?: string | null;
   notes?: string | null;
+  table_id?: string | null;
 }) {
   const { data, error } = await (supabase as any).rpc("app_create_walk_in", {
     _organization_id: input.organization_id,
@@ -109,6 +110,7 @@ export async function createWalkIn(input: {
     _party_size: input.party_size,
     _table_number: input.table_number ?? null,
     _notes: input.notes ?? null,
+    _table_id: input.table_id ?? null,
   });
   if (error) return { ok: false as const, error: error.message };
   if (!data?.ok) return { ok: false as const, error: data?.error ?? "Failed" };

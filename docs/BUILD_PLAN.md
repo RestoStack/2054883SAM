@@ -143,9 +143,9 @@
 - Table status enum alignment if needed.
 
 ### Done when
-- [ ] Host can seat/unseat only within org/location.
-- [ ] Walk-in appears on floor + bookings.
-- [ ] Isolation test covers host stand RPCs.
+- [x] Host can seat/unseat only within org/location.
+- [x] Walk-in appears on floor + bookings.
+- [x] Isolation test covers host stand RPCs.
 
 ### Rollback
 - Hide Host Stand nav flag; bookings UI remains.
