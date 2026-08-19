@@ -25,6 +25,13 @@ async function rpc(name: string, args: Record<string, unknown>) {
   return data as { ok: true; [k: string]: unknown };
 }
 
+export async function onboardingBootstrapOwner(fullName?: string, organizationName?: string) {
+  return rpc("app_bootstrap_owner_org", {
+    _full_name: fullName ?? null,
+    _organization_name: organizationName ?? null,
+  });
+}
+
 export async function onboardingGet(organizationId: string) {
   return rpc("app_onboarding_get", { _organization_id: organizationId });
 }
