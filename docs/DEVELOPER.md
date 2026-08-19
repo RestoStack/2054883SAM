@@ -86,9 +86,11 @@ Client Supabase defaults in `src/integrations/supabase/config.ts` match the live
 
 | Channel | Notes |
 |---------|--------|
-| Lovable publish | Sync from GitHub / Lovable agent; may need desktop MCP auth |
-| Vercel | Ensure `SUPABASE_PUBLISHABLE_KEY` (or Vite equivalents) are set; client defaults exist as fallback |
-| Custom domain | `restostacks.com` → live app |
+| **Cloudflare (primary)** | `npm run deploy:cf` — see [INDEPENDENCE.md](../INDEPENDENCE.md) |
+| Vercel / other | Set `VITE_SUPABASE_*` / `SUPABASE_*`; do not rely on Lovable |
+| Custom domain | Point `restostacks.com` at your Worker / host |
+
+Lovable publish is **not** required. Optional editor only.
 
 ## Continuing work in Cursor (anywhere)
 
@@ -98,14 +100,12 @@ Client Supabase defaults in `src/integrations/supabase/config.ts` match the live
 4. Implement against `docs/FEATURES.md` / `docs/READINESS.md`  
 5. Prefer small, focused PRs on `cursor/<name>-3a05` branches  
 
-## Lovable MCP (optional)
-
-Workspace may include Lovable MCP tools for iterate/publish. If tools report `needsAuth`, authenticate in Cursor desktop IDE — cloud agents often cannot complete interactive auth.
-
 ## Support files map
 
 ```
 AGENTS.md                 ← Cursor agents
+INDEPENDENCE.md           ← own hosting + Supabase (no Lovable)
+docs/SAAS.md              ← sell invite-beta vs self-serve
 .cursor/rules/*.mdc       ← always-on Cursor rules
 README.md                 ← human entry
 PRODUCT.md                ← product surface

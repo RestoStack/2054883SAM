@@ -1,6 +1,6 @@
 # Ship readiness — what is missing
 
-**Verdict:** Ready to launch as **invite-only** with `VITE_SHIP_MODE=launch` (default).
+**Verdict:** Ready to launch as **invite-only** with `VITE_SHIP_MODE=launch` (default), on **your** Cloudflare + Supabase ([INDEPENDENCE.md](../INDEPENDENCE.md)). Lovable is not required.
 
 | Mode | Status |
 |------|--------|
@@ -67,4 +67,4 @@ WHERE id = 1;
 
 ## Related
 
-- [READINESS.md](./READINESS.md) · [FEATURES.md](./FEATURES.md) · [ACCESS.md](./ACCESS.md)
+- [INDEPENDENCE.md](../INDEPENDENCE.md) · [SAAS.md](./SAAS.md) · [READINESS.md](./READINESS.md) · [FEATURES.md](./FEATURES.md) · [ACCESS.md](./ACCESS.md)

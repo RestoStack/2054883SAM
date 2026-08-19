@@ -9,6 +9,8 @@ Multi-tenant restaurant SaaS: gated demo requests, public booking pages, ops das
 | Doc | What you get |
 |-----|----------------|
 | **[AGENTS.md](AGENTS.md)** | Cursor agent brief (read first in any Cursor session) |
+| **[INDEPENDENCE.md](INDEPENDENCE.md)** | Own hosting + Supabase — sell without Lovable |
+| **[docs/SAAS.md](docs/SAAS.md)** | Invite-beta vs paid self-serve |
 | **[docs/SHIP.md](docs/SHIP.md)** | What’s missing to ship (invite beta vs public) |
 | **[docs/ACCESS.md](docs/ACCESS.md)** | Live URLs + demo logins |
 | **[docs/DEVELOPER.md](docs/DEVELOPER.md)** | Clone, branches, env, run, deploy |
@@ -26,20 +28,28 @@ cd 2054883SAM
 # IMPORTANT: main is nearly empty — check out the latest full-app feature branch
 # (see docs/DEVELOPER.md)
 npm install
+cp .env.example .env   # point at YOUR Supabase for production
 npm run dev
 ```
 
-Optional: copy `.env.example` → `.env`. Client Supabase defaults already match the live project.
+## Deploy (your infra)
+
+```bash
+npm run deploy:cf      # Cloudflare Workers via Wrangler
+```
+
+See [INDEPENDENCE.md](INDEPENDENCE.md). Production should not depend on Lovable publish.
 
 ## Live
 
-- App: https://restostacks.lovable.app · https://restostacks.com  
-- Sample restaurant: https://restostacks.lovable.app/demo  
+- Canonical: https://restostacks.com (after DNS → your host)  
+- Legacy preview may still exist on `*.lovable.app` — treat as optional  
+- Sample restaurant (demo mode only): `/demo`  
 - Demo admin: `admin@jukebox.com` / `admin1234` (details in `docs/ACCESS.md`)
 
 ## Stack
 
-React · Vite · TanStack Router · Supabase · shadcn/ui · Tailwind · PWA (`/app`)
+React · Vite · TanStack Router · Supabase · Cloudflare · shadcn/ui · Tailwind · PWA (`/app`)
 
 ## Warning
 

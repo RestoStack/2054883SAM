@@ -4,16 +4,19 @@ Use this anywhere you open the repo in Cursor. These credentials are for the **s
 
 ## Live URLs
 
+Prefer **your** deployed domain after cutover ([INDEPENDENCE.md](../INDEPENDENCE.md)).
+
 | Surface | URL |
 |---------|-----|
-| Marketing / live | https://restostacks.lovable.app |
-| Custom domain | https://restostacks.com |
-| One-click sample | https://restostacks.lovable.app/demo |
-| Admin login | https://restostacks.lovable.app/admin-login |
-| Staff login | https://restostacks.lovable.app/login |
-| Mobile PWA shell | https://restostacks.lovable.app/app |
-| Guest booking (demo) | https://restostacks.lovable.app/book/italian-bistro |
-| Pitch deck | https://restostacks.lovable.app/pitchdeck |
+| Canonical (production) | https://restostacks.com |
+| One-click sample | `/demo` on your domain (requires `VITE_SHIP_MODE=demo`) |
+| Admin login | `/admin-login` |
+| Staff login | `/login` |
+| Mobile PWA shell | `/app` |
+| Guest booking (demo) | `/book/italian-bistro` |
+| Pitch deck | `/pitchdeck` |
+
+Legacy Lovable preview (`*.lovable.app`) is optional and not required to operate or sell the product.
 
 Local: same paths on `http://localhost:5173` (or whatever Vite prints).
 
@@ -58,14 +61,9 @@ Emails in `v2_platform_admin_allowlist` can claim platform admin via `v2_claim_p
 
 **Never put the service role key in git or Cursor rules.** Use local `.env` only (see `.env.example`).
 
-## Lovable
+## Optional: Lovable editor
 
-| Field | Value |
-|-------|--------|
-| Project ID | `282aa365-2256-4d7f-ac7b-f277286d2960` |
-| Editor | Lovable project linked to this GitHub repo |
-
-Publishing often requires Lovable MCP auth in **desktop** Cursor. Cloud agents may push GitHub only.
+Lovable is **not** required to run or sell Restostacks. If you still use it as a secondary editor, project id `282aa365-2256-4d7f-ac7b-f277286d2960` may be linked to this GitHub repo. Prefer `npm run deploy:cf` for production.
 
 ## Security note for developers
 

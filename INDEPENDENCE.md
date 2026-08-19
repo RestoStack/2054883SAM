@@ -1,79 +1,73 @@
-# Running RestoStack without Lovable
+# Running RestoStack as your own SaaS (no Lovable required)
 
-Goal: your product is not blocked if Lovable is unavailable, paused, or cancelled.
+**Goal:** sell and operate Restostacks on infrastructure you own. Lovable is optional tooling — never a runtime dependency.
 
-## What “independent” means
+## Architecture you own
 
-1. **Code** lives in GitHub (this repo).
-2. **Database / Auth / Storage** live in a Supabase project you control.
-3. **Production site** is deployed from this repo to your host (not only `*.lovable.app`).
+| Layer | What you use | Notes |
+|-------|----------------|-------|
+| Code | This GitHub repo | Source of truth |
+| Auth + DB + Storage | Your Supabase project | Migrations in `supabase/migrations/` |
+| App hosting | Cloudflare Workers (Wrangler) | `npm run deploy:cf` |
+| Domain | Your DNS (e.g. `restostacks.com`) | Point at Cloudflare, not `*.lovable.app` |
+| Google OAuth | Supabase Auth → Google provider | Native; no Lovable OAuth broker |
 
-Lovable can still be used as an optional editor later, but it must not be required to ship.
+## One-time cutover
 
-## Step 1 — Own the code (done in this repo)
+### 1. Own the database
 
-This repository already contains the full Restostacks application export:
+1. Create a project at https://supabase.com (your org).
+2. Apply every file in `supabase/migrations/` in timestamp order (SQL editor or CLI).
+3. Create storage bucket `restaurant-media` (public read if booking pages need images).
+4. Auth → URL configuration: add `https://YOUR_DOMAIN/auth/callback` (and local `http://localhost:5173/auth/callback`).
+5. Auth → Providers → Google: enable with your Google Cloud OAuth client (optional until you want Google signup).
+6. Set env (local `.env` + host secrets):
 
-- App source under `src/`
-- Supabase migrations under `supabase/migrations/`
-- Env template: `.env.example`
-
-Optional (recommended): in the Lovable project **Restostacks**, connect **GitHub sync** so future editor changes also land in a repo you own:
-
-1. Open https://lovable.dev/projects/282aa365-2256-4d7f-ac7b-f277286d2960  
-2. Connect GitHub (Settings / Git sync)  
-3. Prefer the `RestoStack` org, or keep syncing into this repository  
-
-Docs: https://docs.lovable.dev/integrations/git-sync-overview
-
-## Step 2 — Own the database
-
-Today the live trial may still use Lovable Cloud Postgres (Supabase under the hood). To leave that:
-
-### Official path (same project export)
-
-In Lovable: **Cloud → Overview → Advanced** → **Export project data**, download the backup, then restore into **your** Supabase project. Only after a verified restore, remove Lovable Cloud and reconnect your Supabase if you still use the editor.
-
-### Migrations-only path (fresh project)
-
-1. Create a Supabase project at https://supabase.com  
-2. Run every file in `supabase/migrations/` in timestamp order  
-3. Create storage bucket `restaurant-media` (public read if your booking pages need public images)  
-4. Copy Auth settings you need (email confirmations, redirect URLs)  
-5. Put the new URL + anon key into `.env` / hosting env vars:
-
-```
-VITE_SUPABASE_URL=
-VITE_SUPABASE_PUBLISHABLE_KEY=
-VITE_SUPABASE_PROJECT_ID=
-SUPABASE_URL=
-SUPABASE_PUBLISHABLE_KEY=
-SUPABASE_PROJECT_ID=
+```bash
+VITE_SUPABASE_URL=https://YOUR_REF.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your-anon-key
+VITE_SUPABASE_PROJECT_ID=YOUR_REF
+SUPABASE_URL=https://YOUR_REF.supabase.co
+SUPABASE_PUBLISHABLE_KEY=your-anon-key
+SUPABASE_PROJECT_ID=YOUR_REF
+SUPABASE_SERVICE_ROLE_KEY=your-service-role   # server only
+VITE_SHIP_MODE=launch
 ```
 
-## Step 3 — Own hosting
+If you still have data on Lovable Cloud: **Cloud → Overview → Advanced → Export project data**, restore into your Supabase, then retire Lovable Cloud.
 
-Build from this repo:
+### 2. Own hosting
 
 ```bash
 npm install
-npm run build
+npm run build          # Vite → Nitro → Cloudflare
+npm run deploy:cf      # wrangler deploy (requires Cloudflare login)
 ```
 
-Deploy the result to Cloudflare (Wrangler config is present), Vercel, Netlify, or any Node-capable host. Set the same Supabase env vars in the host dashboard.
+Or connect this repo to Cloudflare Pages / Workers CI and set the same env vars there.
 
-Point your custom domain at that host. Treat `*.lovable.app` as optional, not primary.
+Point `restostacks.com` (and `www`) at that Worker. Treat `*.lovable.app` as disposable.
 
-## Soft dependency note
+### 3. Verify
 
-`package.json` still lists `@lovable.dev/vite-tanstack-config` — that is a **public npm package** used by Vite, not Lovable Cloud hosting. The app builds with `npm install` on any machine. Replacing it with a plain Vite/TanStack config is optional cleanup later.
+- [ ] `/health` ok on your domain  
+- [ ] Email/password admin login  
+- [ ] Public booking `/book/{slug}`  
+- [ ] Host Stand + dashboard bookings  
+- [ ] Google sign-in (if enabled) hits `/auth/callback` without Lovable redirects  
+- [ ] No customer traffic depends on lovable.dev  
 
-## Cutover checklist
+## Soft leftover (not Lovable Cloud)
 
-- [ ] App runs locally with `.env` pointing at **your** Supabase  
-- [ ] Migrations applied; signup + public booking + admin login work  
-- [ ] Storage uploads work for logo/cover  
-- [ ] Production deploy from this GitHub repo succeeds  
-- [ ] Custom domain live  
-- [ ] Lovable hosting no longer required for customers  
-- [ ] (Optional) Lovable editor disconnected or kept only as a secondary tool  
+`@lovable.dev/vite-tanstack-config` is a **public npm** Vite helper (TanStack Start + Tailwind + Cloudflare plugins). It does not call Lovable hosting. Replacing it with a hand-rolled Vite config is optional cleanup; builds work on any machine with `npm install`.
+
+## Selling SaaS (after independence)
+
+Independence ≠ paid product. Still required for self-serve sales:
+
+1. Stripe Checkout + webhooks + plan entitlements  
+2. Separate prod Supabase from demo/sample data  
+3. Harden RLS / storage / staff PINs (see `docs/SHIP.md`)  
+4. Keep `VITE_SHIP_MODE=launch` on customer URL; run demo mode on a separate sales URL only  
+
+See `docs/SHIP.md` and `docs/SAAS.md`.

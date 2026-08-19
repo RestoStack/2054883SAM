@@ -1,7 +1,8 @@
 /**
- * Public Supabase project config for RestoStack (anon / publishable key only).
- * Prefer env vars in production; these defaults match the live Lovable project
- * so Vercel previews work when project env vars are not configured yet.
+ * Public Supabase project config (anon / publishable key only).
+ * Production must set VITE_SUPABASE_* / SUPABASE_* to **your** project.
+ * Defaults below are a trial fallback for local/preview only — replace when cutting over
+ * (see INDEPENDENCE.md).
  */
 export const SUPABASE_DEFAULTS = {
   url: "https://taenbelgzntolqzzjsee.supabase.co",
