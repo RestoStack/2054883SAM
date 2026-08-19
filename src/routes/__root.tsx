@@ -73,7 +73,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     }
 
     // /onboarding: session required; bootstrap may create the org on first step.
-    if (pathname === "/onboarding") {
+    if (pathname === "/onboarding" || pathname.startsWith("/onboarding/")) {
       if (!session) {
         navigate({ to: "/login", replace: true });
         return;

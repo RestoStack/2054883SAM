@@ -33,6 +33,7 @@ import { Route as AdminLoginRouteImport } from './routes/admin-login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlatformIndexRouteImport } from './routes/platform.index'
 import { Route as PlatformRestaurantsRouteImport } from './routes/platform.restaurants'
+import { Route as OnboardingStepRouteImport } from './routes/onboarding.$step'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as CustomersIdRouteImport } from './routes/customers_.$id'
 import { Route as BookSlugRouteImport } from './routes/book_.$slug'
@@ -167,6 +168,11 @@ const PlatformRestaurantsRoute = PlatformRestaurantsRouteImport.update({
   path: '/platform/restaurants',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OnboardingStepRoute = OnboardingStepRouteImport.update({
+  id: '/$step',
+  path: '/$step',
+  getParentRoute: () => OnboardingRoute,
+} as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
   path: '/invite/$token',
@@ -247,7 +253,7 @@ export interface FileRoutesByFullPath {
   '/health': typeof HealthRoute
   '/host-stand': typeof HostStandRoute
   '/login': typeof LoginRoute
-  '/onboarding': typeof OnboardingRoute
+  '/onboarding': typeof OnboardingRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
@@ -268,6 +274,7 @@ export interface FileRoutesByFullPath {
   '/book/$slug': typeof BookSlugRoute
   '/customers/$id': typeof CustomersIdRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/onboarding/$step': typeof OnboardingStepRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
   '/platform/': typeof PlatformIndexRoute
   '/app/guests/$id': typeof AppGuestsIdRoute
@@ -286,7 +293,7 @@ export interface FileRoutesByTo {
   '/health': typeof HealthRoute
   '/host-stand': typeof HostStandRoute
   '/login': typeof LoginRoute
-  '/onboarding': typeof OnboardingRoute
+  '/onboarding': typeof OnboardingRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
@@ -307,6 +314,7 @@ export interface FileRoutesByTo {
   '/book/$slug': typeof BookSlugRoute
   '/customers/$id': typeof CustomersIdRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/onboarding/$step': typeof OnboardingStepRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
   '/platform': typeof PlatformIndexRoute
   '/app/guests/$id': typeof AppGuestsIdRoute
@@ -326,7 +334,7 @@ export interface FileRoutesById {
   '/health': typeof HealthRoute
   '/host-stand': typeof HostStandRoute
   '/login': typeof LoginRoute
-  '/onboarding': typeof OnboardingRoute
+  '/onboarding': typeof OnboardingRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
@@ -347,6 +355,7 @@ export interface FileRoutesById {
   '/book_/$slug': typeof BookSlugRoute
   '/customers_/$id': typeof CustomersIdRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/onboarding/$step': typeof OnboardingStepRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
   '/platform/': typeof PlatformIndexRoute
   '/app_/guests/$id': typeof AppGuestsIdRoute
@@ -388,6 +397,7 @@ export interface FileRouteTypes {
     | '/book/$slug'
     | '/customers/$id'
     | '/invite/$token'
+    | '/onboarding/$step'
     | '/platform/restaurants'
     | '/platform/'
     | '/app/guests/$id'
@@ -427,6 +437,7 @@ export interface FileRouteTypes {
     | '/book/$slug'
     | '/customers/$id'
     | '/invite/$token'
+    | '/onboarding/$step'
     | '/platform/restaurants'
     | '/platform'
     | '/app/guests/$id'
@@ -466,6 +477,7 @@ export interface FileRouteTypes {
     | '/book_/$slug'
     | '/customers_/$id'
     | '/invite/$token'
+    | '/onboarding/$step'
     | '/platform/restaurants'
     | '/platform/'
     | '/app_/guests/$id'
@@ -485,7 +497,7 @@ export interface RootRouteChildren {
   HealthRoute: typeof HealthRoute
   HostStandRoute: typeof HostStandRoute
   LoginRoute: typeof LoginRoute
-  OnboardingRoute: typeof OnboardingRoute
+  OnboardingRoute: typeof OnboardingRouteWithChildren
   PrivacyRoute: typeof PrivacyRoute
   ReportsRoute: typeof ReportsRoute
   SettingsRoute: typeof SettingsRoute
@@ -680,6 +692,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlatformRestaurantsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/onboarding/$step': {
+      id: '/onboarding/$step'
+      path: '/$step'
+      fullPath: '/onboarding/$step'
+      preLoaderRoute: typeof OnboardingStepRouteImport
+      parentRoute: typeof OnboardingRoute
+    }
     '/invite/$token': {
       id: '/invite/$token'
       path: '/invite/$token'
@@ -774,6 +793,18 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface OnboardingRouteChildren {
+  OnboardingStepRoute: typeof OnboardingStepRoute
+}
+
+const OnboardingRouteChildren: OnboardingRouteChildren = {
+  OnboardingStepRoute: OnboardingStepRoute,
+}
+
+const OnboardingRouteWithChildren = OnboardingRoute._addFileChildren(
+  OnboardingRouteChildren,
+)
+
 interface AppGuestsRouteChildren {
   AppGuestsIdRoute: typeof AppGuestsIdRoute
 }
@@ -800,7 +831,7 @@ const rootRouteChildren: RootRouteChildren = {
   HealthRoute: HealthRoute,
   HostStandRoute: HostStandRoute,
   LoginRoute: LoginRoute,
-  OnboardingRoute: OnboardingRoute,
+  OnboardingRoute: OnboardingRouteWithChildren,
   PrivacyRoute: PrivacyRoute,
   ReportsRoute: ReportsRoute,
   SettingsRoute: SettingsRoute,
