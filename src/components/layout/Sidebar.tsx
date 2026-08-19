@@ -11,40 +11,84 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
 
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
 
-/** MVP nav only — docs/ROUTES.md */
-const ADMIN_NAV: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/bookings", label: "Bookings", icon: CalendarDays },
-  { to: "/host-stand", label: "Host Stand", icon: ClipboardList },
-  { to: "/customers", label: "Guests", icon: Users },
-  { to: "/reports", label: "Reports", icon: BarChart3 },
-  { to: "/staff", label: "Team", icon: UserCog },
-  { to: "/settings", label: "Settings", icon: Settings },
+/** MVP nav only — docs/ROUTES.md (sectioned like product mockup) */
+type NavSection = { labelKey?: "nav.ops" | "nav.clients" | "nav.manage"; items: NavItem[] };
+
+const ADMIN_SECTIONS: NavSection[] = [
+  { items: [{ to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard }] },
+  {
+    labelKey: "nav.ops",
+    items: [
+      { to: "/app/reservations", label: "Reservations", icon: CalendarDays },
+      { to: "/app/host", label: "Host Stand", icon: ClipboardList },
+    ],
+  },
+  {
+    labelKey: "nav.clients",
+    items: [{ to: "/app/guests", label: "Guests", icon: Users }],
+  },
+  {
+    labelKey: "nav.manage",
+    items: [
+      { to: "/app/reports", label: "Reports", icon: BarChart3 },
+      { to: "/staff", label: "Team", icon: UserCog },
+      { to: "/settings", label: "Settings", icon: Settings },
+    ],
+  },
 ];
 
-const HOSTESS_NAV: NavItem[] = [
-  { to: "/host-stand", label: "Host Stand", icon: ClipboardList },
-  { to: "/bookings", label: "Reservations", icon: CalendarDays },
-  { to: "/customers", label: "Guests", icon: Users },
+const HOSTESS_SECTIONS: NavSection[] = [
+  {
+    labelKey: "nav.ops",
+    items: [
+      { to: "/app/host", label: "Host Stand", icon: ClipboardList },
+      { to: "/app/reservations", label: "Reservations", icon: CalendarDays },
+    ],
+  },
+  {
+    labelKey: "nav.clients",
+    items: [{ to: "/app/guests", label: "Guests", icon: Users }],
+  },
 ];
 
-const SERVER_NAV: NavItem[] = [
-  { to: "/host-stand", label: "Host Stand", icon: ClipboardList },
-  { to: "/bookings", label: "Bookings", icon: CalendarDays },
+const SERVER_SECTIONS: NavSection[] = [
+  {
+    labelKey: "nav.ops",
+    items: [
+      { to: "/app/host", label: "Host Stand", icon: ClipboardList },
+      { to: "/app/reservations", label: "Bookings", icon: CalendarDays },
+    ],
+  },
 ];
+
+function sectionsForRole(role: Role): NavSection[] {
+  if (role === "admin") return ADMIN_SECTIONS;
+  if (role === "hostess") return HOSTESS_SECTIONS;
+  return SERVER_SECTIONS;
+}
 
 function navForRole(role: Role): NavItem[] {
-  if (role === "admin") return ADMIN_NAV;
-  if (role === "hostess") return HOSTESS_NAV;
-  return SERVER_NAV;
+  return sectionsForRole(role).flatMap((s) => s.items);
 }
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { role } = useRole();
-  const nav = navForRole(role);
+  const { t, locale, setLocale } = useI18n();
+  const sections = sectionsForRole(role);
+
+  const labelFor = (item: NavItem) => {
+    if (item.to === "/app/dashboard") return t("nav.dashboard");
+    if (item.to === "/app/reservations") return t("nav.reservations");
+    if (item.to === "/app/host") return t("nav.host");
+    if (item.to === "/app/guests") return t("nav.guests");
+    if (item.to === "/app/reports") return t("nav.reports");
+    if (item.to === "/settings") return t("nav.settings");
+    return item.label;
+  };
 
   return (
     <>
@@ -53,31 +97,58 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-2">
-        <ul className="space-y-0.5">
-          {nav.map((item) => {
-            const Icon = item.icon;
-            const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
-            return (
-              <li key={item.to}>
-                <Link
-                  to={item.to}
-                  onClick={onNavigate}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                    active
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent/50"
-                  }`}
-                >
-                  <Icon className="size-4" />
-                  {item.label}
-                </Link>
-              </li>
-            );
-          })}
+        <ul className="space-y-4">
+          {sections.map((section, si) => (
+            <li key={si}>
+              {section.labelKey && (
+                <div className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
+                  {t(section.labelKey)}
+                </div>
+              )}
+              <ul className="space-y-0.5">
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  const active =
+                    item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
+                  return (
+                    <li key={item.to}>
+                      <Link
+                        to={item.to}
+                        onClick={onNavigate}
+                        className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                          active
+                            ? "bg-emerald-500/15 text-emerald-700"
+                            : "text-sidebar-foreground hover:bg-sidebar-accent/50"
+                        }`}
+                      >
+                        <Icon className="size-4" />
+                        {labelFor(item)}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </li>
+          ))}
         </ul>
       </nav>
 
       <div className="border-t border-sidebar-border p-3 space-y-3 shrink-0">
+        <div className="flex gap-1 rounded-lg bg-sidebar-accent/40 p-0.5">
+          {(["fr-CA", "en-CA"] as const).map((l) => (
+            <button
+              key={l}
+              type="button"
+              onClick={() => setLocale(l)}
+              className={cn(
+                "flex-1 rounded-md py-1.5 text-[10px] font-semibold",
+                locale === l ? "bg-white text-stone-900 shadow-sm" : "text-sidebar-foreground/60",
+              )}
+            >
+              {l === "fr-CA" ? "FR" : "EN"}
+            </button>
+          ))}
+        </div>
         <RestaurantTile />
       </div>
     </>
@@ -198,7 +269,7 @@ export function AppShell({
       {!fullBleed && <Sidebar />}
       {fullBleed && (
         <aside className="hidden lg:flex w-14 shrink-0 flex-col border-r border-sidebar-border bg-sidebar sticky top-0 h-dvh items-center py-3 gap-2">
-          <Link to="/dashboard" className="mb-2" title="Dashboard">
+          <Link to="/app/dashboard" className="mb-2" title="Dashboard">
             <img src={logo} alt="RestoStack" className="h-8 w-8 object-contain" />
           </Link>
           {navForRole(role).slice(0, 6).map((item) => (

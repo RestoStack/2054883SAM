@@ -34,7 +34,7 @@ type Tile = {
 
 const TILES: Tile[] = [
   {
-    to: "/host-stand",
+    to: "/app/host",
     label: "Host Stand",
     desc: "Seat guests & floor",
     icon: ClipboardList,
@@ -42,7 +42,7 @@ const TILES: Tile[] = [
     accent: "from-emerald-500/20 to-emerald-500/5",
   },
   {
-    to: "/dashboard",
+    to: "/app/dashboard",
     label: "Dashboard",
     desc: "Today’s numbers",
     icon: LayoutDashboard,
@@ -50,7 +50,7 @@ const TILES: Tile[] = [
     accent: "from-sky-500/20 to-sky-500/5",
   },
   {
-    to: "/bookings",
+    to: "/app/reservations",
     label: "Bookings",
     desc: "Reservations",
     icon: CalendarDays,
@@ -58,7 +58,7 @@ const TILES: Tile[] = [
     accent: "from-violet-500/20 to-violet-500/5",
   },
   {
-    to: "/customers",
+    to: "/app/guests",
     label: "Guests",
     desc: "CRM & profiles",
     icon: Users,
@@ -66,7 +66,7 @@ const TILES: Tile[] = [
     accent: "from-amber-500/20 to-amber-500/5",
   },
   {
-    to: "/reports",
+    to: "/app/reports",
     label: "Reports",
     desc: "Trends & CSV",
     icon: BarChart3,

@@ -40,6 +40,12 @@ import { Route as BillingSetupRouteImport } from './routes/billing.setup'
 import { Route as BillingLockedRouteImport } from './routes/billing.locked'
 import { Route as BillingCheckoutRouteImport } from './routes/billing.checkout'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
+import { Route as AppReservationsRouteImport } from './routes/app_.reservations'
+import { Route as AppReportsRouteImport } from './routes/app_.reports'
+import { Route as AppHostRouteImport } from './routes/app_.host'
+import { Route as AppGuestsRouteImport } from './routes/app_.guests'
+import { Route as AppDashboardRouteImport } from './routes/app_.dashboard'
+import { Route as AppGuestsIdRouteImport } from './routes/app_.guests.$id'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -196,6 +202,36 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
   path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppReservationsRoute = AppReservationsRouteImport.update({
+  id: '/app_/reservations',
+  path: '/app/reservations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppReportsRoute = AppReportsRouteImport.update({
+  id: '/app_/reports',
+  path: '/app/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppHostRoute = AppHostRouteImport.update({
+  id: '/app_/host',
+  path: '/app/host',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppGuestsRoute = AppGuestsRouteImport.update({
+  id: '/app_/guests',
+  path: '/app/guests',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppDashboardRoute = AppDashboardRouteImport.update({
+  id: '/app_/dashboard',
+  path: '/app/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppGuestsIdRoute = AppGuestsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AppGuestsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -220,6 +256,11 @@ export interface FileRoutesByFullPath {
   '/start': typeof StartRoute
   '/super-admin-login': typeof SuperAdminLoginRoute
   '/terms': typeof TermsRoute
+  '/app/dashboard': typeof AppDashboardRoute
+  '/app/guests': typeof AppGuestsRouteWithChildren
+  '/app/host': typeof AppHostRoute
+  '/app/reports': typeof AppReportsRoute
+  '/app/reservations': typeof AppReservationsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/billing/checkout': typeof BillingCheckoutRoute
   '/billing/locked': typeof BillingLockedRoute
@@ -229,6 +270,7 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
   '/platform/': typeof PlatformIndexRoute
+  '/app/guests/$id': typeof AppGuestsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -253,6 +295,11 @@ export interface FileRoutesByTo {
   '/start': typeof StartRoute
   '/super-admin-login': typeof SuperAdminLoginRoute
   '/terms': typeof TermsRoute
+  '/app/dashboard': typeof AppDashboardRoute
+  '/app/guests': typeof AppGuestsRouteWithChildren
+  '/app/host': typeof AppHostRoute
+  '/app/reports': typeof AppReportsRoute
+  '/app/reservations': typeof AppReservationsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/billing/checkout': typeof BillingCheckoutRoute
   '/billing/locked': typeof BillingLockedRoute
@@ -262,6 +309,7 @@ export interface FileRoutesByTo {
   '/invite/$token': typeof InviteTokenRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
   '/platform': typeof PlatformIndexRoute
+  '/app/guests/$id': typeof AppGuestsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -287,6 +335,11 @@ export interface FileRoutesById {
   '/start': typeof StartRoute
   '/super-admin-login': typeof SuperAdminLoginRoute
   '/terms': typeof TermsRoute
+  '/app_/dashboard': typeof AppDashboardRoute
+  '/app_/guests': typeof AppGuestsRouteWithChildren
+  '/app_/host': typeof AppHostRoute
+  '/app_/reports': typeof AppReportsRoute
+  '/app_/reservations': typeof AppReservationsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/billing/checkout': typeof BillingCheckoutRoute
   '/billing/locked': typeof BillingLockedRoute
@@ -296,6 +349,7 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/platform/restaurants': typeof PlatformRestaurantsRoute
   '/platform/': typeof PlatformIndexRoute
+  '/app_/guests/$id': typeof AppGuestsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -322,6 +376,11 @@ export interface FileRouteTypes {
     | '/start'
     | '/super-admin-login'
     | '/terms'
+    | '/app/dashboard'
+    | '/app/guests'
+    | '/app/host'
+    | '/app/reports'
+    | '/app/reservations'
     | '/auth/callback'
     | '/billing/checkout'
     | '/billing/locked'
@@ -331,6 +390,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/platform/restaurants'
     | '/platform/'
+    | '/app/guests/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -355,6 +415,11 @@ export interface FileRouteTypes {
     | '/start'
     | '/super-admin-login'
     | '/terms'
+    | '/app/dashboard'
+    | '/app/guests'
+    | '/app/host'
+    | '/app/reports'
+    | '/app/reservations'
     | '/auth/callback'
     | '/billing/checkout'
     | '/billing/locked'
@@ -364,6 +429,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/platform/restaurants'
     | '/platform'
+    | '/app/guests/$id'
   id:
     | '__root__'
     | '/'
@@ -388,6 +454,11 @@ export interface FileRouteTypes {
     | '/start'
     | '/super-admin-login'
     | '/terms'
+    | '/app_/dashboard'
+    | '/app_/guests'
+    | '/app_/host'
+    | '/app_/reports'
+    | '/app_/reservations'
     | '/auth/callback'
     | '/billing/checkout'
     | '/billing/locked'
@@ -397,6 +468,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/platform/restaurants'
     | '/platform/'
+    | '/app_/guests/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -422,6 +494,11 @@ export interface RootRouteChildren {
   StartRoute: typeof StartRoute
   SuperAdminLoginRoute: typeof SuperAdminLoginRoute
   TermsRoute: typeof TermsRoute
+  AppDashboardRoute: typeof AppDashboardRoute
+  AppGuestsRoute: typeof AppGuestsRouteWithChildren
+  AppHostRoute: typeof AppHostRoute
+  AppReportsRoute: typeof AppReportsRoute
+  AppReservationsRoute: typeof AppReservationsRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   BillingCheckoutRoute: typeof BillingCheckoutRoute
   BillingLockedRoute: typeof BillingLockedRoute
@@ -652,8 +729,62 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app_/reservations': {
+      id: '/app_/reservations'
+      path: '/app/reservations'
+      fullPath: '/app/reservations'
+      preLoaderRoute: typeof AppReservationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app_/reports': {
+      id: '/app_/reports'
+      path: '/app/reports'
+      fullPath: '/app/reports'
+      preLoaderRoute: typeof AppReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app_/host': {
+      id: '/app_/host'
+      path: '/app/host'
+      fullPath: '/app/host'
+      preLoaderRoute: typeof AppHostRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app_/guests': {
+      id: '/app_/guests'
+      path: '/app/guests'
+      fullPath: '/app/guests'
+      preLoaderRoute: typeof AppGuestsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app_/dashboard': {
+      id: '/app_/dashboard'
+      path: '/app/dashboard'
+      fullPath: '/app/dashboard'
+      preLoaderRoute: typeof AppDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app_/guests/$id': {
+      id: '/app_/guests/$id'
+      path: '/$id'
+      fullPath: '/app/guests/$id'
+      preLoaderRoute: typeof AppGuestsIdRouteImport
+      parentRoute: typeof AppGuestsRoute
+    }
   }
 }
+
+interface AppGuestsRouteChildren {
+  AppGuestsIdRoute: typeof AppGuestsIdRoute
+}
+
+const AppGuestsRouteChildren: AppGuestsRouteChildren = {
+  AppGuestsIdRoute: AppGuestsIdRoute,
+}
+
+const AppGuestsRouteWithChildren = AppGuestsRoute._addFileChildren(
+  AppGuestsRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -678,6 +809,11 @@ const rootRouteChildren: RootRouteChildren = {
   StartRoute: StartRoute,
   SuperAdminLoginRoute: SuperAdminLoginRoute,
   TermsRoute: TermsRoute,
+  AppDashboardRoute: AppDashboardRoute,
+  AppGuestsRoute: AppGuestsRouteWithChildren,
+  AppHostRoute: AppHostRoute,
+  AppReportsRoute: AppReportsRoute,
+  AppReservationsRoute: AppReservationsRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   BillingCheckoutRoute: BillingCheckoutRoute,
   BillingLockedRoute: BillingLockedRoute,

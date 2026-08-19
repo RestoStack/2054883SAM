@@ -37,7 +37,7 @@ function BillingLockedPage() {
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">Your subscription is active.</p>
           <Link
-            to="/dashboard"
+            to="/app/dashboard"
             className="inline-flex rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
           >
             Back to app
@@ -68,7 +68,10 @@ function BillingLockedPage() {
               Complete activation
             </Link>
           )}
-          <Link to="/settings" className="rounded-lg border border-border py-2.5 text-sm font-medium">
+          <Link
+            to="/settings"
+            className="rounded-lg border border-border py-2.5 text-sm font-medium"
+          >
             Open settings
           </Link>
           <Link to="/login" className="text-xs text-muted-foreground underline mt-2">

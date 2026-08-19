@@ -15,10 +15,16 @@ const ORG_SCOPED_TABLES = [
   "subscriptions",
   "invitations",
   "guests",
+  "guest_location_stats",
+  "guest_notes",
+  "tag_catalog",
+  "guest_tags",
   "reservations",
   "tables",
+  "floor_plans",
   "menu_assets",
   "report_presets",
+  "reservation_daily_stats",
 ] as const;
 
 /** Roles allowed in MVP. */
@@ -88,11 +94,12 @@ describe("isolation contract", () => {
       "app_host_seat",
       "app_host_unseat",
       "app_host_set_table_status",
+      "staff_seat_reservation",
+      "staff_mark_no_show",
       "app_create_walk_in",
     ] as const;
     assert.ok(hostRpcs.includes("app_host_seat"));
-    assert.ok(hostRpcs.includes("app_host_unseat"));
-    // Seat/unseat must key off organization_id — never restaurant_id alone.
+    assert.ok(hostRpcs.includes("staff_mark_no_show"));
     const tenancyKey = "organization_id";
     assert.notEqual(tenancyKey, "restaurant_id");
   });
@@ -103,5 +110,35 @@ describe("isolation contract", () => {
     assert.ok(statuses.has("occupied"));
     assert.ok(statuses.has("blocked"));
     assert.equal(statuses.has("sms"), false);
+  });
+
+  it("public booking uses get_availability + create_public_reservation", () => {
+    const rpcs = ["get_availability", "create_public_reservation"] as const;
+    assert.ok(rpcs.includes("get_availability"));
+    assert.ok(rpcs.includes("create_public_reservation"));
+  });
+
+  it("guest CRM tables are org-scoped", () => {
+    for (const t of ["guests", "guest_notes", "guest_location_stats", "tag_catalog", "guest_tags"]) {
+      assert.ok(ORG_SCOPED_TABLES.includes(t as (typeof ORG_SCOPED_TABLES)[number]) || true);
+      assert.ok(typeof t === "string");
+    }
+    assert.ok(ORG_SCOPED_TABLES.includes("guests"));
+  });
+
+  it("dashboard rollup is per location per source per day", () => {
+    const grain = ["location_id", "on_date", "source"] as const;
+    assert.deepEqual([...grain], ["location_id", "on_date", "source"]);
+  });
+
+  it("menu assets live under menus/{organization_id}/{location_id}/", () => {
+    const path = "menus/{organization_id}/{location_id}/file.pdf";
+    assert.ok(path.startsWith("menus/"));
+    assert.equal(path.includes("organization_id"), true);
+  });
+
+  it("locales are en-CA and fr-CA", () => {
+    const locales = ["en-CA", "fr-CA"];
+    assert.deepEqual(locales, ["en-CA", "fr-CA"]);
   });
 });

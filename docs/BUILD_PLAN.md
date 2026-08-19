@@ -127,25 +127,42 @@
 
 ---
 
-## Phase 3 — Host Stand
+## Phase 2 — Booking
 
-**Goal:** Live floor + seat/unseat + walk-ins + today’s list.
-
-### Tasks
-1. Port Host Stand to org/location + `reservations` / `tables`.
-2. Seat/unseat RPCs; table status.
-3. Service-period filters; no OUT-OF-SCOPE panels (no POS, no SMS).
-
-### Files touched
-- `host-stand.tsx`, `FloorPlan.tsx`, staff RPCs.
-
-### Migrations
-- Table status enum alignment if needed.
+**Goal:** Public book + staff reservations on org model.
 
 ### Done when
-- [x] Host can seat/unseat only within org/location.
-- [x] Walk-in appears on floor + bookings.
-- [x] Isolation test covers host stand RPCs.
+- [x] `get_availability` / `create_public_reservation` (IP+slug rate limit, guest dedup)
+- [x] `/book/{slug}` date → party → slots → details → confirm (+ Resend email EF)
+- [x] `/app/reservations` day view + manual create + status changes
+- [x] No SMS
+
+## Phase 3 — Host Stand
+
+### Done when
+- [x] `/app/host` touch UI; floor + 15-min timeline; seat/unseat/no-show/walk-in
+- [x] Realtime channels; optimistic UI; buttons ≥44px
+
+## Phase 4 — Guest CRM
+
+### Done when
+- [x] guests + stats triggers + notes + tags + segments
+- [x] `/app/guests` + `/app/guests/{id}`; merge; owner anonymize; CSV with opt-in
+
+## Phase 5 — Dashboard / Reports / Menu / Polish
+
+### Done when
+- [x] `get_dashboard` + `reservation_daily_stats` rollup
+- [x] `/app/reports` + CSV Edge Function; menu_assets Settings
+- [x] i18n en-CA/fr-CA scaffold; error boundary; README
+
+## Phase 6 — Go-live prep
+
+### Done when
+- [x] ENVIRONMENTS / RUNBOOK / GO_LIVE docs; seed script; deploy workflows
+- [x] **§2 Enable auto migrate pipelines** — staging on `main`, prod on `v*` + Environment approval
+- [ ] **§8 First DHG owner invite** — script ready; needs `OWNER_EMAIL`
+
 
 ### Rollback
 - Hide Host Stand nav flag; bookings UI remains.
