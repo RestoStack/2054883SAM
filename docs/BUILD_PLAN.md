@@ -63,11 +63,11 @@
 1. `platform_settings.billing_provider = fake` (default) with Stripe-shaped `/billing/setup` funnel.
 2. `/billing/setup` plan picker → Checkout (Stripe when enabled) → return verifies `subscriptions` row via `app_billing_verify_subscription` (never client claim). Fake RPC writes the same row when provider=fake.
 3. Gate all `/app/*` on `trialing|active`; `/billing/locked` for inactive.
-4. Settings → Billing: deferred until after wizard components land (this PR stops before Settings wiring).
+4. Settings → Billing: plan + status + Stripe Customer Portal (when provider=stripe) + invoices list.
 5. Onboarding wizard (7 steps) with transaction-safe RPCs + resume via `onboarding_progress`.
-6. Settings: profile, hours, locations, team — **next slice** (wizard components shown first).
+6. Settings: Profile, Hours (special hours), Locations CRUD, Team (invite/role/remove), Billing.
 7. Org/location switcher in shell (membership-driven).
-8. Stripe Edge Functions scaffolded (`billing-checkout`, `stripe-webhook`); see `docs/STRIPE_CUTOVER.md`.
+8. Stripe Edge Functions scaffolded (`billing-checkout`, `stripe-webhook`, `billing-portal`).
 
 ### Files touched
 - Add: `src/routes/invite.$token.tsx`, `billing.checkout.tsx`, `billing.locked.tsx`.
