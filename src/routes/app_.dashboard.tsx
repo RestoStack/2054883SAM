@@ -1,7 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { format, subDays } from "date-fns";
+import {
+  addDays,
+  endOfMonth,
+  format,
+  startOfMonth,
+  startOfWeek,
+  subDays,
+} from "date-fns";
 import { fr, enCA } from "date-fns/locale";
 import {
   Area,
@@ -15,7 +22,6 @@ import {
 import {
   Bell,
   CalendarDays,
-  ChevronDown,
   Loader2,
   Plus,
   Users,
@@ -33,7 +39,7 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { getDashboard } from "@/lib/dashboard-api";
 import { settingsListLocations } from "@/lib/settings-api";
-import { listReservationsForDay } from "@/lib/booking-api";
+import { listReservationsForRange } from "@/lib/booking-api";
 import { hostListFloor, localDateISO, formatTimeLabel, type HostFloorTable } from "@/lib/host-stand-api";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -45,9 +51,11 @@ export const Route = createFileRoute("/app_/dashboard")({
 
 type ChartMetric = "covers" | "reservations";
 type RangeKey = "7" | "30" | "90" | "365";
+type ViewPreset = "today" | "week" | "month" | "custom";
 
 type Upcoming = {
   id: string;
+  date: string;
   time: string;
   name: string;
   party: number;
@@ -66,9 +74,11 @@ function DashboardPage() {
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [locationId, setLocationId] = useState("");
   const [dateISO, setDateISO] = useState(localDateISO());
-  const [rangeKey, setRangeKey] = useState<RangeKey>("7");
+  const [viewPreset, setViewPreset] = useState<ViewPreset>("month");
+  const [viewFrom, setViewFrom] = useState(() => format(startOfMonth(new Date()), "yyyy-MM-dd"));
+  const [viewTo, setViewTo] = useState(() => format(endOfMonth(new Date()), "yyyy-MM-dd"));
+  const [rangeKey, setRangeKey] = useState<RangeKey>("30");
   const [chartMetric, setChartMetric] = useState<ChartMetric>("covers");
-
   const [kpis, setKpis] = useState<{
     reservations: number;
     seats: number;
@@ -97,9 +107,26 @@ function DashboardPage() {
     org.memberships.find((m) => m.organization_id === orgId)?.organization_name ??
     "RestoStack";
 
-  const rangeDays = Number(rangeKey);
-  const fromISO = format(subDays(new Date(dateISO), rangeDays - 1), "yyyy-MM-dd");
-  const toISO = dateISO;
+  const applyViewPreset = (p: ViewPreset) => {
+    const today = new Date();
+    setViewPreset(p);
+    if (p === "today") {
+      const d = localDateISO();
+      setViewFrom(d);
+      setViewTo(d);
+      setDateISO(d);
+    } else if (p === "week") {
+      const start = startOfWeek(today, { weekStartsOn: 1 });
+      setViewFrom(format(start, "yyyy-MM-dd"));
+      setViewTo(format(addDays(start, 6), "yyyy-MM-dd"));
+      setDateISO(localDateISO());
+    } else if (p === "month") {
+      setViewFrom(format(startOfMonth(today), "yyyy-MM-dd"));
+      setViewTo(format(endOfMonth(today), "yyyy-MM-dd"));
+      setDateISO(localDateISO());
+      setRangeKey("30");
+    }
+  };
 
   useEffect(() => {
     if (!orgId) return;
@@ -126,16 +153,24 @@ function DashboardPage() {
     setLoading(true);
     const loc = locationId || null;
 
-    const dash = await getDashboard(orgId, loc, fromISO, toISO);
+    const dash = await getDashboard(orgId, loc, viewFrom, viewTo);
     if (!dash.ok) {
       toast.error(dash.error);
       setLoading(false);
       return;
     }
 
-    // Prior period for deltas
-    const priorTo = format(subDays(new Date(fromISO), 1), "yyyy-MM-dd");
-    const priorFrom = format(subDays(new Date(fromISO), rangeDays), "yyyy-MM-dd");
+    // Prior period for deltas (same length as selected view)
+    const viewLen =
+      Math.max(
+        1,
+        Math.round(
+          (new Date(viewTo + "T12:00:00").getTime() - new Date(viewFrom + "T12:00:00").getTime()) /
+            86400000,
+        ) + 1,
+      );
+    const priorTo = format(subDays(new Date(viewFrom + "T12:00:00"), 1), "yyyy-MM-dd");
+    const priorFrom = format(subDays(new Date(viewFrom + "T12:00:00"), viewLen), "yyyy-MM-dd");
     const prior = await getDashboard(orgId, loc, priorFrom, priorTo);
     const delta = (cur: number, prev: number) =>
       prev > 0 ? Math.round(((cur - prev) / prev) * 100) : cur > 0 ? 100 : 0;
@@ -148,53 +183,55 @@ function DashboardPage() {
     setTrend(dash.trend ?? []);
     setByHour(dash.by_hour ?? []);
 
-    if (locationId) {
-      const [day, floor] = await Promise.all([
-        listReservationsForDay(orgId, locationId, dateISO),
-        hostListFloor(orgId, locationId, dateISO),
-      ]);
-      if (day.ok) {
-        const rows = day.rows as Array<Record<string, unknown>>;
-        setUpcoming(
-          rows
-            .filter((r) => ["pending", "confirmed", "seated"].includes(String(r.status)))
-            .slice(0, 6)
-            .map((r) => ({
-              id: String(r.id),
-              time: formatTimeLabel(String(r.reserved_time ?? "")),
-              name: String(r.guest_name ?? ""),
-              party: Number(r.party_size ?? 0),
-              table: (r.table_number as string | null) ?? null,
-              status: String(r.status),
-            })),
-        );
-        const birthdayish = rows.filter((r) =>
-          String(r.notes ?? "")
-            .toLowerCase()
-            .includes("birthday"),
-        ).length;
-        const neu = rows.filter((r) => r.source === "public" || r.source === "online").length;
-        setGuestBits({
-          regulars: Math.max(0, rows.length - neu),
-          vip: rows.filter((r) => String(r.notes ?? "").toLowerCase().includes("vip")).length,
-          birthday: birthdayish,
-          neu,
-        });
-        const turns: Record<string, { turns: number; covers: number }> = {};
-        for (const r of rows) {
-          const tnum = String(r.table_number ?? "");
-          if (!tnum) continue;
-          if (!turns[tnum]) turns[tnum] = { turns: 0, covers: 0 };
-          turns[tnum].turns += 1;
-          turns[tnum].covers += Number(r.party_size ?? 0);
-        }
-        setTopTables(
-          Object.entries(turns)
-            .map(([table, v]) => ({ table, ...v }))
-            .sort((a, b) => b.turns - a.turns)
-            .slice(0, 5),
-        );
+    const rangeRes = await listReservationsForRange(orgId, loc, viewFrom, viewTo);
+    if (rangeRes.ok) {
+      const rows = rangeRes.rows as Array<Record<string, unknown>>;
+      setUpcoming(
+        rows
+          .filter((r) =>
+            ["pending", "confirmed", "seated", "completed"].includes(String(r.status)),
+          )
+          .slice(0, 40)
+          .map((r) => ({
+            id: String(r.id),
+            date: String(r.reserved_date ?? ""),
+            time: formatTimeLabel(String(r.reserved_time ?? "")),
+            name: String(r.guest_name ?? ""),
+            party: Number(r.party_size ?? 0),
+            table: (r.table_number as string | null) ?? null,
+            status: String(r.status),
+          })),
+      );
+      const birthdayish = rows.filter((r) =>
+        String(r.notes ?? "")
+          .toLowerCase()
+          .includes("birthday"),
+      ).length;
+      const neu = rows.filter((r) => r.source === "public" || r.source === "online").length;
+      setGuestBits({
+        regulars: Math.max(0, rows.length - neu),
+        vip: rows.filter((r) => String(r.notes ?? "").toLowerCase().includes("vip")).length,
+        birthday: birthdayish,
+        neu,
+      });
+      const turns: Record<string, { turns: number; covers: number }> = {};
+      for (const r of rows) {
+        const tnum = String(r.table_number ?? "");
+        if (!tnum) continue;
+        if (!turns[tnum]) turns[tnum] = { turns: 0, covers: 0 };
+        turns[tnum].turns += 1;
+        turns[tnum].covers += Number(r.party_size ?? 0);
       }
+      setTopTables(
+        Object.entries(turns)
+          .map(([table, v]) => ({ table, ...v }))
+          .sort((a, b) => b.turns - a.turns)
+          .slice(0, 5),
+      );
+    }
+
+    if (locationId) {
+      const floor = await hostListFloor(orgId, locationId, dateISO);
       if (floor.ok) setTables(floor.tables);
     }
 
@@ -217,7 +254,7 @@ function DashboardPage() {
     }
 
     setLoading(false);
-  }, [orgId, locationId, fromISO, toISO, dateISO, rangeDays, staff?.restaurant_id]);
+  }, [orgId, locationId, viewFrom, viewTo, dateISO, staff?.restaurant_id]);
 
   useEffect(() => {
     void refresh();
@@ -257,7 +294,27 @@ function DashboardPage() {
   const occupiedTables = tables.filter((t) => t.status === "occupied" || t.status === "reserved").length;
   const tableTotal = tables.length || 1;
 
-  const dateLabel = format(new Date(dateISO + "T12:00:00"), "d MMMM yyyy", { locale: dateLocale });
+  const rangeLabel =
+    viewFrom === viewTo
+      ? format(new Date(viewFrom + "T12:00:00"), "d MMMM yyyy", { locale: dateLocale })
+      : `${format(new Date(viewFrom + "T12:00:00"), "d MMM", { locale: dateLocale })} – ${format(
+          new Date(viewTo + "T12:00:00"),
+          "d MMM yyyy",
+          { locale: dateLocale },
+        )}`;
+
+  const resSearch = { from: viewFrom, to: viewTo };
+
+  const applyChartRange = (key: RangeKey) => {
+    setRangeKey(key);
+    const days = Number(key);
+    const to = localDateISO();
+    const from = format(subDays(new Date(to + "T12:00:00"), days - 1), "yyyy-MM-dd");
+    setViewPreset("custom");
+    setViewFrom(from);
+    setViewTo(to);
+    setDateISO(to);
+  };
 
   const kpiCards: Array<{
     label: string;
@@ -266,18 +323,24 @@ function DashboardPage() {
     tone: "green" | "rose";
     soft?: boolean;
     sub?: string;
+    to?: "/app/reservations" | "/app/host" | "/app/guests" | "/app/reports";
+    search?: { from: string; to: string };
   }> = [
     {
       label: t("dashboard.reservations"),
       value: String(kpis?.reservations ?? "—"),
       delta: kpis?.delta_reservations,
       tone: "green",
+      to: "/app/reservations",
+      search: resSearch,
     },
     {
       label: t("dashboard.covers"),
       value: String(kpis?.seats ?? "—"),
       delta: kpis?.delta_seats,
       tone: "green",
+      to: "/app/reservations",
+      search: resSearch,
     },
     {
       label: t("dashboard.revenue"),
@@ -285,23 +348,45 @@ function DashboardPage() {
       delta: revenueToday != null ? 14 : undefined,
       tone: "green",
       soft: revenueToday == null,
+      to: "/app/reports",
     },
     {
       label: t("dashboard.avgSpend"),
       value: avgSpend != null ? money(avgSpend, locale) : kpis ? String(kpis.seats_per_reservation) : "—",
       sub: avgSpend == null && kpis ? t("dashboard.seatsPerRes") : undefined,
       tone: "green",
+      to: "/app/reports",
     },
     {
       label: t("dashboard.noShows"),
       value: kpis ? `${kpis.no_show_rate}%` : "—",
       tone: "rose",
+      to: "/app/reservations",
+      search: resSearch,
     },
     {
       label: t("dashboard.occupancy"),
       value: kpis ? `${kpis.occupancy_next_service}%` : "—",
       tone: "green",
+      to: "/app/host",
     },
+  ];
+
+  const upcomingGrouped = useMemo(() => {
+    const map = new Map<string, Upcoming[]>();
+    for (const u of upcoming) {
+      const key = u.date || viewFrom;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(u);
+    }
+    return [...map.entries()];
+  }, [upcoming, viewFrom]);
+
+  const presetLabels: Array<[ViewPreset, string]> = [
+    ["today", t("dashboard.today")],
+    ["week", t("dashboard.thisWeek")],
+    ["month", t("dashboard.thisMonth")],
+    ["custom", t("dashboard.custom")],
   ];
 
   if (!orgId) {
@@ -323,7 +408,9 @@ function DashboardPage() {
               <span aria-hidden>👋</span>
             </h1>
             <p className="mt-1 text-sm text-stone-500">
-              {t("dashboard.subtitle").replace("{location}", locationName)}
+              {t("dashboard.subtitleRange")
+                .replace("{location}", locationName)
+                .replace("{range}", rangeLabel)}
             </p>
           </div>
 
@@ -341,28 +428,64 @@ function DashboardPage() {
               </SelectContent>
             </Select>
 
-            <label className="relative inline-flex h-10 items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 text-sm text-stone-700">
-              <CalendarDays className="size-4 text-stone-400" />
-              <span className="tabular-nums">{dateLabel}</span>
+            <div className="flex rounded-xl border border-stone-200 bg-white p-0.5 text-xs font-semibold">
+              {presetLabels.map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => applyViewPreset(key)}
+                  className={cn(
+                    "rounded-lg px-2.5 py-2 transition-colors",
+                    viewPreset === key ? "bg-emerald-500 text-white" : "text-stone-500 hover:bg-stone-50",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 text-sm text-stone-700">
+              <CalendarDays className="size-4 shrink-0 text-stone-400" />
               <input
                 type="date"
-                value={dateISO}
-                onChange={(e) => setDateISO(e.target.value)}
-                className="absolute inset-0 cursor-pointer opacity-0"
-                aria-label={t("dashboard.date")}
+                value={viewFrom}
+                onChange={(e) => {
+                  setViewPreset("custom");
+                  setViewFrom(e.target.value);
+                  if (e.target.value > viewTo) setViewTo(e.target.value);
+                  setDateISO(e.target.value);
+                }}
+                className="bg-transparent text-sm outline-none"
+                aria-label={t("dashboard.from")}
               />
-              <ChevronDown className="size-3.5 text-stone-400" />
-            </label>
+              <span className="text-stone-400">–</span>
+              <input
+                type="date"
+                value={viewTo}
+                onChange={(e) => {
+                  setViewPreset("custom");
+                  setViewTo(e.target.value);
+                  if (e.target.value < viewFrom) setViewFrom(e.target.value);
+                }}
+                className="bg-transparent text-sm outline-none"
+                aria-label={t("dashboard.to")}
+              />
+            </div>
 
-            <button
-              type="button"
+            <Link
+              to="/app/reservations"
+              search={resSearch}
               className="grid size-10 place-items-center rounded-xl border border-stone-200 bg-white text-stone-500 hover:bg-stone-50"
               aria-label={t("dashboard.notifications")}
+              title={t("dashboard.seeAll")}
             >
               <Bell className="size-4" />
-            </button>
+            </Link>
 
-            <div className="hidden items-center gap-2 rounded-xl border border-stone-200 bg-white py-1.5 pl-1.5 pr-3 sm:flex">
+            <Link
+              to="/settings"
+              className="hidden items-center gap-2 rounded-xl border border-stone-200 bg-white py-1.5 pl-1.5 pr-3 hover:bg-stone-50 sm:flex"
+            >
               <div
                 className="grid size-8 place-items-center rounded-full text-xs font-bold text-white"
                 style={{ backgroundColor: GREEN }}
@@ -373,14 +496,14 @@ function DashboardPage() {
                 <div className="text-xs font-semibold text-stone-900">{staff?.full_name ?? "Admin"}</div>
                 <div className="text-[10px] text-stone-500">Admin</div>
               </div>
-            </div>
+            </Link>
 
             <Button
               asChild
               className="h-10 rounded-xl px-4 font-semibold text-white"
               style={{ backgroundColor: GREEN }}
             >
-              <Link to="/app/reservations">
+              <Link to="/app/reservations" search={resSearch}>
                 <Plus className="size-4" /> {t("dashboard.newReservation")}
               </Link>
             </Button>
@@ -396,31 +519,51 @@ function DashboardPage() {
 
           {/* KPI row */}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            {kpiCards.map((k) => (
-              <div
-                key={k.label}
-                className="rounded-2xl border border-black/[0.04] bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
-              >
-                <div className="text-[11px] font-medium uppercase tracking-wide text-stone-400">
-                  {k.label}
-                </div>
-                <div className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-stone-900">
-                  {k.value}
-                </div>
-                {k.sub && <div className="mt-0.5 text-[11px] text-stone-400">{k.sub}</div>}
-                {typeof k.delta === "number" && !k.soft && (
-                  <div
-                    className={cn(
-                      "mt-2 text-xs font-medium",
-                      k.tone === "rose" ? "text-rose-500" : "text-emerald-600",
-                    )}
-                  >
-                    {k.delta >= 0 ? "+" : ""}
-                    {k.delta}% {t("dashboard.vsPrior")}
+            {kpiCards.map((k) => {
+              const body = (
+                <>
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-stone-400">
+                    {k.label}
                   </div>
-                )}
-              </div>
-            ))}
+                  <div className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-stone-900">
+                    {k.value}
+                  </div>
+                  {k.sub && <div className="mt-0.5 text-[11px] text-stone-400">{k.sub}</div>}
+                  {typeof k.delta === "number" && !k.soft && (
+                    <div
+                      className={cn(
+                        "mt-2 text-xs font-medium",
+                        k.tone === "rose" ? "text-rose-500" : "text-emerald-600",
+                      )}
+                    >
+                      {k.delta >= 0 ? "+" : ""}
+                      {k.delta}% {t("dashboard.vsPrior")}
+                    </div>
+                  )}
+                </>
+              );
+              const className =
+                "block rounded-2xl border border-black/[0.04] bg-white p-4 text-left shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors hover:border-emerald-200 hover:bg-emerald-50/40";
+              if (k.to === "/app/reservations") {
+                return (
+                  <Link key={k.label} to="/app/reservations" search={k.search} className={className}>
+                    {body}
+                  </Link>
+                );
+              }
+              if (k.to) {
+                return (
+                  <Link key={k.label} to={k.to} className={className}>
+                    {body}
+                  </Link>
+                );
+              }
+              return (
+                <div key={k.label} className={className}>
+                  {body}
+                </div>
+              );
+            })}
           </div>
 
           {/* Chart + Tonight */}
@@ -468,7 +611,7 @@ function DashboardPage() {
                       <button
                         key={key}
                         type="button"
-                        onClick={() => setRangeKey(key)}
+                        onClick={() => applyChartRange(key)}
                         className={cn(
                           "rounded-md px-2 py-1.5",
                           rangeKey === key ? "bg-white text-stone-900 shadow-sm" : "text-stone-500",
@@ -546,32 +689,60 @@ function DashboardPage() {
           {/* Bottom row */}
           <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
             {/* Upcoming */}
-            <section className="rounded-2xl border border-black/[0.04] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-stone-900">{t("dashboard.upcoming")}</h2>
-                <Link to="/app/reservations" className="text-xs font-medium text-emerald-600 hover:underline">
+            <section className="rounded-2xl border border-black/[0.04] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] xl:col-span-1">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold text-stone-900">{t("dashboard.upcoming")}</h2>
+                  <p className="text-[11px] text-stone-400">{rangeLabel}</p>
+                </div>
+                <Link
+                  to="/app/reservations"
+                  search={resSearch}
+                  className="text-xs font-medium text-emerald-600 hover:underline"
+                >
                   {t("dashboard.seeAll")}
                 </Link>
               </div>
-              <ul className="divide-y divide-stone-100">
+              <ul className="max-h-[420px] divide-y divide-stone-100 overflow-y-auto">
                 {upcoming.length === 0 && (
                   <li className="py-8 text-center text-xs text-stone-400">{t("common.empty")}</li>
                 )}
-                {upcoming.map((u) => (
-                  <li key={u.id} className="flex items-start gap-3 py-3">
-                    <div className="w-14 shrink-0 text-sm font-semibold tabular-nums text-stone-900">
-                      {u.time}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-stone-900">{u.name}</div>
-                      <div className="mt-0.5 flex items-center gap-2 text-[11px] text-stone-400">
-                        <span className="inline-flex items-center gap-0.5">
-                          <Users className="size-3" /> {u.party}
-                        </span>
-                        {u.table && <span>{t("dashboard.table")} {u.table}</span>}
+                {upcomingGrouped.map(([date, dayRows]) => (
+                  <li key={date} className="list-none">
+                    {viewFrom !== viewTo && (
+                      <div className="sticky top-0 bg-white/95 py-2 text-[10px] font-semibold uppercase tracking-wide text-stone-400 backdrop-blur">
+                        {format(new Date(date + "T12:00:00"), "EEE d MMM", { locale: dateLocale })}
                       </div>
-                    </div>
-                    <StatusPill status={u.status} locale={locale} />
+                    )}
+                    <ul>
+                      {dayRows.map((u) => (
+                        <li key={u.id}>
+                          <Link
+                            to="/app/reservations"
+                            search={{ from: u.date || viewFrom, to: u.date || viewTo }}
+                            className="flex items-start gap-3 py-3 transition-colors hover:bg-stone-50"
+                          >
+                            <div className="w-14 shrink-0 text-sm font-semibold tabular-nums text-stone-900">
+                              {u.time}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-medium text-stone-900">{u.name}</div>
+                              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-stone-400">
+                                <span className="inline-flex items-center gap-0.5">
+                                  <Users className="size-3" /> {u.party}
+                                </span>
+                                {u.table && (
+                                  <span>
+                                    {t("dashboard.table")} {u.table}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <StatusPill status={u.status} locale={locale} />
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
                   </li>
                 ))}
               </ul>
@@ -601,16 +772,17 @@ function DashboardPage() {
                           ? "bg-rose-500 text-white"
                           : "bg-emerald-500 text-white";
                   return (
-                    <div
+                    <Link
                       key={trow?.id ?? i}
+                      to="/app/host"
                       className={cn(
-                        "grid aspect-square place-items-center rounded-lg text-[10px] font-bold",
+                        "grid aspect-square place-items-center rounded-lg text-[10px] font-bold transition-opacity hover:opacity-80",
                         color,
                       )}
-                      title={trow?.table_number ?? ""}
+                      title={trow?.table_number ?? "Host Stand"}
                     >
                       {trow?.table_number ?? "·"}
-                    </div>
+                    </Link>
                   );
                 })}
               </div>
@@ -625,7 +797,12 @@ function DashboardPage() {
             {/* Guests + top tables */}
             <section className="space-y-4 lg:col-span-2 xl:col-span-1">
               <div className="rounded-2xl border border-black/[0.04] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                <h2 className="text-sm font-semibold text-stone-900">{t("dashboard.guestOverview")}</h2>
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-stone-900">{t("dashboard.guestOverview")}</h2>
+                  <Link to="/app/guests" className="text-xs font-medium text-emerald-600 hover:underline">
+                    {t("dashboard.seeAll")}
+                  </Link>
+                </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   {(
                     [
@@ -635,10 +812,14 @@ function DashboardPage() {
                       [guestBits.neu, t("dashboard.newGuests")],
                     ] as const
                   ).map(([n, label]) => (
-                    <div key={label} className="rounded-xl bg-stone-50 px-3 py-2.5">
+                    <Link
+                      key={label}
+                      to="/app/guests"
+                      className="rounded-xl bg-stone-50 px-3 py-2.5 transition-colors hover:bg-emerald-50"
+                    >
                       <div className="text-lg font-semibold tabular-nums text-stone-900">{n}</div>
                       <div className="text-[11px] text-stone-400">{label}</div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </div>

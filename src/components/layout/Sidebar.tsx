@@ -93,7 +93,9 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <>
       <div className="flex items-center justify-center px-2 h-24 lg:h-36 overflow-hidden shrink-0">
-        <img src={logo} alt="RestoStack" className="h-[220px] lg:h-[320px] w-auto object-contain" />
+        <Link to="/app/dashboard" onClick={onNavigate} title="Dashboard">
+          <img src={logo} alt="RestoStack" className="h-[220px] lg:h-[320px] w-auto object-contain" />
+        </Link>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-2">
@@ -197,10 +199,9 @@ function RestaurantTile() {
 
   return (
     <div className="space-y-2">
-      <button
-        type="button"
+      <Link
+        to="/settings"
         className="flex w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-sidebar-accent/50 text-left"
-        disabled={switching}
       >
         {info?.logo_url ? (
           <img src={info.logo_url} alt="" className="size-8 rounded-md object-cover shrink-0" />
@@ -216,7 +217,7 @@ function RestaurantTile() {
           </div>
         </div>
         <ChevronRight className="size-4 text-muted-foreground shrink-0" />
-      </button>
+      </Link>
       {multi && (
         <div className="px-1 space-y-1">
           <div className="text-[10px] uppercase tracking-wide text-muted-foreground px-1">Switch org</div>

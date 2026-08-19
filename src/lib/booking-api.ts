@@ -221,17 +221,77 @@ export async function listReservationsForDay(
   locationId: string,
   date: string,
 ) {
-  const { data, error } = await (supabase as any)
+  return listReservationsForRange(organizationId, locationId, date, date);
+}
+
+/** Inclusive date range — used by dashboard month view and reservations calendar. */
+export async function listReservationsForRange(
+  organizationId: string,
+  locationId: string | null,
+  fromDate: string,
+  toDate: string,
+) {
+  let q = (supabase as any)
     .from("reservations")
     .select(
-      "id, guest_name, guest_phone, guest_email, party_size, reserved_date, reserved_time, table_id, table_number, status, source, notes, guest_id",
+      "id, guest_name, guest_phone, guest_email, party_size, reserved_date, reserved_time, table_id, table_number, status, source, notes, guest_id, location_id, organization_id",
     )
     .eq("organization_id", organizationId)
-    .eq("location_id", locationId)
-    .eq("reserved_date", date)
+    .gte("reserved_date", fromDate)
+    .lte("reserved_date", toDate)
+    .order("reserved_date")
     .order("reserved_time");
-  if (error) return { ok: false as const, error: error.message, rows: [] as const };
-  return { ok: true as const, rows: (data ?? []) as Array<Record<string, unknown>> };
+  if (locationId) q = q.eq("location_id", locationId);
+
+  const { data, error } = await q;
+  if (!error) {
+    return { ok: true as const, rows: (data ?? []) as Array<Record<string, unknown>> };
+  }
+
+  // Fallback: legacy v2_bookings when org reservations table isn't migrated yet.
+  const msg = (error.message ?? "").toLowerCase();
+  const missing =
+    error.code === "PGRST205" ||
+    msg.includes("does not exist") ||
+    msg.includes("schema cache");
+  if (!missing) return { ok: false as const, error: error.message, rows: [] as const };
+
+  const { data: staff } = await supabase
+    .from("v2_users")
+    .select("restaurant_id")
+    .limit(1)
+    .maybeSingle();
+  // Prefer membership-linked restaurant via org context caller; scan bookings by date.
+  const { data: bookings, error: bErr } = await (supabase as any)
+    .from("v2_bookings")
+    .select(
+      "id, guest_name, guest_phone, guest_email, party_size, booking_date, booking_time, table_id, status, source, notes, restaurant_id",
+    )
+    .gte("booking_date", fromDate)
+    .lte("booking_date", toDate)
+    .order("booking_date")
+    .order("booking_time");
+  if (bErr) return { ok: false as const, error: bErr.message, rows: [] as const };
+
+  const rows = (bookings ?? []).map((b: Record<string, unknown>) => ({
+    id: b.id,
+    guest_name: b.guest_name,
+    guest_phone: b.guest_phone,
+    guest_email: b.guest_email,
+    party_size: b.party_size,
+    reserved_date: b.booking_date,
+    reserved_time: b.booking_time,
+    table_id: b.table_id,
+    table_number: null,
+    status: b.status,
+    source: b.source ?? "online",
+    notes: b.notes,
+    guest_id: null,
+    organization_id: organizationId,
+    location_id: locationId,
+  }));
+  void staff;
+  return { ok: true as const, rows };
 }
 
 export async function getPublicMenuAssets(slug: string) {
