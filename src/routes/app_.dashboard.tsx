@@ -69,6 +69,8 @@ function DashboardPage() {
   const { org, staff } = useAuth();
   const { locale, t } = useI18n();
   const orgId = org.activeOrganizationId;
+  const restaurantId = staff?.restaurant_id ?? null;
+  const tenantReady = Boolean(orgId || restaurantId);
   const dateLocale = locale === "fr-CA" ? fr : enCA;
 
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
@@ -129,7 +131,10 @@ function DashboardPage() {
   };
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId) {
+      setLocations([]);
+      return;
+    }
     (async () => {
       const res = await settingsListLocations(orgId);
       const locs = (res.ok && Array.isArray(res.locations) ? res.locations : []) as Array<{
@@ -146,14 +151,14 @@ function DashboardPage() {
   }, [orgId, org.activeLocationId]);
 
   const refresh = useCallback(async () => {
-    if (!orgId) {
+    if (!tenantReady) {
       setLoading(false);
       return;
     }
     setLoading(true);
     const loc = locationId || null;
 
-    const dash = await getDashboard(orgId, loc, viewFrom, viewTo);
+    const dash = await getDashboard(orgId, loc, viewFrom, viewTo, restaurantId);
     if (!dash.ok) {
       toast.error(dash.error);
       setLoading(false);
@@ -171,7 +176,7 @@ function DashboardPage() {
       );
     const priorTo = format(subDays(new Date(viewFrom + "T12:00:00"), 1), "yyyy-MM-dd");
     const priorFrom = format(subDays(new Date(viewFrom + "T12:00:00"), viewLen), "yyyy-MM-dd");
-    const prior = await getDashboard(orgId, loc, priorFrom, priorTo);
+    const prior = await getDashboard(orgId, loc, priorFrom, priorTo, restaurantId);
     const delta = (cur: number, prev: number) =>
       prev > 0 ? Math.round(((cur - prev) / prev) * 100) : cur > 0 ? 100 : 0;
 
@@ -183,7 +188,7 @@ function DashboardPage() {
     setTrend(dash.trend ?? []);
     setByHour(dash.by_hour ?? []);
 
-    const rangeRes = await listReservationsForRange(orgId, loc, viewFrom, viewTo);
+    const rangeRes = await listReservationsForRange(orgId, loc, viewFrom, viewTo, restaurantId);
     if (rangeRes.ok) {
       const rows = rangeRes.rows as Array<Record<string, unknown>>;
       setUpcoming(
@@ -230,10 +235,9 @@ function DashboardPage() {
       );
     }
 
-    if (locationId) {
-      const floor = await hostListFloor(orgId, locationId, dateISO);
-      if (floor.ok) setTables(floor.tables);
-    }
+    const floor = await hostListFloor(orgId, locationId || null, dateISO, restaurantId);
+    if (floor.ok) setTables(floor.tables);
+
 
     // Soft revenue from legacy orders when restaurant linked
     if (staff?.restaurant_id) {
@@ -254,7 +258,7 @@ function DashboardPage() {
     }
 
     setLoading(false);
-  }, [orgId, locationId, viewFrom, viewTo, dateISO, staff?.restaurant_id]);
+  }, [tenantReady, orgId, locationId, viewFrom, viewTo, dateISO, restaurantId, staff?.restaurant_id]);
 
   useEffect(() => {
     void refresh();
@@ -345,7 +349,6 @@ function DashboardPage() {
     {
       label: t("dashboard.revenue"),
       value: revenueToday != null ? money(revenueToday, locale) : "—",
-      delta: revenueToday != null ? 14 : undefined,
       tone: "green",
       soft: revenueToday == null,
       to: "/app/reports",
@@ -389,7 +392,7 @@ function DashboardPage() {
     ["custom", t("dashboard.custom")],
   ];
 
-  if (!orgId) {
+  if (!tenantReady) {
     return (
       <AppShell>
         <div className="p-8 text-sm text-muted-foreground">{t("common.empty")}</div>
@@ -503,7 +506,7 @@ function DashboardPage() {
               className="h-10 rounded-xl px-4 font-semibold text-white"
               style={{ backgroundColor: GREEN }}
             >
-              <Link to="/app/reservations" search={resSearch}>
+              <Link to="/app/reservations" search={{ ...resSearch, create: "1" }}>
                 <Plus className="size-4" /> {t("dashboard.newReservation")}
               </Link>
             </Button>

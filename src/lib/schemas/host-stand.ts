@@ -43,6 +43,7 @@ export const hostWalkInSchema = z.object({
   table_id: z.string().uuid().optional().nullable(),
   table_number: z.string().trim().max(32).optional().nullable(),
   notes: z.string().trim().max(500).optional().nullable(),
+  restaurant_id: z.string().uuid().optional().nullable(),
 });
 
 export type HostSeatInput = z.infer<typeof hostSeatSchema>;

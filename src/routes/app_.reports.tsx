@@ -60,9 +60,12 @@ const GROUP_LABELS: Record<GroupBy, string> = {
 };
 
 function ReportsPage() {
-  const { org } = useAuth();
+  const { org, staff } = useAuth();
   const orgId = org.activeOrganizationId;
-  const allowed = !org.available || org.role === "owner" || org.role === "manager";
+  const restaurantId = staff?.restaurant_id ?? null;
+  const tenantReady = Boolean(orgId || restaurantId);
+  const allowed =
+    !org.available || org.role === "owner" || org.role === "manager" || Boolean(restaurantId);
 
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [locationId, setLocationId] = useState<string>("");
@@ -107,13 +110,20 @@ function ReportsPage() {
   }, [orgId, allowed]);
 
   useEffect(() => {
-    if (!orgId || !allowed) {
+    if (!tenantReady || !allowed) {
       setLoading(false);
       return;
     }
     setLoading(true);
     (async () => {
-      const res = await getReportMetrics(orgId, locationId || null, fromISO, toISO, groupBy);
+      const res = await getReportMetrics(
+        orgId,
+        locationId || null,
+        fromISO,
+        toISO,
+        groupBy,
+        restaurantId,
+      );
       if (!res.ok) {
         toast.error(res.error);
         setLoading(false);
@@ -124,7 +134,7 @@ function ReportsPage() {
       setPriorTo(res.prior_to);
       setLoading(false);
     })();
-  }, [orgId, allowed, locationId, fromISO, toISO, groupBy]);
+  }, [tenantReady, orgId, restaurantId, allowed, locationId, fromISO, toISO, groupBy]);
 
   const totals = useMemo(
     () =>

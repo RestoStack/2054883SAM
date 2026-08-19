@@ -47,8 +47,10 @@ type SavedSegment = {
 };
 
 function GuestsPage() {
-  const { org } = useAuth();
+  const { org, staff } = useAuth();
   const orgId = org.activeOrganizationId;
+  const restaurantId = staff?.restaurant_id ?? null;
+  const tenantReady = Boolean(orgId || restaurantId);
 
   const [q, setQ] = useState("");
   const [optIn, setOptIn] = useState<OptInFilter>("any");
@@ -69,30 +71,27 @@ function GuestsPage() {
   );
 
   const refresh = async () => {
-    if (!orgId) return;
+    if (!tenantReady) return;
     setLoading(true);
-    const res = await listGuests(orgId, q, filters);
+    const res = await listGuests(orgId, q, filters, restaurantId);
     if (!res.ok) toast.error(res.error);
     setGuests(res.guests);
     setLoading(false);
   };
 
   useEffect(() => {
-    if (!orgId) {
-      setLoading(false);
-      return;
-    }
-    const t = setTimeout(() => void refresh(), 250);
-    return () => clearTimeout(t);
+    void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, q, optIn, hasPhone]);
+  }, [tenantReady, orgId, restaurantId, q, optIn, hasPhone]);
 
   useEffect(() => {
-    if (!orgId) return;
-    (async () => {
-      const res = await listSegments(orgId);
-      if (res.ok) setSegments(res.segments as SavedSegment[]);
-    })();
+    if (!orgId) {
+      setSegments([]);
+      return;
+    }
+    void listSegments(orgId).then((r) => {
+      if (r.ok) setSegments(r.segments as SavedSegment[]);
+    });
   }, [orgId]);
 
   const applySegment = (seg: SavedSegment) => {

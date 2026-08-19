@@ -1,34 +1,42 @@
 # Unblock signup (do this once)
 
-Signup is broken for **two database reasons**, not the UI:
+## Good news (2026-08-19)
 
-1. **Google:** Supabase returns `Unsupported provider: missing OAuth secret` — Google Client Secret was never saved.
-2. **Create restaurant:** `v2_signup_create_restaurant` is missing, and RLS blocks direct inserts into `v2_restaurants`.
+Live project `taenbelgzntolqzzjsee` **already has** `v2_signup_create_restaurant`
+with signature `(_city, _full_name, _restaurant_name, _slug, _plan?)`.
 
-## Step A — Paste emergency SQL (2 minutes)
+The app must call that 5-arg form (do **not** pass `_invite_code` — that 404s).
 
-1. Open: https://supabase.com/dashboard/project/taenbelgzntolqzzjsee/sql/new  
-2. Paste the contents of `supabase/emergency/001_unblock_signup.sql`  
-3. Click **Run**
+Org tables (`organizations`, Host Stand RPCs, `get_dashboard`) are **not** on live DB.
+The app now falls back to `v2_bookings` / `v2_customers` / `v2_tables` so Dashboard,
+Reservations, Host Stand, and Guests work after email signup.
 
-## Step B — Fix Google (optional but needed for Google button)
-
-1. Open: https://supabase.com/dashboard/project/taenbelgzntolqzzjsee/auth/providers  
-2. Enable **Google**  
-3. Paste **Client ID** and **Client Secret** from Google Cloud Console  
-4. Authorized redirect URI in Google Cloud:  
-   `https://taenbelgzntolqzzjsee.supabase.co/auth/v1/callback`  
-5. In Supabase → Authentication → URL Configuration, add:  
-   - `https://restostacks.com/auth/callback`  
-   - `https://restostacks.com/**`
-
-## Step C — Create an account
-
-Use the **public** site (not `*.vercel.app` — those have Vercel SSO):
+## Step A — Create an account (email)
 
 **https://restostacks.com/signup**
 
-- Prefer **email** until Step B is done  
-- After Step A, Create account → restaurant is created → `/app`
+Use **email + password** (Google needs Step B).
 
-Until Step A is run, no client can finish signup. Code cannot fix a missing DB function or Google secret without dashboard access.
+After signup you land on `/onboarding` then `/app` once the wizard is finished
+(or skip where allowed).
+
+## Step B — Fix Google (optional)
+
+1. Open https://supabase.com/dashboard/project/taenbelgzntolqzzjsee/auth/providers  
+2. Enable **Google** and paste **Client ID + Client Secret**  
+3. Google Cloud redirect URI:  
+   `https://taenbelgzntolqzzjsee.supabase.co/auth/v1/callback`  
+4. Supabase Auth URL config allow:  
+   - `https://restostacks.com/auth/callback`  
+   - `https://restostacks.com/**`
+
+## Step C — Only if restaurant create still 404s
+
+Paste `supabase/emergency/001_unblock_signup.sql` in the SQL editor:
+https://supabase.com/dashboard/project/taenbelgzntolqzzjsee/sql/new
+
+## Deploy note
+
+`restostacks.com` is the public host. Vercel `*.vercel.app` previews require team SSO
+and break Google OAuth. Merge/deploy this branch to production to get the new
+onboarding wizard + month-range dashboard on the public site.

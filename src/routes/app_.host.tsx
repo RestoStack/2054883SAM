@@ -162,8 +162,11 @@ function abbreviateGuest(name: string): string {
 }
 
 function HostStandLive() {
-  const { org } = useAuth();
+  const { org, staff } = useAuth();
   const orgId = org.activeOrganizationId;
+  const restaurantId = staff?.restaurant_id ?? null;
+  const tenantReady = Boolean(orgId || restaurantId);
+  const scopeId = orgId ?? restaurantId ?? "";
   const [locationId, setLocationId] = useState(org.activeLocationId ?? "");
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const dateISO = useMemo(() => localDateISO(), []);
@@ -187,26 +190,27 @@ function HostStandLive() {
   stateRef.current = { tables, reservations };
 
   const refresh = useCallback(async () => {
-    if (!orgId || !locationId) {
+    if (!tenantReady) {
       setLoading(false);
       setTables([]);
       setReservations([]);
       return;
     }
-    const res = await hostListFloor(orgId, locationId, dateISO);
+    const res = await hostListFloor(
+      orgId,
+      locationId || null,
+      dateISO,
+      restaurantId,
+    );
     if (!res.ok) {
-      if ("missing" in res && res.missing) {
-        toast.error("Host Stand not set up yet for this organization");
-      } else {
-        toast.error(res.error);
-      }
+      toast.error(res.error);
       setLoading(false);
       return;
     }
     setTables(res.tables);
     setReservations(res.reservations);
     setLoading(false);
-  }, [orgId, locationId, dateISO]);
+  }, [tenantReady, orgId, locationId, dateISO, restaurantId]);
 
   useEffect(() => {
     if (!orgId) return;
@@ -232,31 +236,60 @@ function HostStandLive() {
     void refresh();
   }, [refresh]);
 
-  // Realtime: reservations + tables for this location, filtered conceptually by location_id.
+  // Realtime: org reservations or legacy v2_bookings
   useEffect(() => {
-    if (!orgId || !locationId) return;
-    const channel = supabase
-      .channel(`host-stand:${locationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "reservations",
-          filter: `location_id=eq.${locationId}`,
-        },
-        () => void refresh(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tables", filter: `location_id=eq.${locationId}` },
-        () => void refresh(),
-      )
-      .subscribe();
+    if (!tenantReady) return;
+    const channel = supabase.channel(`host-stand:${scopeId || "legacy"}`);
+    if (orgId && locationId) {
+      channel
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "reservations",
+            filter: `location_id=eq.${locationId}`,
+          },
+          () => void refresh(),
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "tables",
+            filter: `location_id=eq.${locationId}`,
+          },
+          () => void refresh(),
+        );
+    } else if (restaurantId) {
+      channel
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "v2_bookings",
+            filter: `restaurant_id=eq.${restaurantId}`,
+          },
+          () => void refresh(),
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "v2_tables",
+            filter: `restaurant_id=eq.${restaurantId}`,
+          },
+          () => void refresh(),
+        );
+    }
+    void channel.subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [orgId, locationId, refresh]);
+  }, [tenantReady, orgId, locationId, restaurantId, scopeId, refresh]);
 
   const periodReservations = useMemo(
     () =>
@@ -321,18 +354,31 @@ function HostStandLive() {
       ),
     );
     setBusy(true);
+    // Prefer RPC; fall back to seating with table assignment on legacy.
     const { data, error } = await (supabase as any).rpc("staff_assign_table", {
-      _organization_id: orgId,
+      _organization_id: scopeId,
       _reservation_id: reservationId,
       _table_id: table.id,
     });
-    setBusy(false);
     if (error || !data?.ok) {
-      setReservations(snapshot.reservations);
-      setTables(snapshot.tables);
-      toast.error(error?.message ?? data?.error ?? "Failed to assign table");
+      const seat = await hostSeat({
+        organization_id: scopeId,
+        reservation_id: reservationId,
+        table_id: table.id,
+      });
+      setBusy(false);
+      if (!seat.ok) {
+        setReservations(snapshot.reservations);
+        setTables(snapshot.tables);
+        toast.error(seat.error);
+        return;
+      }
+      toast.success(`Assigned table ${seat.table_number || table.table_number}`);
+      setTarget(null);
+      void refresh();
       return;
     }
+    setBusy(false);
     toast.success(`Assigned table ${data.table_number ?? table.table_number}`);
     setTarget(null);
     void refresh();
@@ -358,7 +404,7 @@ function HostStandLive() {
     );
     setBusy(true);
     const res = await hostSeat({
-      organization_id: orgId!,
+      organization_id: scopeId,
       reservation_id: reservationId,
       table_id: table.id,
     });
@@ -386,7 +432,7 @@ function HostStandLive() {
       );
     }
     setBusy(true);
-    const res = await hostUnseat({ organization_id: orgId!, reservation_id: r.id, complete: true });
+    const res = await hostUnseat({ organization_id: scopeId, reservation_id: r.id, complete: true });
     setBusy(false);
     if (!res.ok) {
       setReservations(snapshot.reservations);
@@ -410,26 +456,36 @@ function HostStandLive() {
     }
     setBusy(true);
     const { data, error } = await (supabase as any).rpc("staff_mark_no_show", {
-      _organization_id: orgId,
+      _organization_id: scopeId,
       _reservation_id: r.id,
     });
-    setBusy(false);
     if (error || !data?.ok) {
-      setReservations(snapshot.reservations);
-      setTables(snapshot.tables);
-      toast.error(error?.message ?? data?.error ?? "Failed to mark no-show");
+      const { error: updErr } = await (supabase as any)
+        .from("v2_bookings")
+        .update({ status: "no_show" })
+        .eq("id", r.id);
+      setBusy(false);
+      if (updErr) {
+        setReservations(snapshot.reservations);
+        setTables(snapshot.tables);
+        toast.error(updErr.message);
+        return;
+      }
+      toast.success(`${r.guest_name} marked no-show`);
+      void refresh();
       return;
     }
+    setBusy(false);
     toast.success(`${r.guest_name} marked no-show`);
   };
 
   const setTableClean = async (status: "available" | "cleaning" | "blocked") => {
-    if (!orgId || !selectedTable) return;
+    if (!tenantReady || !selectedTable) return;
     const snapshot = stateRef.current;
     setTables((ts) => ts.map((t) => (t.id === selectedTable.id ? { ...t, status } : t)));
     setBusy(true);
     const res = await hostSetTableStatus({
-      organization_id: orgId,
+      organization_id: scopeId,
       table_id: selectedTable.id,
       status,
     });
@@ -443,15 +499,16 @@ function HostStandLive() {
   };
 
   const submitWalkIn = async () => {
-    if (!orgId || !locationId) return;
+    if (!tenantReady) return;
     if (!walkName.trim()) {
       toast.error("Guest name required");
       return;
     }
     setBusy(true);
     const res = await hostCreateWalkIn({
-      organization_id: orgId,
-      location_id: locationId,
+      organization_id: scopeId,
+      location_id: locationId || restaurantId || scopeId,
+      restaurant_id: restaurantId,
       guest_name: walkName.trim(),
       party_size: walkParty,
       table_id:
@@ -487,11 +544,11 @@ function HostStandLive() {
     }
   };
 
-  if (!orgId) {
+  if (!tenantReady) {
     return (
       <AppShell immersive>
         <div className="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">
-          Sign in with an organization membership to use Host Stand.
+          Sign in to use Host Stand.
         </div>
       </AppShell>
     );

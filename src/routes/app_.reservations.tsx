@@ -43,13 +43,14 @@ import {
   Users,
 } from "lucide-react";
 
-type ResSearch = { from?: string; to?: string; date?: string };
+type ResSearch = { from?: string; to?: string; date?: string; create?: string };
 
 export const Route = createFileRoute("/app_/reservations")({
   validateSearch: (s: Record<string, unknown>): ResSearch => ({
     from: typeof s.from === "string" ? s.from : undefined,
     to: typeof s.to === "string" ? s.to : undefined,
     date: typeof s.date === "string" ? s.date : undefined,
+    create: typeof s.create === "string" ? s.create : undefined,
   }),
   head: () => ({
     meta: [
@@ -117,10 +118,12 @@ const emptyForm = { name: "", phone: "", email: "", party: 2, time: "19:00", not
 type Preset = "today" | "week" | "month" | "custom";
 
 function ReservationsPage() {
-  const { org } = useAuth();
+  const { org, staff } = useAuth();
   const navigate = useNavigate();
   const search = Route.useSearch();
   const orgId = org.activeOrganizationId;
+  const restaurantId = staff?.restaurant_id ?? null;
+  const tenantReady = Boolean(orgId || restaurantId);
   const [locationId, setLocationId] = useState(org.activeLocationId ?? "");
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
 
@@ -150,9 +153,13 @@ function ReservationsPage() {
   const [rows, setRows] = useState<ReservationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(search.create === "1");
   const [form, setForm] = useState(emptyForm);
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (search.create === "1") setCreateOpen(true);
+  }, [search.create]);
 
   const applyPreset = (p: Preset) => {
     const today = new Date();
@@ -183,7 +190,10 @@ function ReservationsPage() {
   }, [fromISO, toISO, navigate]);
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId) {
+      setLocations([]);
+      return;
+    }
     (async () => {
       const res = await settingsListLocations(orgId);
       const locs = (
@@ -199,12 +209,18 @@ function ReservationsPage() {
   }, [orgId, org.activeLocationId]);
 
   const refresh = useCallback(async () => {
-    if (!orgId) {
+    if (!tenantReady) {
       setRows([]);
       setLoading(false);
       return;
     }
-    const res = await listReservationsForRange(orgId, locationId || null, fromISO, toISO);
+    const res = await listReservationsForRange(
+      orgId,
+      locationId || null,
+      fromISO,
+      toISO,
+      restaurantId,
+    );
     if (!res.ok) {
       toast.error(res.error);
       setLoading(false);
@@ -212,7 +228,7 @@ function ReservationsPage() {
     }
     setRows(res.rows as unknown as ReservationRow[]);
     setLoading(false);
-  }, [orgId, locationId, fromISO, toISO]);
+  }, [tenantReady, orgId, locationId, fromISO, toISO, restaurantId]);
 
   useEffect(() => {
     setLoading(true);
@@ -243,11 +259,11 @@ function ReservationsPage() {
   }, [rows]);
 
   const handleStatus = async (id: string, status: ReservationStatus) => {
-    if (!orgId) return;
+    if (!tenantReady) return;
     const prev = rows;
     setBusyId(id);
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, status } : r)));
-    const res = await updateReservationStatus(orgId, id, status);
+    const res = await updateReservationStatus(orgId ?? restaurantId ?? "", id, status);
     setBusyId(null);
     if (!res.ok) {
       setRows(prev);
@@ -258,15 +274,16 @@ function ReservationsPage() {
   };
 
   const handleCreate = async () => {
-    if (!orgId || !locationId) return;
+    if (!tenantReady) return;
     if (!form.name.trim()) {
       toast.error("Guest name is required");
       return;
     }
     setCreating(true);
     const res = await createManualReservation({
-      organization_id: orgId,
-      location_id: locationId,
+      organization_id: orgId ?? restaurantId ?? "",
+      location_id: locationId || restaurantId || "",
+      restaurant_id: restaurantId,
       guest_name: form.name.trim(),
       party_size: Number(form.party) || 1,
       date: createDate,
