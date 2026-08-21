@@ -47,7 +47,7 @@ import {
   type TeamStepInput,
 } from "@/lib/schemas/onboarding";
 
-export const Route = createFileRoute("/onboarding/$step")({
+export const Route = createFileRoute("/onboarding_/$step")({
   head: () => ({ meta: [{ title: "Get set up — RestoStack" }] }),
   component: OnboardingStepPage,
 });
@@ -109,7 +109,6 @@ function OnboardingStepPage() {
       return;
     }
 
-    // One-shot boot — never re-run on staff/org churn (that loop froze the tab).
     let cancelled = false;
     (async () => {
       try {
@@ -120,10 +119,20 @@ function OnboardingStepPage() {
           (session.user.email ?? "").split("@")[0] ||
           "";
 
-        if (staff?.restaurant_id || !orgId) {
-          // Legacy restaurant workspace: load existing profile, no org bootstrap RPCs.
-          if (staff?.restaurant_id) {
-            const loaded = await legacyOnboardingLoadRestaurant(staff.restaurant_id);
+        // Prefer staff from context; if hydrate is still catching up, resolve once from DB.
+        let rid = staff?.restaurant_id ?? null;
+        if (!rid) {
+          const { data: row } = await supabase
+            .from("v2_users")
+            .select("restaurant_id")
+            .eq("auth_user_id", session.user.id)
+            .maybeSingle();
+          rid = row?.restaurant_id ?? null;
+        }
+
+        if (rid || !org.activeOrganizationId) {
+          if (rid) {
+            const loaded = await legacyOnboardingLoadRestaurant(rid);
             if (!cancelled && loaded.ok) {
               setRestaurant((r) => ({ ...r, ...loaded.restaurant }));
               setLocationId(loaded.location_id);
@@ -135,7 +144,7 @@ function OnboardingStepPage() {
                   r.name ||
                   (seedName ? `${seedName.split(/\s+/)[0]}'s restaurant` : "My restaurant"),
               }));
-              setLocationId(staff.restaurant_id);
+              setLocationId(rid);
             }
           } else if (!cancelled) {
             setRestaurant((r) => ({
@@ -152,16 +161,16 @@ function OnboardingStepPage() {
           return;
         }
 
-        // Org mode path (only when we already have an org id).
-        if (!subscriptionLive && orgId) {
-          const verified = await billingVerify(orgId);
+        const activeOrgId = org.activeOrganizationId;
+        if (!subscriptionLive && activeOrgId) {
+          const verified = await billingVerify(activeOrgId);
           if (!verified.ok || !verified.live) {
             navigate({ to: "/billing/setup", replace: true });
             return;
           }
         }
 
-        const prog = await onboardingGetV1(orgId);
+        const prog = await onboardingGetV1(activeOrgId!);
         if (cancelled) return;
 
         if (prog.ok) {
@@ -185,9 +194,9 @@ function OnboardingStepPage() {
     return () => {
       cancelled = true;
     };
-    // Intentionally run once after auth is ready — do not depend on staff/orgId churn.
+    // Re-run once staff/org settle after login — safe because we only set form state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, !!session]);
+  }, [loading, !!session, staff?.restaurant_id, org.activeOrganizationId]);
 
   /** Always run the step save (org RPC or legacy v2 write), then advance. */
   const continueOrAdvance = async (next: number, save?: () => Promise<boolean>) => {
