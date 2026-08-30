@@ -89,28 +89,56 @@ export async function hostListFloor(
       (supabase as any)
         .from("v2_tables")
         .select(
-          "id, table_number, section, capacity, capacity_min, capacity_max, shape, position_x, position_y, width, height, status, current_booking_id, sort_order",
+          "id, table_number, section, capacity, shape, position_x, position_y, width, height, status, current_booking_id",
         )
         .eq("restaurant_id", rid)
-        .order("sort_order"),
+        .order("table_number"),
       (supabase as any)
         .from("v2_bookings")
         .select(
-          "id, guest_name, guest_phone, guest_email, party_size, date, time, duration_minutes, section, table_number, status, source, notes, customer_id",
+          "id, guest_name, guest_phone, guest_email, party_size, date, time, section, table_number, status, source, notes, customer_id",
         )
         .eq("restaurant_id", rid)
         .eq("date", date)
         .order("time"),
     ]);
 
-  if (tErr && !isMissingDbObject(tErr)) {
-    return { ok: false as const, error: tErr.message, missing: false };
-  }
-  if (bErr && !isMissingDbObject(bErr)) {
-    return { ok: false as const, error: bErr.message, missing: false };
+  // Older schemas may reject unknown columns — retry with a minimal select.
+  let tablesData = tablesRaw;
+  let tablesError = tErr;
+  if (tErr) {
+    const retry = await (supabase as any)
+      .from("v2_tables")
+      .select("id, table_number, section, capacity, status, current_booking_id, position_x, position_y, shape, width, height")
+      .eq("restaurant_id", rid)
+      .order("table_number");
+    tablesData = retry.data;
+    tablesError = retry.error;
   }
 
-  const reservations = ((bookingsRaw ?? []) as LegacyBookingRow[]).map((b) => {
+  let bookingsData = bookingsRaw;
+  let bookingsError = bErr;
+  if (bErr) {
+    const retry = await (supabase as any)
+      .from("v2_bookings")
+      .select(
+        "id, guest_name, guest_phone, guest_email, party_size, date, time, table_number, status, source, notes, customer_id",
+      )
+      .eq("restaurant_id", rid)
+      .eq("date", date)
+      .order("time");
+    bookingsData = retry.data;
+    bookingsError = retry.error;
+  }
+
+  if (tablesError && !isMissingDbObject(tablesError)) {
+    return { ok: false as const, error: tablesError.message, missing: false };
+  }
+  if (bookingsError && !isMissingDbObject(bookingsError)) {
+    return { ok: false as const, error: bookingsError.message, missing: false };
+  }
+
+  const reservations = ((bookingsData ?? []) as LegacyBookingRow[]).map((b) => {
     const m = mapLegacyBooking(b);
     return {
       id: m.id,
@@ -131,7 +159,7 @@ export async function hostListFloor(
     };
   });
 
-  const tables: HostFloorTable[] = ((tablesRaw ?? []) as Array<Record<string, unknown>>).map(
+  const tables: HostFloorTable[] = ((tablesData ?? []) as Array<Record<string, unknown>>).map(
     (t, i) => {
       const tnum = String(t.table_number ?? "");
       const seated = reservations.find(
@@ -148,17 +176,15 @@ export async function hostListFloor(
         id: String(t.id),
         table_number: tnum,
         section: (t.section as string | null) ?? null,
-        capacity: Number(t.capacity ?? t.capacity_max ?? 4),
-        capacity_min: t.capacity_min != null ? Number(t.capacity_min) : undefined,
-        capacity_max: t.capacity_max != null ? Number(t.capacity_max) : undefined,
-        shape: (t.shape as HostFloorTable["shape"]) ?? "square",
+        capacity: Number(t.capacity ?? 4),
+        shape: (t.shape as HostFloorTable["shape"]) ?? "rectangle",
         position_x: t.position_x != null ? Number(t.position_x) : null,
         position_y: t.position_y != null ? Number(t.position_y) : null,
         width: t.width != null ? Number(t.width) : null,
         height: t.height != null ? Number(t.height) : null,
         status,
         current_reservation_id: seated?.id ?? (t.current_booking_id as string | null) ?? null,
-        sort_order: Number(t.sort_order ?? i),
+        sort_order: i,
       };
     },
   );
