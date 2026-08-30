@@ -211,7 +211,7 @@ function OnboardingStepPage() {
     if (ok) go(next);
   };
 
-  const restaurantId = staff?.restaurant_id ?? null;
+  const restaurantId = staff?.restaurant_id ?? locationId;
 
   const skip = async () => {
     if (!canSkipStep(step)) return;

@@ -321,6 +321,16 @@ export async function hostCreateWalkIn(input: HostWalkInInput & { restaurant_id?
   const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:00`;
 
+  let tableNumber = p.table_number ?? null;
+  if (!tableNumber && p.table_id) {
+    const { data: tbl } = await (supabase as any)
+      .from("v2_tables")
+      .select("table_number")
+      .eq("id", p.table_id)
+      .maybeSingle();
+    if (tbl?.table_number) tableNumber = String(tbl.table_number);
+  }
+
   const { data: row, error: insErr } = await (supabase as any)
     .from("v2_bookings")
     .insert({
@@ -329,10 +339,10 @@ export async function hostCreateWalkIn(input: HostWalkInInput & { restaurant_id?
       party_size: p.party_size,
       date,
       time,
-      status: p.table_id || p.table_number ? "seated" : "confirmed",
+      status: p.table_id || tableNumber ? "seated" : "confirmed",
       source: "walk_in",
       notes: p.notes ?? null,
-      table_number: p.table_number ?? null,
+      table_number: tableNumber,
     })
     .select("id")
     .single();
@@ -342,7 +352,8 @@ export async function hostCreateWalkIn(input: HostWalkInInput & { restaurant_id?
     await (supabase as any)
       .from("v2_tables")
       .update({ status: "occupied", current_booking_id: row.id })
-      .eq("id", p.table_id);
+      .eq("id", p.table_id)
+      .eq("restaurant_id", rid);
   }
 
   return {
