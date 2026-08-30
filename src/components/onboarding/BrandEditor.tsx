@@ -27,16 +27,20 @@ export function BrandEditor({
 }) {
   const [primary, setPrimary] = useState(initial.brand_primary ?? "#059669");
   const [accent, setAccent] = useState(initial.brand_accent ?? "#10b981");
-  const [headline, setHeadline] = useState(initial.booking_headline ?? `Reserve a table at ${name}`);
-  const [welcome, setWelcome] = useState(initial.booking_welcome ?? "Instant confirmation · takes under a minute");
+  const [headline, setHeadline] = useState(initial.booking_headline ?? "Book your table");
+  const [welcome, setWelcome] = useState(
+    initial.booking_welcome ?? "Pick a date, party size, and time — under a minute.",
+  );
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     // If parent updates the initial values, sync once
     setPrimary(initial.brand_primary ?? "#059669");
     setAccent(initial.brand_accent ?? "#10b981");
-    setHeadline(initial.booking_headline ?? `Reserve a table at ${name}`);
-    setWelcome(initial.booking_welcome ?? "Instant confirmation · takes under a minute");
+    setHeadline(initial.booking_headline ?? "Book your table");
+    setWelcome(
+      initial.booking_welcome ?? "Pick a date, party size, and time — under a minute.",
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
@@ -95,7 +99,7 @@ export function BrandEditor({
                 {logoUrl && <img src={logoUrl} alt="" className="size-10 rounded-md object-cover ring-2 ring-white/40" />}
                 <div className="text-xs font-medium opacity-90">Reservations</div>
               </div>
-              <h3 className="mt-3 text-xl font-serif">{headline || `Reserve a table at ${name}`}</h3>
+              <h3 className="mt-3 text-xl font-serif">{headline || "Book your table"}</h3>
               <p className="text-xs opacity-90 mt-1">{welcome}</p>
             </div>
           </div>

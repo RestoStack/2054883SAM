@@ -156,8 +156,8 @@ function BookingFlow({ restaurant, menu }: { restaurant: Restaurant; menu: MenuR
 
   const primary = restaurant.brand_primary || "#dc2626";
   const accent = restaurant.brand_accent || "#b91c1c";
-  const headline = restaurant.booking_headline || "Reserve your table";
-  const welcome = restaurant.booking_welcome || "Pick your seat, tell us the occasion — under a minute.";
+  const headline = restaurant.booking_headline || "Book your table";
+  const welcome = restaurant.booking_welcome || "Pick a date, party size, and time — under a minute.";
   const cover = restaurant.cover_url || heroImg;
   const hours = restaurant.hours || FALLBACK_HOURS;
   const openNow = isOpenNow(hours);

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   Building2,
+  CalendarHeart,
   Clock,
   CreditCard,
   LayoutGrid,
@@ -19,9 +20,18 @@ import { SettingsTeam } from "@/components/settings/SettingsTeam";
 import { SettingsBilling } from "@/components/settings/SettingsBilling";
 import { SettingsTables } from "@/components/settings/SettingsTables";
 import { SettingsMenu } from "@/components/settings/SettingsMenu";
+import { SettingsBookingPage } from "@/components/settings/SettingsBookingPage";
 import { useAuth } from "@/lib/auth";
 
-type SectionId = "profile" | "hours" | "locations" | "team" | "billing" | "tables" | "menu";
+type SectionId =
+  | "profile"
+  | "booking-page"
+  | "hours"
+  | "locations"
+  | "team"
+  | "billing"
+  | "tables"
+  | "menu";
 
 type SettingsSearch = { section?: string };
 
@@ -41,6 +51,7 @@ const SECTIONS: {
   managerOnly?: boolean;
 }[] = [
   { id: "profile", label: "Profile", icon: Building2 },
+  { id: "booking-page", label: "Booking page", icon: CalendarHeart },
   { id: "hours", label: "Hours", icon: Clock },
   { id: "locations", label: "Locations", icon: MapPin },
   { id: "tables", label: "Tables & booking", icon: LayoutGrid },
@@ -74,7 +85,7 @@ function SettingsPage() {
     <AppShell>
       <PageHeader
         title="Settings"
-        description="Profile, hours, locations, team, and billing."
+        description="Profile, booking page, hours, locations, team, and billing."
         icon={SettingsIcon}
       />
       <div className="p-4 lg:p-5">
@@ -105,6 +116,7 @@ function SettingsPage() {
 
           <section className="rounded-xl border border-border bg-card p-6">
             {active === "profile" && <SettingsProfile />}
+            {active === "booking-page" && <SettingsBookingPage />}
             {active === "hours" && <SettingsHours />}
             {active === "locations" && <SettingsLocations />}
             {active === "team" && <SettingsTeam />}
